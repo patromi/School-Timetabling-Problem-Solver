@@ -1,0 +1,1520 @@
+﻿<HighSchoolTimetableArchive>
+	<Instances>
+		<Instance Id="BrazilInstance1_XHSTT-v2014">
+			<MetaData>
+				<Name>BrazilInstance1</Name>
+				<Contributor>Originally from Souza, M.J.F, translated by Santos, H.G.S. and Post, G.F.</Contributor>
+				<Date>Dec 4,2009 11:57:26</Date>
+				<Country>Brazil</Country>
+				<Description>Instance number 1 used originally in D.Sc. thesis of Souza, M.J.F. and later in works of Santos, H.G.S. et al.</Description>
+				<Remarks/>
+			</MetaData>
+			<Times>
+				<TimeGroups>
+					<Day Id="gr_Mo">
+						<Name>Mo</Name>
+					</Day>
+					<Day Id="gr_Tu">
+						<Name>Tu</Name>
+					</Day>
+					<Day Id="gr_We">
+						<Name>We</Name>
+					</Day>
+					<Day Id="gr_Th">
+						<Name>Th</Name>
+					</Day>
+					<Day Id="gr_Fr">
+						<Name>Fr</Name>
+					</Day>
+					<TimeGroup Id="gr_TimesDurationTwo">
+						<Name>TimesDurationTwo</Name>
+					</TimeGroup>
+				</TimeGroups>
+				<Time Id="Mo_1">
+					<Name>Mo_1</Name>
+					<Day Reference="gr_Mo"/>
+					<TimeGroups>
+						<TimeGroup Reference="gr_TimesDurationTwo"/>
+					</TimeGroups>
+				</Time>
+				<Time Id="Mo_2">
+					<Name>Mo_2</Name>
+					<Day Reference="gr_Mo"/>
+					<TimeGroups>
+						<TimeGroup Reference="gr_TimesDurationTwo"/>
+					</TimeGroups>
+				</Time>
+				<Time Id="Mo_3">
+					<Name>Mo_3</Name>
+					<Day Reference="gr_Mo"/>
+					<TimeGroups>
+						<TimeGroup Reference="gr_TimesDurationTwo"/>
+					</TimeGroups>
+				</Time>
+				<Time Id="Mo_4">
+					<Name>Mo_4</Name>
+					<Day Reference="gr_Mo"/>
+					<TimeGroups>
+						<TimeGroup Reference="gr_TimesDurationTwo"/>
+					</TimeGroups>
+				</Time>
+				<Time Id="Mo_5">
+					<Name>Mo_5</Name>
+					<Day Reference="gr_Mo"/>
+					<TimeGroups>
+					</TimeGroups>
+				</Time>
+				<Time Id="Tu_1">
+					<Name>Tu_1</Name>
+					<Day Reference="gr_Tu"/>
+					<TimeGroups>
+						<TimeGroup Reference="gr_TimesDurationTwo"/>
+					</TimeGroups>
+				</Time>
+				<Time Id="Tu_2">
+					<Name>Tu_2</Name>
+					<Day Reference="gr_Tu"/>
+					<TimeGroups>
+						<TimeGroup Reference="gr_TimesDurationTwo"/>
+					</TimeGroups>
+				</Time>
+				<Time Id="Tu_3">
+					<Name>Tu_3</Name>
+					<Day Reference="gr_Tu"/>
+					<TimeGroups>
+						<TimeGroup Reference="gr_TimesDurationTwo"/>
+					</TimeGroups>
+				</Time>
+				<Time Id="Tu_4">
+					<Name>Tu_4</Name>
+					<Day Reference="gr_Tu"/>
+					<TimeGroups>
+						<TimeGroup Reference="gr_TimesDurationTwo"/>
+					</TimeGroups>
+				</Time>
+				<Time Id="Tu_5">
+					<Name>Tu_5</Name>
+					<Day Reference="gr_Tu"/>
+					<TimeGroups>
+					</TimeGroups>
+				</Time>
+				<Time Id="We_1">
+					<Name>We_1</Name>
+					<Day Reference="gr_We"/>
+					<TimeGroups>
+						<TimeGroup Reference="gr_TimesDurationTwo"/>
+					</TimeGroups>
+				</Time>
+				<Time Id="We_2">
+					<Name>We_2</Name>
+					<Day Reference="gr_We"/>
+					<TimeGroups>
+						<TimeGroup Reference="gr_TimesDurationTwo"/>
+					</TimeGroups>
+				</Time>
+				<Time Id="We_3">
+					<Name>We_3</Name>
+					<Day Reference="gr_We"/>
+					<TimeGroups>
+						<TimeGroup Reference="gr_TimesDurationTwo"/>
+					</TimeGroups>
+				</Time>
+				<Time Id="We_4">
+					<Name>We_4</Name>
+					<Day Reference="gr_We"/>
+					<TimeGroups>
+						<TimeGroup Reference="gr_TimesDurationTwo"/>
+					</TimeGroups>
+				</Time>
+				<Time Id="We_5">
+					<Name>We_5</Name>
+					<Day Reference="gr_We"/>
+					<TimeGroups>
+					</TimeGroups>
+				</Time>
+				<Time Id="Th_1">
+					<Name>Th_1</Name>
+					<Day Reference="gr_Th"/>
+					<TimeGroups>
+						<TimeGroup Reference="gr_TimesDurationTwo"/>
+					</TimeGroups>
+				</Time>
+				<Time Id="Th_2">
+					<Name>Th_2</Name>
+					<Day Reference="gr_Th"/>
+					<TimeGroups>
+						<TimeGroup Reference="gr_TimesDurationTwo"/>
+					</TimeGroups>
+				</Time>
+				<Time Id="Th_3">
+					<Name>Th_3</Name>
+					<Day Reference="gr_Th"/>
+					<TimeGroups>
+						<TimeGroup Reference="gr_TimesDurationTwo"/>
+					</TimeGroups>
+				</Time>
+				<Time Id="Th_4">
+					<Name>Th_4</Name>
+					<Day Reference="gr_Th"/>
+					<TimeGroups>
+						<TimeGroup Reference="gr_TimesDurationTwo"/>
+					</TimeGroups>
+				</Time>
+				<Time Id="Th_5">
+					<Name>Th_5</Name>
+					<Day Reference="gr_Th"/>
+					<TimeGroups>
+					</TimeGroups>
+				</Time>
+				<Time Id="Fr_1">
+					<Name>Fr_1</Name>
+					<Day Reference="gr_Fr"/>
+					<TimeGroups>
+						<TimeGroup Reference="gr_TimesDurationTwo"/>
+					</TimeGroups>
+				</Time>
+				<Time Id="Fr_2">
+					<Name>Fr_2</Name>
+					<Day Reference="gr_Fr"/>
+					<TimeGroups>
+						<TimeGroup Reference="gr_TimesDurationTwo"/>
+					</TimeGroups>
+				</Time>
+				<Time Id="Fr_3">
+					<Name>Fr_3</Name>
+					<Day Reference="gr_Fr"/>
+					<TimeGroups>
+						<TimeGroup Reference="gr_TimesDurationTwo"/>
+					</TimeGroups>
+				</Time>
+				<Time Id="Fr_4">
+					<Name>Fr_4</Name>
+					<Day Reference="gr_Fr"/>
+					<TimeGroups>
+						<TimeGroup Reference="gr_TimesDurationTwo"/>
+					</TimeGroups>
+				</Time>
+				<Time Id="Fr_5">
+					<Name>Fr_5</Name>
+					<Day Reference="gr_Fr"/>
+					<TimeGroups>
+					</TimeGroups>
+				</Time>
+			</Times>
+			<Resources>
+				<ResourceTypes>
+					<ResourceType Id="Teacher">
+						<Name>Teacher</Name>
+					</ResourceType>
+					<ResourceType Id="Class">
+						<Name>Class</Name>
+					</ResourceType>
+				</ResourceTypes>
+				<ResourceGroups>
+					<ResourceGroup Id="gr_Teachers">
+						<Name>allTeachers</Name>
+						<ResourceType Reference="Teacher"/>
+					</ResourceGroup>
+					<ResourceGroup Id="gr_Classes">
+						<Name>allClasses</Name>
+						<ResourceType Reference="Class"/>
+					</ResourceGroup>
+				</ResourceGroups>
+				<Resource Id="T1">
+					<Name>T1</Name>
+					<ResourceType Reference="Teacher"/>
+					<ResourceGroups>
+						<ResourceGroup Reference="gr_Teachers"/>
+					</ResourceGroups>
+				</Resource>
+				<Resource Id="T2">
+					<Name>T2</Name>
+					<ResourceType Reference="Teacher"/>
+					<ResourceGroups>
+						<ResourceGroup Reference="gr_Teachers"/>
+					</ResourceGroups>
+				</Resource>
+				<Resource Id="T3">
+					<Name>T3</Name>
+					<ResourceType Reference="Teacher"/>
+					<ResourceGroups>
+						<ResourceGroup Reference="gr_Teachers"/>
+					</ResourceGroups>
+				</Resource>
+				<Resource Id="T4">
+					<Name>T4</Name>
+					<ResourceType Reference="Teacher"/>
+					<ResourceGroups>
+						<ResourceGroup Reference="gr_Teachers"/>
+					</ResourceGroups>
+				</Resource>
+				<Resource Id="T5">
+					<Name>T5</Name>
+					<ResourceType Reference="Teacher"/>
+					<ResourceGroups>
+						<ResourceGroup Reference="gr_Teachers"/>
+					</ResourceGroups>
+				</Resource>
+				<Resource Id="T6">
+					<Name>T6</Name>
+					<ResourceType Reference="Teacher"/>
+					<ResourceGroups>
+						<ResourceGroup Reference="gr_Teachers"/>
+					</ResourceGroups>
+				</Resource>
+				<Resource Id="T7">
+					<Name>T7</Name>
+					<ResourceType Reference="Teacher"/>
+					<ResourceGroups>
+						<ResourceGroup Reference="gr_Teachers"/>
+					</ResourceGroups>
+				</Resource>
+				<Resource Id="T8">
+					<Name>T8</Name>
+					<ResourceType Reference="Teacher"/>
+					<ResourceGroups>
+						<ResourceGroup Reference="gr_Teachers"/>
+					</ResourceGroups>
+				</Resource>
+				<Resource Id="S1">
+					<Name>S1</Name>
+					<ResourceType Reference="Class"/>
+					<ResourceGroups>
+						<ResourceGroup Reference="gr_Classes"/>
+					</ResourceGroups>
+				</Resource>
+				<Resource Id="S2">
+					<Name>S2</Name>
+					<ResourceType Reference="Class"/>
+					<ResourceGroups>
+						<ResourceGroup Reference="gr_Classes"/>
+					</ResourceGroups>
+				</Resource>
+				<Resource Id="S3">
+					<Name>S3</Name>
+					<ResourceType Reference="Class"/>
+					<ResourceGroups>
+						<ResourceGroup Reference="gr_Classes"/>
+					</ResourceGroups>
+				</Resource>
+			</Resources>
+			<Events>
+				<EventGroups>
+					<Course Id="gr_T1-S1">
+						<Name>T1-S1</Name>
+					</Course>
+					<Course Id="gr_T1-S2">
+						<Name>T1-S2</Name>
+					</Course>
+					<Course Id="gr_T1-S3">
+						<Name>T1-S3</Name>
+					</Course>
+					<Course Id="gr_T2-S1">
+						<Name>T2-S1</Name>
+					</Course>
+					<Course Id="gr_T2-S2">
+						<Name>T2-S2</Name>
+					</Course>
+					<Course Id="gr_T3-S1">
+						<Name>T3-S1</Name>
+					</Course>
+					<Course Id="gr_T3-S2">
+						<Name>T3-S2</Name>
+					</Course>
+					<Course Id="gr_T3-S3">
+						<Name>T3-S3</Name>
+					</Course>
+					<Course Id="gr_T4-S1">
+						<Name>T4-S1</Name>
+					</Course>
+					<Course Id="gr_T4-S2">
+						<Name>T4-S2</Name>
+					</Course>
+					<Course Id="gr_T4-S3">
+						<Name>T4-S3</Name>
+					</Course>
+					<Course Id="gr_T5-S2">
+						<Name>T5-S2</Name>
+					</Course>
+					<Course Id="gr_T5-S3">
+						<Name>T5-S3</Name>
+					</Course>
+					<Course Id="gr_T6-S1">
+						<Name>T6-S1</Name>
+					</Course>
+					<Course Id="gr_T6-S2">
+						<Name>T6-S2</Name>
+					</Course>
+					<Course Id="gr_T6-S3">
+						<Name>T6-S3</Name>
+					</Course>
+					<Course Id="gr_T7-S1">
+						<Name>T7-S1</Name>
+					</Course>
+					<Course Id="gr_T7-S3">
+						<Name>T7-S3</Name>
+					</Course>
+					<Course Id="gr_T8-S1">
+						<Name>T8-S1</Name>
+					</Course>
+					<Course Id="gr_T8-S2">
+						<Name>T8-S2</Name>
+					</Course>
+					<Course Id="gr_T8-S3">
+						<Name>T8-S3</Name>
+					</Course>
+					<EventGroup Id="gr_AllEvents">
+						<Name>All Events</Name>
+					</EventGroup>
+				</EventGroups>
+				<Event Id="T1-S1">
+					<Name>T1-S1</Name>
+					<Duration>3</Duration>
+					<Course Reference="gr_T1-S1"/>
+					<Resources>
+						<Resource Reference="S1">
+							<Role>Class</Role>
+							<ResourceType Reference="Class"/>
+						</Resource>
+						<Resource Reference="T1">
+							<Role>Teacher</Role>
+							<ResourceType Reference="Teacher"/>
+						</Resource>
+					</Resources>
+					<EventGroups>
+						<EventGroup Reference="gr_AllEvents"/>
+					</EventGroups>
+				</Event>
+				<Event Id="T1-S2">
+					<Name>T1-S2</Name>
+					<Duration>3</Duration>
+					<Course Reference="gr_T1-S2"/>
+					<Resources>
+						<Resource Reference="S2">
+							<Role>Class</Role>
+							<ResourceType Reference="Class"/>
+						</Resource>
+						<Resource Reference="T1">
+							<Role>Teacher</Role>
+							<ResourceType Reference="Teacher"/>
+						</Resource>
+					</Resources>
+					<EventGroups>
+						<EventGroup Reference="gr_AllEvents"/>
+					</EventGroups>
+				</Event>
+				<Event Id="T1-S3">
+					<Name>T1-S3</Name>
+					<Duration>3</Duration>
+					<Course Reference="gr_T1-S3"/>
+					<Resources>
+						<Resource Reference="S3">
+							<Role>Class</Role>
+							<ResourceType Reference="Class"/>
+						</Resource>
+						<Resource Reference="T1">
+							<Role>Teacher</Role>
+							<ResourceType Reference="Teacher"/>
+						</Resource>
+					</Resources>
+					<EventGroups>
+						<EventGroup Reference="gr_AllEvents"/>
+					</EventGroups>
+				</Event>
+				<Event Id="T2-S1">
+					<Name>T2-S1</Name>
+					<Duration>5</Duration>
+					<Course Reference="gr_T2-S1"/>
+					<Resources>
+						<Resource Reference="S1">
+							<Role>Class</Role>
+							<ResourceType Reference="Class"/>
+						</Resource>
+						<Resource Reference="T2">
+							<Role>Teacher</Role>
+							<ResourceType Reference="Teacher"/>
+						</Resource>
+					</Resources>
+					<EventGroups>
+						<EventGroup Reference="gr_AllEvents"/>
+					</EventGroups>
+				</Event>
+				<Event Id="T2-S2">
+					<Name>T2-S2</Name>
+					<Duration>5</Duration>
+					<Course Reference="gr_T2-S2"/>
+					<Resources>
+						<Resource Reference="S2">
+							<Role>Class</Role>
+							<ResourceType Reference="Class"/>
+						</Resource>
+						<Resource Reference="T2">
+							<Role>Teacher</Role>
+							<ResourceType Reference="Teacher"/>
+						</Resource>
+					</Resources>
+					<EventGroups>
+						<EventGroup Reference="gr_AllEvents"/>
+					</EventGroups>
+				</Event>
+				<Event Id="T3-S1">
+					<Name>T3-S1</Name>
+					<Duration>3</Duration>
+					<Course Reference="gr_T3-S1"/>
+					<Resources>
+						<Resource Reference="S1">
+							<Role>Class</Role>
+							<ResourceType Reference="Class"/>
+						</Resource>
+						<Resource Reference="T3">
+							<Role>Teacher</Role>
+							<ResourceType Reference="Teacher"/>
+						</Resource>
+					</Resources>
+					<EventGroups>
+						<EventGroup Reference="gr_AllEvents"/>
+					</EventGroups>
+				</Event>
+				<Event Id="T3-S2">
+					<Name>T3-S2</Name>
+					<Duration>3</Duration>
+					<Course Reference="gr_T3-S2"/>
+					<Resources>
+						<Resource Reference="S2">
+							<Role>Class</Role>
+							<ResourceType Reference="Class"/>
+						</Resource>
+						<Resource Reference="T3">
+							<Role>Teacher</Role>
+							<ResourceType Reference="Teacher"/>
+						</Resource>
+					</Resources>
+					<EventGroups>
+						<EventGroup Reference="gr_AllEvents"/>
+					</EventGroups>
+				</Event>
+				<Event Id="T3-S3">
+					<Name>T3-S3</Name>
+					<Duration>3</Duration>
+					<Course Reference="gr_T3-S3"/>
+					<Resources>
+						<Resource Reference="S3">
+							<Role>Class</Role>
+							<ResourceType Reference="Class"/>
+						</Resource>
+						<Resource Reference="T3">
+							<Role>Teacher</Role>
+							<ResourceType Reference="Teacher"/>
+						</Resource>
+					</Resources>
+					<EventGroups>
+						<EventGroup Reference="gr_AllEvents"/>
+					</EventGroups>
+				</Event>
+				<Event Id="T4-S1">
+					<Name>T4-S1</Name>
+					<Duration>3</Duration>
+					<Course Reference="gr_T4-S1"/>
+					<Resources>
+						<Resource Reference="S1">
+							<Role>Class</Role>
+							<ResourceType Reference="Class"/>
+						</Resource>
+						<Resource Reference="T4">
+							<Role>Teacher</Role>
+							<ResourceType Reference="Teacher"/>
+						</Resource>
+					</Resources>
+					<EventGroups>
+						<EventGroup Reference="gr_AllEvents"/>
+					</EventGroups>
+				</Event>
+				<Event Id="T4-S2">
+					<Name>T4-S2</Name>
+					<Duration>3</Duration>
+					<Course Reference="gr_T4-S2"/>
+					<Resources>
+						<Resource Reference="S2">
+							<Role>Class</Role>
+							<ResourceType Reference="Class"/>
+						</Resource>
+						<Resource Reference="T4">
+							<Role>Teacher</Role>
+							<ResourceType Reference="Teacher"/>
+						</Resource>
+					</Resources>
+					<EventGroups>
+						<EventGroup Reference="gr_AllEvents"/>
+					</EventGroups>
+				</Event>
+				<Event Id="T4-S3">
+					<Name>T4-S3</Name>
+					<Duration>3</Duration>
+					<Course Reference="gr_T4-S3"/>
+					<Resources>
+						<Resource Reference="S3">
+							<Role>Class</Role>
+							<ResourceType Reference="Class"/>
+						</Resource>
+						<Resource Reference="T4">
+							<Role>Teacher</Role>
+							<ResourceType Reference="Teacher"/>
+						</Resource>
+					</Resources>
+					<EventGroups>
+						<EventGroup Reference="gr_AllEvents"/>
+					</EventGroups>
+				</Event>
+				<Event Id="T5-S2">
+					<Name>T5-S2</Name>
+					<Duration>5</Duration>
+					<Course Reference="gr_T5-S2"/>
+					<Resources>
+						<Resource Reference="S2">
+							<Role>Class</Role>
+							<ResourceType Reference="Class"/>
+						</Resource>
+						<Resource Reference="T5">
+							<Role>Teacher</Role>
+							<ResourceType Reference="Teacher"/>
+						</Resource>
+					</Resources>
+					<EventGroups>
+						<EventGroup Reference="gr_AllEvents"/>
+					</EventGroups>
+				</Event>
+				<Event Id="T5-S3">
+					<Name>T5-S3</Name>
+					<Duration>5</Duration>
+					<Course Reference="gr_T5-S3"/>
+					<Resources>
+						<Resource Reference="S3">
+							<Role>Class</Role>
+							<ResourceType Reference="Class"/>
+						</Resource>
+						<Resource Reference="T5">
+							<Role>Teacher</Role>
+							<ResourceType Reference="Teacher"/>
+						</Resource>
+					</Resources>
+					<EventGroups>
+						<EventGroup Reference="gr_AllEvents"/>
+					</EventGroups>
+				</Event>
+				<Event Id="T6-S1">
+					<Name>T6-S1</Name>
+					<Duration>4</Duration>
+					<Course Reference="gr_T6-S1"/>
+					<Resources>
+						<Resource Reference="S1">
+							<Role>Class</Role>
+							<ResourceType Reference="Class"/>
+						</Resource>
+						<Resource Reference="T6">
+							<Role>Teacher</Role>
+							<ResourceType Reference="Teacher"/>
+						</Resource>
+					</Resources>
+					<EventGroups>
+						<EventGroup Reference="gr_AllEvents"/>
+					</EventGroups>
+				</Event>
+				<Event Id="T6-S2">
+					<Name>T6-S2</Name>
+					<Duration>4</Duration>
+					<Course Reference="gr_T6-S2"/>
+					<Resources>
+						<Resource Reference="S2">
+							<Role>Class</Role>
+							<ResourceType Reference="Class"/>
+						</Resource>
+						<Resource Reference="T6">
+							<Role>Teacher</Role>
+							<ResourceType Reference="Teacher"/>
+						</Resource>
+					</Resources>
+					<EventGroups>
+						<EventGroup Reference="gr_AllEvents"/>
+					</EventGroups>
+				</Event>
+				<Event Id="T6-S3">
+					<Name>T6-S3</Name>
+					<Duration>4</Duration>
+					<Course Reference="gr_T6-S3"/>
+					<Resources>
+						<Resource Reference="S3">
+							<Role>Class</Role>
+							<ResourceType Reference="Class"/>
+						</Resource>
+						<Resource Reference="T6">
+							<Role>Teacher</Role>
+							<ResourceType Reference="Teacher"/>
+						</Resource>
+					</Resources>
+					<EventGroups>
+						<EventGroup Reference="gr_AllEvents"/>
+					</EventGroups>
+				</Event>
+				<Event Id="T7-S1">
+					<Name>T7-S1</Name>
+					<Duration>5</Duration>
+					<Course Reference="gr_T7-S1"/>
+					<Resources>
+						<Resource Reference="S1">
+							<Role>Class</Role>
+							<ResourceType Reference="Class"/>
+						</Resource>
+						<Resource Reference="T7">
+							<Role>Teacher</Role>
+							<ResourceType Reference="Teacher"/>
+						</Resource>
+					</Resources>
+					<EventGroups>
+						<EventGroup Reference="gr_AllEvents"/>
+					</EventGroups>
+				</Event>
+				<Event Id="T7-S3">
+					<Name>T7-S3</Name>
+					<Duration>5</Duration>
+					<Course Reference="gr_T7-S3"/>
+					<Resources>
+						<Resource Reference="S3">
+							<Role>Class</Role>
+							<ResourceType Reference="Class"/>
+						</Resource>
+						<Resource Reference="T7">
+							<Role>Teacher</Role>
+							<ResourceType Reference="Teacher"/>
+						</Resource>
+					</Resources>
+					<EventGroups>
+						<EventGroup Reference="gr_AllEvents"/>
+					</EventGroups>
+				</Event>
+				<Event Id="T8-S1">
+					<Name>T8-S1</Name>
+					<Duration>2</Duration>
+					<Course Reference="gr_T8-S1"/>
+					<Resources>
+						<Resource Reference="S1">
+							<Role>Class</Role>
+							<ResourceType Reference="Class"/>
+						</Resource>
+						<Resource Reference="T8">
+							<Role>Teacher</Role>
+							<ResourceType Reference="Teacher"/>
+						</Resource>
+					</Resources>
+					<EventGroups>
+						<EventGroup Reference="gr_AllEvents"/>
+					</EventGroups>
+				</Event>
+				<Event Id="T8-S2">
+					<Name>T8-S2</Name>
+					<Duration>2</Duration>
+					<Course Reference="gr_T8-S2"/>
+					<Resources>
+						<Resource Reference="S2">
+							<Role>Class</Role>
+							<ResourceType Reference="Class"/>
+						</Resource>
+						<Resource Reference="T8">
+							<Role>Teacher</Role>
+							<ResourceType Reference="Teacher"/>
+						</Resource>
+					</Resources>
+					<EventGroups>
+						<EventGroup Reference="gr_AllEvents"/>
+					</EventGroups>
+				</Event>
+				<Event Id="T8-S3">
+					<Name>T8-S3</Name>
+					<Duration>2</Duration>
+					<Course Reference="gr_T8-S3"/>
+					<Resources>
+						<Resource Reference="S3">
+							<Role>Class</Role>
+							<ResourceType Reference="Class"/>
+						</Resource>
+						<Resource Reference="T8">
+							<Role>Teacher</Role>
+							<ResourceType Reference="Teacher"/>
+						</Resource>
+					</Resources>
+					<EventGroups>
+						<EventGroup Reference="gr_AllEvents"/>
+					</EventGroups>
+				</Event>
+			</Events>
+			<Constraints>
+				<AssignTimeConstraint Id="AssignTimes">
+					<Name>AssignTimes</Name>
+					<Required>true</Required>
+					<Weight>1</Weight>
+					<CostFunction>Linear</CostFunction>
+					<AppliesTo>
+						<EventGroups>
+							<EventGroup Reference="gr_AllEvents"/>
+						</EventGroups>
+					</AppliesTo>
+				</AssignTimeConstraint>
+				<SplitEventsConstraint Id="SplitEventsConstraint">
+					<Name>Split events to duration 1 and 2</Name>
+					<Required>true</Required>
+					<Weight>1</Weight>
+					<CostFunction>Linear</CostFunction>
+					<AppliesTo>
+						<EventGroups>
+							<EventGroup Reference="gr_AllEvents"/>
+						</EventGroups>
+					</AppliesTo>
+					<MinimumDuration>1</MinimumDuration>
+					<MaximumDuration>2</MaximumDuration>
+					<MinimumAmount>1</MinimumAmount>
+					<MaximumAmount>999</MaximumAmount>
+				</SplitEventsConstraint>
+				<DistributeSplitEventsConstraint Id="DistributeSplit_1">
+					<Name>At least 1 double lesson(s)</Name>
+					<Required>false</Required>
+					<Weight>1</Weight>
+					<CostFunction>Linear</CostFunction>
+					<AppliesTo>
+						<EventGroups>
+							<EventGroup Reference="gr_T1-S1"/>
+							<EventGroup Reference="gr_T1-S2"/>
+							<EventGroup Reference="gr_T1-S3"/>
+							<EventGroup Reference="gr_T3-S1"/>
+							<EventGroup Reference="gr_T3-S2"/>
+							<EventGroup Reference="gr_T3-S3"/>
+							<EventGroup Reference="gr_T4-S1"/>
+							<EventGroup Reference="gr_T4-S2"/>
+							<EventGroup Reference="gr_T4-S3"/>
+							<EventGroup Reference="gr_T8-S1"/>
+							<EventGroup Reference="gr_T8-S2"/>
+							<EventGroup Reference="gr_T8-S3"/>
+						</EventGroups>
+					</AppliesTo>
+					<Duration>2</Duration>
+					<Minimum>1</Minimum>
+					<Maximum>1</Maximum>
+				</DistributeSplitEventsConstraint>
+				<DistributeSplitEventsConstraint Id="DistributeSplit_2">
+					<Name>At least 2 double lesson(s)</Name>
+					<Required>false</Required>
+					<Weight>1</Weight>
+					<CostFunction>Linear</CostFunction>
+					<AppliesTo>
+						<EventGroups>
+							<EventGroup Reference="gr_T2-S1"/>
+							<EventGroup Reference="gr_T2-S2"/>
+							<EventGroup Reference="gr_T5-S2"/>
+							<EventGroup Reference="gr_T5-S3"/>
+							<EventGroup Reference="gr_T6-S1"/>
+							<EventGroup Reference="gr_T6-S2"/>
+							<EventGroup Reference="gr_T6-S3"/>
+							<EventGroup Reference="gr_T7-S1"/>
+							<EventGroup Reference="gr_T7-S3"/>
+						</EventGroups>
+					</AppliesTo>
+					<Duration>2</Duration>
+					<Minimum>2</Minimum>
+					<Maximum>2</Maximum>
+				</DistributeSplitEventsConstraint>
+				<PreferTimesConstraint Id="PreferredTimes">
+					<Name>Times for duration 2</Name>
+					<Required>true</Required>
+					<Weight>1</Weight>
+					<CostFunction>Linear</CostFunction>
+					<AppliesTo>
+						<EventGroups>
+							<EventGroup Reference="gr_AllEvents"/>
+						</EventGroups>
+					</AppliesTo>
+					<TimeGroups>
+						<TimeGroup Reference="gr_TimesDurationTwo"/>
+					</TimeGroups>
+					<Duration>2</Duration>
+				</PreferTimesConstraint>
+				<SpreadEventsConstraint Id="SpreadEvents_2">
+					<Name>Spread events max 1 per day</Name>
+					<Required>true</Required>
+					<Weight>1</Weight>
+					<CostFunction>Linear</CostFunction>
+					<AppliesTo>
+						<EventGroups>
+							<EventGroup Reference="gr_T1-S1"/>
+							<EventGroup Reference="gr_T1-S2"/>
+							<EventGroup Reference="gr_T1-S3"/>
+							<EventGroup Reference="gr_T2-S1"/>
+							<EventGroup Reference="gr_T2-S2"/>
+							<EventGroup Reference="gr_T3-S1"/>
+							<EventGroup Reference="gr_T3-S2"/>
+							<EventGroup Reference="gr_T3-S3"/>
+							<EventGroup Reference="gr_T4-S1"/>
+							<EventGroup Reference="gr_T4-S2"/>
+							<EventGroup Reference="gr_T4-S3"/>
+							<EventGroup Reference="gr_T5-S2"/>
+							<EventGroup Reference="gr_T5-S3"/>
+							<EventGroup Reference="gr_T6-S1"/>
+							<EventGroup Reference="gr_T6-S2"/>
+							<EventGroup Reference="gr_T6-S3"/>
+							<EventGroup Reference="gr_T7-S1"/>
+							<EventGroup Reference="gr_T7-S3"/>
+							<EventGroup Reference="gr_T8-S1"/>
+							<EventGroup Reference="gr_T8-S2"/>
+							<EventGroup Reference="gr_T8-S3"/>
+						</EventGroups>
+					</AppliesTo>
+					<TimeGroups>
+						<TimeGroup Reference="gr_Mo">
+							<Minimum>0</Minimum>
+							<Maximum>1</Maximum>
+						</TimeGroup>
+						<TimeGroup Reference="gr_Tu">
+							<Minimum>0</Minimum>
+							<Maximum>1</Maximum>
+						</TimeGroup>
+						<TimeGroup Reference="gr_We">
+							<Minimum>0</Minimum>
+							<Maximum>1</Maximum>
+						</TimeGroup>
+						<TimeGroup Reference="gr_Th">
+							<Minimum>0</Minimum>
+							<Maximum>1</Maximum>
+						</TimeGroup>
+						<TimeGroup Reference="gr_Fr">
+							<Minimum>0</Minimum>
+							<Maximum>1</Maximum>
+						</TimeGroup>
+					</TimeGroups>
+				</SpreadEventsConstraint>
+				<AvoidClashesConstraint Id="NoResourceClashes">
+					<Name>NoResourceClashes</Name>
+					<Required>true</Required>
+					<Weight>1</Weight>
+					<CostFunction>Linear</CostFunction>
+					<AppliesTo>
+						<ResourceGroups>
+							<ResourceGroup Reference="gr_Teachers"/>
+							<ResourceGroup Reference="gr_Classes"/>
+						</ResourceGroups>
+					</AppliesTo>
+				</AvoidClashesConstraint>
+				<AvoidUnavailableTimesConstraint Id="AvoidUnavailableTimes_T1">
+					<Name>ForbiddenTimesOfT1</Name>
+					<Required>true</Required>
+					<Weight>1</Weight>
+					<CostFunction>Linear</CostFunction>
+					<AppliesTo>
+						<Resources>
+							<Resource Reference="T1"/>
+						</Resources>
+					</AppliesTo>
+					<Times>
+						<Time Reference="We_1"/>
+						<Time Reference="We_2"/>
+						<Time Reference="We_3"/>
+						<Time Reference="We_4"/>
+						<Time Reference="We_5"/>
+					</Times>
+				</AvoidUnavailableTimesConstraint>
+				<AvoidUnavailableTimesConstraint Id="AvoidUnavailableTimes_T2">
+					<Name>ForbiddenTimesOfT2</Name>
+					<Required>true</Required>
+					<Weight>1</Weight>
+					<CostFunction>Linear</CostFunction>
+					<AppliesTo>
+						<Resources>
+							<Resource Reference="T2"/>
+						</Resources>
+					</AppliesTo>
+					<Times>
+						<Time Reference="Fr_1"/>
+						<Time Reference="Fr_2"/>
+						<Time Reference="Fr_3"/>
+						<Time Reference="Fr_4"/>
+						<Time Reference="Fr_5"/>
+					</Times>
+				</AvoidUnavailableTimesConstraint>
+				<AvoidUnavailableTimesConstraint Id="AvoidUnavailableTimes_T3">
+					<Name>ForbiddenTimesOfT3</Name>
+					<Required>true</Required>
+					<Weight>1</Weight>
+					<CostFunction>Linear</CostFunction>
+					<AppliesTo>
+						<Resources>
+							<Resource Reference="T3"/>
+						</Resources>
+					</AppliesTo>
+					<Times>
+						<Time Reference="Th_1"/>
+						<Time Reference="Th_2"/>
+						<Time Reference="Th_3"/>
+						<Time Reference="Th_4"/>
+						<Time Reference="Th_5"/>
+					</Times>
+				</AvoidUnavailableTimesConstraint>
+				<AvoidUnavailableTimesConstraint Id="AvoidUnavailableTimes_T4">
+					<Name>ForbiddenTimesOfT4</Name>
+					<Required>true</Required>
+					<Weight>1</Weight>
+					<CostFunction>Linear</CostFunction>
+					<AppliesTo>
+						<Resources>
+							<Resource Reference="T4"/>
+						</Resources>
+					</AppliesTo>
+					<Times>
+						<Time Reference="Tu_1"/>
+						<Time Reference="Tu_2"/>
+						<Time Reference="Tu_3"/>
+						<Time Reference="Tu_4"/>
+						<Time Reference="Tu_5"/>
+					</Times>
+				</AvoidUnavailableTimesConstraint>
+				<AvoidUnavailableTimesConstraint Id="AvoidUnavailableTimes_T5">
+					<Name>ForbiddenTimesOfT5</Name>
+					<Required>true</Required>
+					<Weight>1</Weight>
+					<CostFunction>Linear</CostFunction>
+					<AppliesTo>
+						<Resources>
+							<Resource Reference="T5"/>
+						</Resources>
+					</AppliesTo>
+					<Times>
+						<Time Reference="Mo_1"/>
+						<Time Reference="Mo_2"/>
+						<Time Reference="Mo_3"/>
+						<Time Reference="Mo_4"/>
+						<Time Reference="Mo_5"/>
+					</Times>
+				</AvoidUnavailableTimesConstraint>
+				<AvoidUnavailableTimesConstraint Id="AvoidUnavailableTimes_T6">
+					<Name>ForbiddenTimesOfT6</Name>
+					<Required>true</Required>
+					<Weight>1</Weight>
+					<CostFunction>Linear</CostFunction>
+					<AppliesTo>
+						<Resources>
+							<Resource Reference="T6"/>
+						</Resources>
+					</AppliesTo>
+					<Times>
+						<Time Reference="We_1"/>
+						<Time Reference="We_2"/>
+						<Time Reference="We_3"/>
+						<Time Reference="We_4"/>
+						<Time Reference="We_5"/>
+					</Times>
+				</AvoidUnavailableTimesConstraint>
+				<AvoidUnavailableTimesConstraint Id="AvoidUnavailableTimes_T7">
+					<Name>ForbiddenTimesOfT7</Name>
+					<Required>true</Required>
+					<Weight>1</Weight>
+					<CostFunction>Linear</CostFunction>
+					<AppliesTo>
+						<Resources>
+							<Resource Reference="T7"/>
+						</Resources>
+					</AppliesTo>
+					<Times>
+						<Time Reference="Tu_1"/>
+						<Time Reference="Tu_2"/>
+						<Time Reference="Tu_3"/>
+						<Time Reference="Tu_4"/>
+						<Time Reference="Tu_5"/>
+					</Times>
+				</AvoidUnavailableTimesConstraint>
+				<AvoidUnavailableTimesConstraint Id="AvoidUnavailableTimes_T8">
+					<Name>ForbiddenTimesOfT8</Name>
+					<Required>true</Required>
+					<Weight>1</Weight>
+					<CostFunction>Linear</CostFunction>
+					<AppliesTo>
+						<Resources>
+							<Resource Reference="T8"/>
+						</Resources>
+					</AppliesTo>
+					<Times>
+						<Time Reference="Th_1"/>
+						<Time Reference="Th_2"/>
+						<Time Reference="Th_3"/>
+						<Time Reference="Th_4"/>
+						<Time Reference="Th_5"/>
+					</Times>
+				</AvoidUnavailableTimesConstraint>
+				<LimitIdleTimesConstraint Id="noIDLETimesT">
+					<Name>No IDLE times for teachers</Name>
+					<Required>false</Required>
+					<Weight>3</Weight>
+					<CostFunction>Linear</CostFunction>
+					<AppliesTo>
+						<ResourceGroups>
+							<ResourceGroup Reference="gr_Teachers"/>
+						</ResourceGroups>
+					</AppliesTo>
+					<TimeGroups>
+						<TimeGroup Reference="gr_Mo"/>
+						<TimeGroup Reference="gr_Tu"/>
+						<TimeGroup Reference="gr_We"/>
+						<TimeGroup Reference="gr_Th"/>
+						<TimeGroup Reference="gr_Fr"/>
+					</TimeGroups>
+					<Minimum>0</Minimum>
+					<Maximum>0</Maximum>
+				</LimitIdleTimesConstraint>
+				<ClusterBusyTimesConstraint Id="MaxNofDaysConstraint_T_days_2">
+					<Name>Not more than 2 days with lessons</Name>
+					<Required>false</Required>
+					<Weight>9</Weight>
+					<CostFunction>Linear</CostFunction>
+					<AppliesTo>
+						<Resources>
+							<Resource Reference="T1"/>
+							<Resource Reference="T2"/>
+							<Resource Reference="T3"/>
+							<Resource Reference="T4"/>
+							<Resource Reference="T5"/>
+							<Resource Reference="T7"/>
+							<Resource Reference="T8"/>
+						</Resources>
+					</AppliesTo>
+					<TimeGroups>
+						<TimeGroup Reference="gr_Mo"/>
+						<TimeGroup Reference="gr_Tu"/>
+						<TimeGroup Reference="gr_We"/>
+						<TimeGroup Reference="gr_Th"/>
+						<TimeGroup Reference="gr_Fr"/>
+					</TimeGroups>
+					<Minimum>0</Minimum>
+					<Maximum>2</Maximum>
+				</ClusterBusyTimesConstraint>
+				<ClusterBusyTimesConstraint Id="MaxNofDaysConstraint_T_days_3">
+					<Name>Not more than 3 days with lessons</Name>
+					<Required>false</Required>
+					<Weight>9</Weight>
+					<CostFunction>Linear</CostFunction>
+					<AppliesTo>
+						<Resources>
+							<Resource Reference="T6"/>
+						</Resources>
+					</AppliesTo>
+					<TimeGroups>
+						<TimeGroup Reference="gr_Mo"/>
+						<TimeGroup Reference="gr_Tu"/>
+						<TimeGroup Reference="gr_We"/>
+						<TimeGroup Reference="gr_Th"/>
+						<TimeGroup Reference="gr_Fr"/>
+					</TimeGroups>
+					<Minimum>0</Minimum>
+					<Maximum>3</Maximum>
+				</ClusterBusyTimesConstraint>
+			</Constraints>
+		</Instance>
+	</Instances>
+	<SolutionGroups>
+		<SolutionGroup Id="Haroldo_Dec_2011">
+			<MetaData>
+				<Contributor>Haroldo Gambini Santos</Contributor>
+				<Date>December 2011</Date>
+				<Description>Obtained from a compact IP formulation, solved with CBC</Description>
+			</MetaData>
+			<Solution Reference="BrazilInstance1_XHSTT-v2014">
+				<Events>
+					<Event Reference="T1-S1">
+						<Duration>2</Duration>
+						<Time Reference="Mo_4"/>
+					</Event>
+					<Event Reference="T1-S1">
+						<Duration>1</Duration>
+						<Time Reference="Tu_5"/>
+					</Event>
+					<Event Reference="T1-S2">
+						<Duration>2</Duration>
+						<Time Reference="Mo_1"/>
+					</Event>
+					<Event Reference="T1-S2">
+						<Duration>1</Duration>
+						<Time Reference="Tu_3"/>
+					</Event>
+					<Event Reference="T1-S3">
+						<Duration>1</Duration>
+						<Time Reference="Mo_3"/>
+					</Event>
+					<Event Reference="T1-S3">
+						<Duration>2</Duration>
+						<Time Reference="Tu_1"/>
+					</Event>
+					<Event Reference="T2-S1">
+						<Duration>2</Duration>
+						<Time Reference="Tu_3"/>
+					</Event>
+					<Event Reference="T2-S1">
+						<Duration>2</Duration>
+						<Time Reference="We_4"/>
+					</Event>
+					<Event Reference="T2-S1">
+						<Duration>1</Duration>
+						<Time Reference="Th_3"/>
+					</Event>
+					<Event Reference="T2-S2">
+						<Duration>1</Duration>
+						<Time Reference="Tu_5"/>
+					</Event>
+					<Event Reference="T2-S2">
+						<Duration>2</Duration>
+						<Time Reference="We_1"/>
+					</Event>
+					<Event Reference="T2-S2">
+						<Duration>2</Duration>
+						<Time Reference="Th_1"/>
+					</Event>
+					<Event Reference="T3-S1">
+						<Duration>1</Duration>
+						<Time Reference="Mo_3"/>
+					</Event>
+					<Event Reference="T3-S1">
+						<Duration>2</Duration>
+						<Time Reference="Tu_1"/>
+					</Event>
+					<Event Reference="T3-S2">
+						<Duration>2</Duration>
+						<Time Reference="Mo_4"/>
+					</Event>
+					<Event Reference="T3-S2">
+						<Duration>1</Duration>
+						<Time Reference="Tu_4"/>
+					</Event>
+					<Event Reference="T3-S3">
+						<Duration>2</Duration>
+						<Time Reference="Mo_1"/>
+					</Event>
+					<Event Reference="T3-S3">
+						<Duration>1</Duration>
+						<Time Reference="Tu_3"/>
+					</Event>
+					<Event Reference="T4-S1">
+						<Duration>1</Duration>
+						<Time Reference="Th_4"/>
+					</Event>
+					<Event Reference="T4-S1">
+						<Duration>2</Duration>
+						<Time Reference="Fr_2"/>
+					</Event>
+					<Event Reference="T4-S2">
+						<Duration>1</Duration>
+						<Time Reference="Th_5"/>
+					</Event>
+					<Event Reference="T4-S2">
+						<Duration>2</Duration>
+						<Time Reference="Fr_4"/>
+					</Event>
+					<Event Reference="T4-S3">
+						<Duration>2</Duration>
+						<Time Reference="Th_1"/>
+					</Event>
+					<Event Reference="T4-S3">
+						<Duration>1</Duration>
+						<Time Reference="Fr_1"/>
+					</Event>
+					<Event Reference="T5-S2">
+						<Duration>2</Duration>
+						<Time Reference="Tu_1"/>
+					</Event>
+					<Event Reference="T5-S2">
+						<Duration>2</Duration>
+						<Time Reference="We_3"/>
+					</Event>
+					<Event Reference="T5-S2">
+						<Duration>1</Duration>
+						<Time Reference="Th_3"/>
+					</Event>
+					<Event Reference="T5-S3">
+						<Duration>2</Duration>
+						<Time Reference="Tu_4"/>
+					</Event>
+					<Event Reference="T5-S3">
+						<Duration>1</Duration>
+						<Time Reference="We_5"/>
+					</Event>
+					<Event Reference="T5-S3">
+						<Duration>2</Duration>
+						<Time Reference="Th_4"/>
+					</Event>
+					<Event Reference="T6-S1">
+						<Duration>2</Duration>
+						<Time Reference="Mo_1"/>
+					</Event>
+					<Event Reference="T6-S1">
+						<Duration>1</Duration>
+						<Time Reference="Th_5"/>
+					</Event>
+					<Event Reference="T6-S1">
+						<Duration>1</Duration>
+						<Time Reference="Fr_1"/>
+					</Event>
+					<Event Reference="T6-S2">
+						<Duration>1</Duration>
+						<Time Reference="Mo_3"/>
+					</Event>
+					<Event Reference="T6-S2">
+						<Duration>1</Duration>
+						<Time Reference="Th_4"/>
+					</Event>
+					<Event Reference="T6-S2">
+						<Duration>2</Duration>
+						<Time Reference="Fr_2"/>
+					</Event>
+					<Event Reference="T6-S3">
+						<Duration>2</Duration>
+						<Time Reference="Mo_4"/>
+					</Event>
+					<Event Reference="T6-S3">
+						<Duration>2</Duration>
+						<Time Reference="Fr_4"/>
+					</Event>
+					<Event Reference="T7-S1">
+						<Duration>1</Duration>
+						<Time Reference="We_3"/>
+					</Event>
+					<Event Reference="T7-S1">
+						<Duration>2</Duration>
+						<Time Reference="Th_1"/>
+					</Event>
+					<Event Reference="T7-S1">
+						<Duration>2</Duration>
+						<Time Reference="Fr_4"/>
+					</Event>
+					<Event Reference="T7-S3">
+						<Duration>2</Duration>
+						<Time Reference="We_1"/>
+					</Event>
+					<Event Reference="T7-S3">
+						<Duration>1</Duration>
+						<Time Reference="Th_3"/>
+					</Event>
+					<Event Reference="T7-S3">
+						<Duration>2</Duration>
+						<Time Reference="Fr_2"/>
+					</Event>
+					<Event Reference="T8-S1">
+						<Duration>2</Duration>
+						<Time Reference="We_1"/>
+					</Event>
+					<Event Reference="T8-S2">
+						<Duration>1</Duration>
+						<Time Reference="We_5"/>
+					</Event>
+					<Event Reference="T8-S2">
+						<Duration>1</Duration>
+						<Time Reference="Fr_1"/>
+					</Event>
+					<Event Reference="T8-S3">
+						<Duration>2</Duration>
+						<Time Reference="We_3"/>
+					</Event>
+				</Events>
+			</Solution>
+		</SolutionGroup>
+		<SolutionGroup Id="LectioIntegerProgramming">
+      <MetaData>
+        <Contributor>Matias Sorensen</Contributor>
+        <Date>04042015</Date>
+        <Description>Solution approach described in "Integer programming for the generalized high school timetabling problem (Journal of Scheduling, 2014)"</Description>
+      </MetaData>
+      <Solution Reference="BrazilInstance1_XHSTT-v2014">
+        <Events>
+          <Event Reference="T1-S1">
+            <Duration>1</Duration>
+            <Time Reference="Th_1" />
+          </Event>
+          <Event Reference="T1-S1">
+            <Duration>2</Duration>
+            <Time Reference="Tu_1" />
+          </Event>
+          <Event Reference="T1-S2">
+            <Duration>1</Duration>
+            <Time Reference="Tu_5" />
+          </Event>
+          <Event Reference="T1-S2">
+            <Duration>2</Duration>
+            <Time Reference="Th_2" />
+          </Event>
+          <Event Reference="T1-S3">
+            <Duration>1</Duration>
+            <Time Reference="Tu_3" />
+          </Event>
+          <Event Reference="T1-S3">
+            <Duration>2</Duration>
+            <Time Reference="Th_4" />
+          </Event>
+          <Event Reference="T2-S1">
+            <Duration>1</Duration>
+            <Time Reference="We_3" />
+          </Event>
+          <Event Reference="T2-S1">
+            <Duration>2</Duration>
+            <Time Reference="Th_2" />
+          </Event>
+          <Event Reference="T2-S1">
+            <Duration>2</Duration>
+            <Time Reference="Tu_3" />
+          </Event>
+          <Event Reference="T2-S2">
+            <Duration>1</Duration>
+            <Time Reference="Th_1" />
+          </Event>
+          <Event Reference="T2-S2">
+            <Duration>2</Duration>
+            <Time Reference="We_1" />
+          </Event>
+          <Event Reference="T2-S2">
+            <Duration>2</Duration>
+            <Time Reference="Tu_1" />
+          </Event>
+          <Event Reference="T3-S1">
+            <Duration>1</Duration>
+            <Time Reference="We_1" />
+          </Event>
+          <Event Reference="T3-S1">
+            <Duration>2</Duration>
+            <Time Reference="Fr_2" />
+          </Event>
+          <Event Reference="T3-S2">
+            <Duration>1</Duration>
+            <Time Reference="We_3" />
+          </Event>
+          <Event Reference="T3-S2">
+            <Duration>2</Duration>
+            <Time Reference="Fr_4" />
+          </Event>
+          <Event Reference="T3-S3">
+            <Duration>1</Duration>
+            <Time Reference="Fr_1" />
+          </Event>
+          <Event Reference="T3-S3">
+            <Duration>2</Duration>
+            <Time Reference="We_4" />
+          </Event>
+          <Event Reference="T4-S1">
+            <Duration>1</Duration>
+            <Time Reference="We_2" />
+          </Event>
+          <Event Reference="T4-S1">
+            <Duration>2</Duration>
+            <Time Reference="Mo_2" />
+          </Event>
+          <Event Reference="T4-S2">
+            <Duration>1</Duration>
+            <Time Reference="Mo_1" />
+          </Event>
+          <Event Reference="T4-S2">
+            <Duration>2</Duration>
+            <Time Reference="We_4" />
+          </Event>
+          <Event Reference="T4-S3">
+            <Duration>1</Duration>
+            <Time Reference="We_3" />
+          </Event>
+          <Event Reference="T4-S3">
+            <Duration>2</Duration>
+            <Time Reference="Mo_4" />
+          </Event>
+          <Event Reference="T5-S2">
+            <Duration>1</Duration>
+            <Time Reference="Fr_3" />
+          </Event>
+          <Event Reference="T5-S2">
+            <Duration>2</Duration>
+            <Time Reference="Th_4" />
+          </Event>
+          <Event Reference="T5-S2">
+            <Duration>2</Duration>
+            <Time Reference="Tu_3" />
+          </Event>
+          <Event Reference="T5-S3">
+            <Duration>1</Duration>
+            <Time Reference="Th_3" />
+          </Event>
+          <Event Reference="T5-S3">
+            <Duration>2</Duration>
+            <Time Reference="Tu_1" />
+          </Event>
+          <Event Reference="T5-S3">
+            <Duration>2</Duration>
+            <Time Reference="Fr_4" />
+          </Event>
+          <Event Reference="T6-S1">
+            <Duration>2</Duration>
+            <Time Reference="Fr_4" />
+          </Event>
+          <Event Reference="T6-S1">
+            <Duration>2</Duration>
+            <Time Reference="Mo_4" />
+          </Event>
+          <Event Reference="T6-S2">
+            <Duration>2</Duration>
+            <Time Reference="Mo_2" />
+          </Event>
+          <Event Reference="T6-S2">
+            <Duration>2</Duration>
+            <Time Reference="Fr_1" />
+          </Event>
+          <Event Reference="T6-S3">
+            <Duration>1</Duration>
+            <Time Reference="Fr_3" />
+          </Event>
+          <Event Reference="T6-S3">
+            <Duration>1</Duration>
+            <Time Reference="Mo_1" />
+          </Event>
+          <Event Reference="T6-S3">
+            <Duration>2</Duration>
+            <Time Reference="Tu_4" />
+          </Event>
+          <Event Reference="T7-S1">
+            <Duration>1</Duration>
+            <Time Reference="Fr_1" />
+          </Event>
+          <Event Reference="T7-S1">
+            <Duration>2</Duration>
+            <Time Reference="We_4" />
+          </Event>
+          <Event Reference="T7-S1">
+            <Duration>2</Duration>
+            <Time Reference="Th_4" />
+          </Event>
+          <Event Reference="T7-S3">
+            <Duration>1</Duration>
+            <Time Reference="Fr_2" />
+          </Event>
+          <Event Reference="T7-S3">
+            <Duration>2</Duration>
+            <Time Reference="We_1" />
+          </Event>
+          <Event Reference="T7-S3">
+            <Duration>2</Duration>
+            <Time Reference="Th_1" />
+          </Event>
+          <Event Reference="T8-S1">
+            <Duration>1</Duration>
+            <Time Reference="Tu_5" />
+          </Event>
+          <Event Reference="T8-S1">
+            <Duration>1</Duration>
+            <Time Reference="Mo_1" />
+          </Event>
+          <Event Reference="T8-S2">
+            <Duration>2</Duration>
+            <Time Reference="Mo_4" />
+          </Event>
+          <Event Reference="T8-S3">
+            <Duration>2</Duration>
+            <Time Reference="Mo_2" />
+          </Event>
+        </Events>
+      </Solution>
+    </SolutionGroup>
+	</SolutionGroups>
+</HighSchoolTimetableArchive>
