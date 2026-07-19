@@ -2,7 +2,7 @@ from dataclasses import dataclass, field
 from html import escape
 from pathlib import Path
 
-from xhstt_core.evaluator_ref import Occurrence
+from xhstt_core.evaluator_ref import Occurrence, evaluate_constraint
 from xhstt_core.model import Instance, Time
 
 _ASSETS_DIR = Path(__file__).parent / "assets"
@@ -22,6 +22,36 @@ class TimetableCell:
     event_name: str
     duration: int
     other_resources: list[tuple[str, str]] = field(default_factory=list)
+
+
+@dataclass
+class ConstraintScore:
+    id: str
+    name: str
+    type: str
+    required: bool
+    weight: int
+    cost_function: str
+    cost: int
+
+
+def build_constraint_scores(
+    instance: Instance, occurrences: list[Occurrence]
+) -> list[ConstraintScore]:
+    """One score per instance constraint, in file order -- callers sort
+    and group for display as needed."""
+    return [
+        ConstraintScore(
+            id=c.id,
+            name=c.name,
+            type=c.type,
+            required=c.required,
+            weight=c.weight,
+            cost_function=c.cost_function,
+            cost=evaluate_constraint(instance, occurrences, c),
+        )
+        for c in instance.constraints
+    ]
 
 
 def build_days(instance: Instance) -> list[DayColumn]:
