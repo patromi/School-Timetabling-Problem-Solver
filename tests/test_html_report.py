@@ -264,7 +264,7 @@ def test_render_timetable_page_includes_lesson_and_resource_names():
     # "<table" followed by a space or ">" distinguishes it from other tags
     # that merely start with the same prefix (there are none here, but be
     # precise regardless).
-    for tag in ("table", "div", "ul", "li", "dd", "dl", "html", "body"):
+    for tag in ("table", "div", "ul", "li", "dd", "dl", "html", "body", "section"):
         opens = html.count(f"<{tag}>") + html.count(f"<{tag} ")
         closes = html.count(f"</{tag}>")
         assert opens == closes, f"<{tag}>: {opens} opens vs {closes} closes"
@@ -298,3 +298,55 @@ def test_build_constraint_scores_computes_cost_per_constraint():
     # weight 5 -> cost 5.
     assert by_id["PT1"].cost == 5
     assert by_id["PT1"].required is False
+
+
+def test_render_timetable_page_shows_evaluation_section():
+    instance = _instance_with_constraints()
+    solution = Solution(
+        instance_ref=instance.id,
+        events=[
+            SolutionEvent(event_ref="E1", time_ref="Mon_1"),
+            SolutionEvent(event_ref="E3", time_ref="Tue_2"),
+        ],
+    )
+    occurrences = resolve_occurrences(instance, solution)
+
+    html = render_timetable_page(instance, occurrences, infeasibility=2, objective=5)
+
+    assert "Ocena rozwiązania" in html
+    assert "Ograniczenia wymagane" in html
+    assert "Ograniczenia preferowane" in html
+    assert "suma = 2" in html
+    assert "suma = 5" in html
+
+    # AT1 (Fizyka, cost 2) is violated -> its row is visible by default.
+    at1_pos = html.index("Fizyka musi miec czas", html.index("Ocena rozwiązania"))
+    row1_start = html.rindex("<tr", 0, at1_pos)
+    row1_tag = html[row1_start : html.index(">", row1_start) + 1]
+    assert "row--bad" in row1_tag
+    assert "hidden" not in row1_tag
+
+    # AT2 (Chemia, cost 0) is satisfied -> its row starts hidden.
+    at2_pos = html.index("Chemia musi miec czas", html.index("Ocena rozwiązania"))
+    row2_start = html.rindex("<tr", 0, at2_pos)
+    row2_tag = html[row2_start : html.index(">", row2_start) + 1]
+    assert "row--ok" in row2_tag
+    assert "hidden" in row2_tag
+
+
+def test_render_timetable_page_evaluation_section_handles_no_constraints():
+    # The base fixture instance (_instance(), from the top of this file)
+    # has an empty <Constraints/> block -- both groups must fall back to
+    # their "brak ograniczen" message instead of rendering empty/broken
+    # tables.
+    instance = _instance()
+    solution = Solution(
+        instance_ref=instance.id,
+        events=[SolutionEvent(event_ref="E1", time_ref="Mon_1")],
+    )
+    occurrences = resolve_occurrences(instance, solution)
+
+    html = render_timetable_page(instance, occurrences, infeasibility=0, objective=0)
+
+    assert "Brak ograniczeń wymaganych w tej instancji." in html
+    assert "Brak ograniczeń preferowanych w tej instancji." in html
