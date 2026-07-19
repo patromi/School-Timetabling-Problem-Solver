@@ -124,7 +124,9 @@ def _parse_events(events_node: ET.Element | None) -> list[Event]:
     events = []
     for e in events_node.findall("Event"):
         course_node = e.find("Course")
+        time_node = e.find("Time")
         event_groups_node = e.find("EventGroups")
+        workload_text = _text(e, "Workload")
         events.append(
             Event(
                 id=e.attrib["Id"],
@@ -133,6 +135,8 @@ def _parse_events(events_node: ET.Element | None) -> list[Event]:
                 course_ref=course_node.attrib["Reference"]
                 if course_node is not None
                 else None,
+                time_ref=time_node.attrib["Reference"] if time_node is not None else None,
+                workload=int(workload_text) if workload_text is not None else None,
                 resources=_parse_event_resources(e.find("Resources")),
                 group_refs=_collect_group_refs(event_groups_node)
                 if event_groups_node is not None
