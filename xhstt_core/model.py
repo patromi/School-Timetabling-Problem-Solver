@@ -50,6 +50,8 @@ class Event:
     name: str
     duration: int
     course_ref: str | None = None
+    time_ref: str | None = None
+    workload: int | None = None
     resources: list[EventResource] = field(default_factory=list)
     group_refs: list[str] = field(default_factory=list)
 

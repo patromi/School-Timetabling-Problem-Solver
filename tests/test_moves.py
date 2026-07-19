@@ -1,0 +1,223 @@
+import random
+from pathlib import Path
+
+import pytest
+
+from xhstt_core.construct import build_initial
+from xhstt_core.model import Solution, SolutionEvent
+from xhstt_core.moves import resource_reassign_move, time_reassign_move, time_swap_move
+from xhstt_core.parser import parse_archive
+
+FIXTURES = Path(__file__).parent / "fixtures"
+
+
+def _load(name: str) -> str:
+    return (FIXTURES / name).read_text(encoding="utf-8")
+
+
+def _two_day_multi_period_archive() -> str:
+    # Mirrors the exact shape that produced a real HSEval rejection
+    # ("'Fr_5' not assignable to Event 'T10-S1'") after a longer LAHC run:
+    # a duration>1 event whose *current* placement is mid-instance, with
+    # too few remaining slots in some days/near the end of the array for
+    # every time to be a legal reassignment target.
+    return """<HighSchoolTimetableArchive>
+  <Instances>
+    <Instance Id="I1">
+      <MetaData><Name>Test</Name></MetaData>
+      <Times>
+        <TimeGroups>
+          <Day Id="gr_Mon"><Name>Mon</Name></Day>
+          <Day Id="gr_Tue"><Name>Tue</Name></Day>
+        </TimeGroups>
+        <Time Id="Mon_1"><Name>Mon_1</Name><Day Reference="gr_Mon"/></Time>
+        <Time Id="Mon_2"><Name>Mon_2</Name><Day Reference="gr_Mon"/></Time>
+        <Time Id="Mon_3"><Name>Mon_3</Name><Day Reference="gr_Mon"/></Time>
+        <Time Id="Tue_1"><Name>Tue_1</Name><Day Reference="gr_Tue"/></Time>
+        <Time Id="Tue_2"><Name>Tue_2</Name><Day Reference="gr_Tue"/></Time>
+      </Times>
+      <Resources><ResourceTypes></ResourceTypes><ResourceGroups></ResourceGroups></Resources>
+      <Events>
+        <EventGroups></EventGroups>
+        <Event Id="E1"><Name>E1</Name><Duration>2</Duration><Resources></Resources></Event>
+        <Event Id="E2"><Name>E2</Name><Duration>1</Duration><Resources></Resources></Event>
+      </Events>
+      <Constraints></Constraints>
+    </Instance>
+  </Instances>
+</HighSchoolTimetableArchive>"""
+
+
+def _sudoku_solution():
+    instance = parse_archive(_load("ArtificialSudoku4x4.xml"))[0]
+    solution = build_initial(instance, random.Random(0))
+    return instance, solution
+
+
+def test_time_reassign_move_changes_exactly_one_events_time():
+    instance, solution = _sudoku_solution()
+
+    new_solution = time_reassign_move(instance, solution, random.Random(1))
+
+    assert len(new_solution.events) == len(solution.events)
+    diffs = [
+        (a, b)
+        for a, b in zip(solution.events, new_solution.events)
+        if a.time_ref != b.time_ref
+    ]
+    assert len(diffs) == 1
+    old, new = diffs[0]
+    assert old.event_ref == new.event_ref
+    assert new.resources == old.resources
+    # Everything else (event_ref, resources) must be byte-for-byte identical
+    # for all OTHER events -- only the chosen event's time changed.
+    for a, b in zip(solution.events, new_solution.events):
+        if a is not old:
+            assert a == b
+
+
+def test_time_reassign_move_is_deterministic_given_same_seed():
+    instance, solution = _sudoku_solution()
+
+    a = time_reassign_move(instance, solution, random.Random(7))
+    b = time_reassign_move(instance, solution, random.Random(7))
+
+    assert a.events == b.events
+
+
+def test_time_reassign_move_does_not_mutate_the_input_solution():
+    instance, solution = _sudoku_solution()
+    original_times = [e.time_ref for e in solution.events]
+
+    time_reassign_move(instance, solution, random.Random(1))
+
+    assert [e.time_ref for e in solution.events] == original_times
+
+
+def test_time_swap_move_swaps_two_events_times():
+    # Uses an explicit solution (not build_initial's random assignment) so
+    # the two chosen events are guaranteed to start with *different* times
+    # -- otherwise a swap between two coincidentally-equal times is a
+    # legitimate no-op, not evidence of a bug, and the test would be flaky.
+    instance, solution = _sudoku_solution()
+    all_times = sorted({e.time_ref for e in solution.events})
+    assert len(all_times) >= 2, "fixture must offer at least 2 distinct times"
+    for i, event in enumerate(solution.events):
+        event.time_ref = all_times[i % len(all_times)]
+
+    new_solution = time_swap_move(instance, solution, random.Random(2))
+
+    diffs = [
+        i
+        for i, (a, b) in enumerate(zip(solution.events, new_solution.events))
+        if a.time_ref != b.time_ref
+    ]
+    assert len(diffs) == 2
+    i, j = diffs
+    assert new_solution.events[i].time_ref == solution.events[j].time_ref
+    assert new_solution.events[j].time_ref == solution.events[i].time_ref
+
+
+def test_resource_reassign_move_changes_one_resource_to_a_same_type_alternative():
+    instance, solution = _sudoku_solution()
+    room_ids = {r.id for r in instance.resources if r.resource_type_ref == "Room"}
+
+    new_solution = resource_reassign_move(instance, solution, random.Random(3))
+
+    old_flat = [
+        (se.event_ref, role, ref)
+        for se in solution.events
+        for role, ref in [(r.role, r.resource_ref) for r in se.resources]
+    ]
+    new_flat = [
+        (se.event_ref, role, ref)
+        for se in new_solution.events
+        for role, ref in [(r.role, r.resource_ref) for r in se.resources]
+    ]
+    assert len(old_flat) == len(new_flat)
+    diffs = [(o, n) for o, n in zip(old_flat, new_flat) if o != n]
+    assert len(diffs) == 1
+    (event_ref, role, old_ref), (_, _, new_ref) = diffs[0]
+    assert new_ref != old_ref
+    assert new_ref in room_ids
+
+
+def test_time_reassign_move_never_overflows_a_day_boundary_or_the_time_array():
+    # Regression test for the exact real-world HSEval rejection this fix
+    # addresses: "'Fr_5' not assignable to Event 'T10-S1'" -- reassigning
+    # a duration>1 event's time with no regard for whether it still fits
+    # (same day, doesn't run past the last defined Time) produced
+    # structurally invalid solutions after enough LAHC moves.
+    instance = parse_archive(_two_day_multi_period_archive())[0]
+    solution = Solution(
+        instance_ref=instance.id,
+        events=[
+            SolutionEvent(event_ref="E1", time_ref="Mon_1", duration=2),
+            SolutionEvent(event_ref="E2", time_ref="Tue_1", duration=1),
+        ],
+    )
+    # Duration-2 valid starts here are Mon_1, Mon_2, Tue_1 -- NOT Mon_3
+    # (would spill into Tuesday) or Tue_2 (would run past the last Time).
+    invalid_for_e1 = {"Mon_3", "Tue_2"}
+
+    for seed in range(50):
+        new_solution = time_reassign_move(instance, solution, random.Random(seed))
+        e1 = next(se for se in new_solution.events if se.event_ref == "E1")
+        assert e1.time_ref not in invalid_for_e1, f"seed={seed}: E1 landed on {e1.time_ref}"
+
+
+def test_time_swap_move_never_overflows_a_day_boundary_or_the_time_array():
+    instance = parse_archive(_two_day_multi_period_archive())[0]
+    solution = Solution(
+        instance_ref=instance.id,
+        events=[
+            SolutionEvent(event_ref="E1", time_ref="Mon_1", duration=2),
+            SolutionEvent(event_ref="E2", time_ref="Tue_1", duration=1),
+        ],
+    )
+
+    for seed in range(50):
+        new_solution = time_swap_move(instance, solution, random.Random(seed))
+        for se in new_solution.events:
+            if se.event_ref == "E1":
+                assert se.time_ref not in {"Mon_3", "Tue_2"}, (
+                    f"seed={seed}: E1 landed on {se.time_ref}"
+                )
+
+
+def test_time_swap_move_raises_when_the_only_possible_swap_would_overflow():
+    instance = parse_archive(_two_day_multi_period_archive())[0]
+    solution = Solution(
+        instance_ref=instance.id,
+        events=[
+            SolutionEvent(event_ref="E1", time_ref="Mon_1", duration=2),
+            SolutionEvent(event_ref="E2", time_ref="Tue_2", duration=1),
+        ],
+    )
+    # The only pair is (E1, E2); swapping would place E1 (duration 2) at
+    # Tue_2, which overflows past the last Time -- no valid swap exists.
+    with pytest.raises(ValueError):
+        time_swap_move(instance, solution, random.Random(0))
+
+
+def test_resource_reassign_move_raises_when_no_event_has_a_reassignable_resource():
+    instance = parse_archive(
+        """<HighSchoolTimetableArchive>
+  <Instances>
+    <Instance Id="I1">
+      <MetaData><Name>Test</Name></MetaData>
+      <Times><TimeGroups></TimeGroups><Time Id="Day_1"><Name>Day_1</Name></Time></Times>
+      <Resources><ResourceTypes></ResourceTypes><ResourceGroups></ResourceGroups></Resources>
+      <Events>
+        <EventGroups></EventGroups>
+        <Event Id="E1"><Name>E1</Name><Duration>1</Duration><Resources></Resources></Event>
+      </Events>
+      <Constraints></Constraints>
+    </Instance>
+  </Instances>
+</HighSchoolTimetableArchive>"""
+    )[0]
+    solution = build_initial(instance, random.Random(0))
+
+    with pytest.raises(ValueError):
+        resource_reassign_move(instance, solution, random.Random(0))
