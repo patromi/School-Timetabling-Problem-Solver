@@ -165,6 +165,59 @@ def _render_resource_table(
     )
 
 
+def _render_eval_row(score: ConstraintScore) -> str:
+    row_class = "row--bad" if score.cost > 0 else "row--ok"
+    hidden_attr = "" if score.cost > 0 else " hidden"
+    return (
+        f'<tr class="{row_class}"{hidden_attr}>'
+        f"<td>{escape(score.name)}</td>"
+        f'<td class="mono">{escape(score.type)}</td>'
+        f'<td class="mono num">{score.weight}</td>'
+        f'<td class="mono">{escape(score.cost_function)}</td>'
+        f'<td class="mono num">{score.cost}</td>'
+        f"</tr>"
+    )
+
+
+def _render_eval_group(
+    kind: str, title: str, scores: list[ConstraintScore], total: int
+) -> str:
+    if not scores:
+        label = "wymaganych" if kind == "required" else "preferowanych"
+        return (
+            f'<div class="eval-group" data-kind="{kind}">'
+            f"<h3>{escape(title)}</h3>"
+            f'<p class="eval-empty">Brak ograniczeń {label} w tej instancji.</p>'
+            f"</div>"
+        )
+    ordered = sorted(scores, key=lambda s: (-s.cost, s.name))
+    violated = sum(1 for s in ordered if s.cost > 0)
+    rows = "".join(_render_eval_row(s) for s in ordered)
+    return f"""<div class="eval-group" data-kind="{kind}">
+  <div class="eval-group-head">
+    <h3>{escape(title)}</h3>
+    <p class="eval-stat">{violated}/{len(ordered)} naruszonych &middot; suma = {total}</p>
+    <button class="eval-toggle" type="button" data-kind="{kind}" data-total="{len(ordered)}" data-violated="{violated}" data-expanded="false">Pokaż wszystkie ({len(ordered)})</button>
+  </div>
+  <table class="eval-table">
+    <thead><tr><th>Nazwa</th><th>Typ</th><th>Waga</th><th>Funkcja kosztu</th><th>Koszt</th></tr></thead>
+    <tbody>{rows}</tbody>
+  </table>
+</div>"""
+
+
+def render_evaluation_section(
+    scores: list[ConstraintScore], infeasibility: int, objective: int
+) -> str:
+    required = [s for s in scores if s.required]
+    preferred = [s for s in scores if not s.required]
+    return f"""<section class="evaluation">
+  <h2>Ocena rozwiązania</h2>
+  {_render_eval_group("required", "Ograniczenia wymagane", required, infeasibility)}
+  {_render_eval_group("preferred", "Ograniczenia preferowane", preferred, objective)}
+</section>"""
+
+
 def render_timetable_page(
     instance: Instance,
     occurrences: list[Occurrence],
@@ -204,6 +257,9 @@ def render_timetable_page(
     status_class = "ok" if feasible else "bad"
     status_text = "wykonalny" if feasible else "niewykonalny"
 
+    scores = build_constraint_scores(instance, occurrences)
+    eval_section = render_evaluation_section(scores, infeasibility, objective)
+
     return f"""<!doctype html>
 <html lang="pl">
 <head>
@@ -235,6 +291,8 @@ def render_timetable_page(
   <nav class="chip-row" id="chip-row">{chips}</nav>
 
   <main class="grid-wrap" id="grid-wrap">{tables}</main>
+
+  {eval_section}
 </div>
 <script>
 {_PAGE_JS}
@@ -466,6 +524,71 @@ td.cell--empty {
 @media (prefers-reduced-motion: reduce) {
   .type-tab, .chip { transition: none; }
 }
+
+.evaluation { display: flex; flex-direction: column; gap: 1.25rem; }
+.evaluation h2 {
+  margin: 0;
+  font-size: 1.3rem;
+  font-weight: 700;
+  border-bottom: 2px solid var(--ink);
+  padding-bottom: 0.6rem;
+}
+.eval-group {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  padding: 1rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.eval-group-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1.25rem;
+}
+.eval-group-head h3 { margin: 0; font-size: 1.05rem; font-weight: 700; flex: 1 1 auto; }
+.eval-stat {
+  margin: 0;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.82rem;
+  color: var(--ink-muted);
+}
+.eval-empty { margin: 0; color: var(--ink-muted); font-size: 0.9rem; }
+.eval-toggle {
+  font-family: 'IBM Plex Sans', sans-serif;
+  font-size: 0.8rem;
+  font-weight: 600;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  padding: 0.35rem 0.8rem;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+}
+.eval-toggle:hover { border-color: var(--accent); }
+table.eval-table { width: 100%; border-collapse: collapse; }
+table.eval-table th, table.eval-table td {
+  border-bottom: 1px solid var(--line);
+  padding: 0.5rem 0.6rem;
+  text-align: left;
+  font-size: 0.85rem;
+}
+table.eval-table thead th {
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+}
+table.eval-table td.mono { font-family: 'IBM Plex Mono', monospace; }
+table.eval-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+tr.row--bad td:first-child { border-left: 3px solid var(--bad); padding-left: calc(0.6rem - 3px); }
+tr.row--ok td:first-child {
+  border-left: 3px solid var(--ok);
+  padding-left: calc(0.6rem - 3px);
+  color: var(--ink-muted);
+}
 """
 
 _PAGE_JS = """
@@ -498,5 +621,20 @@ _PAGE_JS = """
   });
 
   if (typeTabs.length) showType(typeTabs[0].dataset.type);
+
+  var evalToggles = Array.prototype.slice.call(document.querySelectorAll('.eval-toggle'));
+  evalToggles.forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var kind = btn.dataset.kind;
+      var group = document.querySelector('.eval-group[data-kind="' + kind + '"]');
+      var okRows = Array.prototype.slice.call(group.querySelectorAll('tr.row--ok'));
+      var expanded = btn.dataset.expanded === 'true';
+      okRows.forEach(function (row) { row.hidden = expanded; });
+      btn.dataset.expanded = expanded ? 'false' : 'true';
+      btn.textContent = expanded
+        ? 'Pokaż wszystkie (' + btn.dataset.total + ')'
+        : 'Pokaż tylko naruszone (' + btn.dataset.violated + ')';
+    });
+  });
 })();
 """
