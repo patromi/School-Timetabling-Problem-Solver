@@ -219,6 +219,67 @@ WORKLOAD_ARCHIVE = """<HighSchoolTimetableArchive>
 </HighSchoolTimetableArchive>"""
 
 
+PREASSIGNED_TIME_ARCHIVE = """<HighSchoolTimetableArchive>
+  <Instances>
+    <Instance Id="I1">
+      <MetaData><Name>Test</Name></MetaData>
+      <Times><TimeGroups></TimeGroups><Time Id="Day_1"><Name>Day_1</Name></Time></Times>
+      <Resources><ResourceTypes></ResourceTypes><ResourceGroups></ResourceGroups></Resources>
+      <Events>
+        <EventGroups></EventGroups>
+        <Event Id="E1">
+          <Name>E1</Name>
+          <Duration>1</Duration>
+          <Time Reference="Day_1"/>
+          <Resources></Resources>
+        </Event>
+        <Event Id="E2">
+          <Name>E2</Name>
+          <Duration>1</Duration>
+          <Resources></Resources>
+        </Event>
+      </Events>
+      <Constraints></Constraints>
+    </Instance>
+  </Instances>
+</HighSchoolTimetableArchive>"""
+
+
+def test_event_parses_optional_preassigned_time():
+    instance = parse_archive(PREASSIGNED_TIME_ARCHIVE)[0]
+
+    e1 = next(e for e in instance.events if e.id == "E1")
+    e2 = next(e for e in instance.events if e.id == "E2")
+    assert e1.time_ref == "Day_1"
+    assert e2.time_ref is None
+
+
+EVENT_WORKLOAD_ARCHIVE = """<HighSchoolTimetableArchive>
+  <Instances>
+    <Instance Id="I1">
+      <MetaData><Name>Test</Name></MetaData>
+      <Times><TimeGroups></TimeGroups></Times>
+      <Resources><ResourceTypes></ResourceTypes><ResourceGroups></ResourceGroups></Resources>
+      <Events>
+        <EventGroups></EventGroups>
+        <Event Id="E1"><Name>E1</Name><Duration>2</Duration><Workload>5</Workload><Resources></Resources></Event>
+        <Event Id="E2"><Name>E2</Name><Duration>3</Duration><Resources></Resources></Event>
+      </Events>
+      <Constraints></Constraints>
+    </Instance>
+  </Instances>
+</HighSchoolTimetableArchive>"""
+
+
+def test_event_parses_optional_workload():
+    instance = parse_archive(EVENT_WORKLOAD_ARCHIVE)[0]
+
+    e1 = next(e for e in instance.events if e.id == "E1")
+    e2 = next(e for e in instance.events if e.id == "E2")
+    assert e1.workload == 5
+    assert e2.workload is None
+
+
 def test_event_resource_parses_optional_workload():
     instance = parse_archive(WORKLOAD_ARCHIVE)[0]
 
