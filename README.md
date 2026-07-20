@@ -1,19 +1,56 @@
 # LLM-Driven-Reinforcement-Learning-Hyper-Heuristic-for-the-School-Timetabling-Problem
 
-## Szybki start
+## Development
+
+Nad zmianami pracujemy na swoich branchach. Branch nazywamy według schematu:
 
 ```
-pip install -r requirements.txt   # (na razie: pytest)
-python run_solver.py --list       # lista instancji z data/xhstt2014/XHSTT-2014.xml
-python run_solver.py AU-BG-98     # buduje rozwiazanie poczatkowe i uruchamia LAHC
+issue#<issue>
 ```
 
-Parametry: `--iterations N` (domyslnie 30000), `--seed N`, `--history N`
-(dlugosc historii LAHC), `--output sciezka.xml` (gdzie zapisac wynik).
-Kazdy przebieg zapisuje dwa pliki: `output/<ID>_solution.xml` (mozna
-wyslac recznie do [HSEval](http://jeffreykingston.id.au/cgi-bin/hseval.cgi),
-pole "file", `op=report`, w celu niezaleznej walidacji) oraz
-`output/<ID>_timetable.html` — plan zajec jako siatka dzien x godzina,
-z przelacznikiem klasa/nauczyciel/sala (otworzyc w przegladarce).
+Do zarządzania zależnościami i środowiskiem w Pythonie używamy narzędzia `uv`.
 
-Testy: `pytest tests/`.
+### Uruchomienie i synchronizacja projektu
+
+* **Synchronizacja środowiska (instalacja zależności)**:
+  ```bash
+  uv sync
+  ```
+* **Uruchomienie solvera (szablon)**:
+  ```bash
+  uv run python src/solver/main.py [ścieżka_do_pliku_xml]
+  ```
+* **Uruchomienie przepływu (workflow) za pomocą Snakemake**:
+  ```bash
+  uv run snakemake --cores all
+  ```
+
+### Testowanie i jakość kodu
+
+Przed wykonaniem commita lub pusha warto sprawdzić kod za pomocą poniższych poleceń:
+
+* **Uruchomienie testów jednostkowych (pytest) z pokryciem**:
+  ```bash
+  uv run pytest
+  ```
+* **Sprawdzenie typowania (mypy)**:
+  ```bash
+  uv run mypy src/
+  ```
+* **Linter (ruff check)**:
+  ```bash
+  uv run ruff check src/
+  ```
+* **Automatyczne formatowanie kodu (ruff format)**:
+  ```bash
+  uv run ruff format src/
+  ```
+
+### Pre-commit hooks
+
+W repozytorium skonfigurowane są pre-commit hooki, które automatycznie sprawdzają poprawność kodu przy każdym commicie.
+
+* **Ręczne uruchomienie hooków na wszystkich plikach**:
+  ```bash
+  uv run pre-commit run --all-files
+  ```
