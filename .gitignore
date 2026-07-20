@@ -1,8 +1,70 @@
-.snakemake
+# Python cache and temporary files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
 
-data/processed/*
-data/raw/*
-data/results/*
+# Pytest & Coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.htmlcov/
 
+# Type checker & Linters
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.ruff_cache/
+
+# Environments
+.env
 .venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
 
+# Snakemake
+.snakemake/
+
+# Project Directories & Data files
+# We ignore the contents of these directories but track the directories themselves using .gitkeep files.
+data/processed/*
+!data/processed/.gitkeep
+data/raw/*
+!data/raw/.gitkeep
+data/results/*
+!data/results/.gitkeep
+generated/*
+!generated/.gitkeep
+
+# IDEs and Editors
+.vscode/*
+!.vscode/tasks.json
+.idea/
+*.swp
+*.swo
