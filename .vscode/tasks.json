@@ -88,6 +88,39 @@
                 "panel": "shared"
             },
             "problemMatcher": []
+        },
+        {
+            "label": "DVC: Pull Data",
+            "type": "shell",
+            "command": "uv run dvc pull",
+            "group": "none",
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "DVC: Push Data",
+            "type": "shell",
+            "command": "uv run dvc push",
+            "group": "none",
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Pre-commit: Install Git Hooks",
+            "type": "shell",
+            "command": "uv run pre-commit install --hook-type pre-commit --hook-type commit-msg",
+            "group": "none",
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared"
+            },
+            "problemMatcher": []
         }
     ]
 }

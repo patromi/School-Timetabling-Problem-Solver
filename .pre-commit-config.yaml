@@ -31,3 +31,9 @@ repos:
         language: python
         pass_filenames: false
         always_run: true
+
+      - id: check-commit-msg
+        name: Check Commit Message
+        entry: python scripts/check_commit_msg.py
+        language: python
+        stages: [commit-msg]
