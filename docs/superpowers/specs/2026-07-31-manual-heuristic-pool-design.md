@@ -78,13 +78,18 @@ zdarzenie → losowy strukturalnie poprawny czas (patrz `valid_start_time_ids`).
 
 1. Wybór zdarzenia — identyczna metoda co `time_reassign_move`
    (`rng.randrange(len(solution.events))`), żeby zużycie losowości było analogiczne.
-2. Kandydaci: `valid_start_time_ids(instance, event.duration)` minus obecny `time_ref`.
-   Brak kandydatów → `ValueError`.
+2. Kandydaci: **cały** `valid_start_time_ids(instance, event.duration)`, **włącznie**
+   z obecnym `time_ref` (poprawka względem wcześniejszej wersji tego dokumentu, która
+   wykluczała obecny czas — patrz "Korekta" niżej). Pusta lista (zdarzenie w ogóle nie ma
+   poprawnego czasu — nie powinno się zdarzyć dla zdarzenia już umieszczonego w
+   rozwiązaniu, ale sprawdzane jako guard) → `ValueError`.
 3. Spośród kandydatów wybierany jest ten, który po podstawieniu (przez
    `dataclasses.replace`) daje **najniższy `evaluator_ref.total_cost`** całego
    rozwiązania. Remisy rozstrzygane deterministycznie — pierwszy w kolejności zwróconej
    przez `valid_start_time_ids` (bez dodatkowego losowania: `min()` po liście w stałej
-   kolejności).
+   kolejności). Skoro obecny czas jest jednym z kandydatów, wynik **nigdy nie jest gorszy**
+   niż wejście — to gwarantuje test "`move_best` nie pogarsza kosztu" (patrz "Testy") oraz
+   monotoniczność, na której polega `repair_hard_violation`.
 4. Logika kroków 2–3 wydzielona jako prywatny helper
    `_best_time_for_event(instance, solution, event_index) -> Solution`, reużywany też
    przez `repair_hard_violation`.
@@ -152,3 +157,15 @@ jest spełniony przez to, że taki przypadek po prostu nie psuje niczego.
 - **Duplikacja logiki `move_random`/`swap` względem `moves.py`**: brak — to cienkie
   wrappery, jedno wywołanie deleguje do drugiego, więc nie ma dwóch kopii tej samej
   logiki do utrzymania.
+
+## Korekta wprowadzona podczas pisania planu implementacji
+
+Pierwotna wersja `_best_time_for_event` (użyta przez `move_best` i
+`repair_hard_violation`) wykluczała obecny `time_ref` zdarzenia ze zbioru kandydatów —
+tak jak robi to `time_reassign_move`. To była **sprzeczność wewnętrzna** ze specyfikacją
+testów w tym samym dokumencie ("`move_best` nie pogarsza kosztu",
+"`repair_hard_violation` nie zwiększa infeasibility"): jeśli wszystkie alternatywne
+czasy są gorsze niż obecny, wykluczenie obecnego czasu zmusza heurystykę do pogorszenia
+rozwiązania, łamiąc obie te gwarancje. Poprawka: kandydaci obejmują **też** obecny
+`time_ref`, więc wynik nigdy nie jest gorszy niż wejście (sekcja `move_best` wyżej już
+zawiera poprawioną wersję).
