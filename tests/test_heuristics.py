@@ -14,7 +14,7 @@ from xhstt_core.heuristics import (
     move_best,
     repair_hard_violation,
 )
-from xhstt_core.model import Instance, Solution
+from xhstt_core.model import Instance, Solution, SolutionEvent
 from xhstt_core.parser import parse_archive
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -142,3 +142,146 @@ def test_repair_hard_violation_raises_without_a_violation() -> None:
 
     with pytest.raises(ValueError):
         repair_hard_violation(solution, instance, random.Random(0))
+
+
+def test_repair_hard_violation_targets_the_violating_event_scoped_via_events() -> None:
+    # PreferTimesConstraint's AppliesTo targets Events directly -- E2 only.
+    # E1/E3 aren't covered by the constraint at all, so repair must never
+    # touch them.
+    instance = parse_archive(
+        """<HighSchoolTimetableArchive>
+  <Instances>
+    <Instance Id="I1">
+      <MetaData><Name>Test</Name></MetaData>
+      <Times>
+        <TimeGroups></TimeGroups>
+        <Time Id="T1"><Name>T1</Name></Time>
+        <Time Id="T2"><Name>T2</Name></Time>
+      </Times>
+      <Resources><ResourceTypes></ResourceTypes><ResourceGroups></ResourceGroups></Resources>
+      <Events>
+        <EventGroups></EventGroups>
+        <Event Id="E1">
+          <Name>E1</Name><Duration>1</Duration><Resources></Resources>
+        </Event>
+        <Event Id="E2">
+          <Name>E2</Name><Duration>1</Duration><Resources></Resources>
+        </Event>
+        <Event Id="E3">
+          <Name>E3</Name><Duration>1</Duration><Resources></Resources>
+        </Event>
+      </Events>
+      <Constraints>
+        <PreferTimesConstraint Id="C1">
+          <Name>PreferT2ForE2</Name>
+          <Required>true</Required>
+          <Weight>1</Weight>
+          <CostFunction>Linear</CostFunction>
+          <AppliesTo>
+            <Events><Event Reference="E2"/></Events>
+          </AppliesTo>
+          <Times><Time Reference="T2"/></Times>
+        </PreferTimesConstraint>
+      </Constraints>
+    </Instance>
+  </Instances>
+</HighSchoolTimetableArchive>"""
+    )[0]
+    solution = Solution(
+        instance_ref=instance.id,
+        events=[
+            SolutionEvent(event_ref="E1", time_ref="T1", duration=1),
+            SolutionEvent(event_ref="E2", time_ref="T1", duration=1),
+            SolutionEvent(event_ref="E3", time_ref="T1", duration=1),
+        ],
+    )
+    assert _infeasibility(instance, solution) > 0
+
+    for seed in range(20):
+        new_solution = repair_hard_violation(solution, instance, random.Random(seed))
+        diffs = [
+            se.event_ref
+            for old, se in zip(solution.events, new_solution.events, strict=True)
+            if old.time_ref != se.time_ref
+        ]
+        assert diffs == ["E2"], f"seed={seed}: repair moved {diffs}, expected only E2"
+
+
+def test_repair_hard_violation_targets_the_violating_event_scoped_via_resources() -> (
+    None
+):
+    # AvoidClashesConstraint's AppliesTo targets Resources, not Events --
+    # this is the case that was invisible to repair_hard_violation before
+    # the fix (final-review Finding 1). E1/E2 share resource R1 at the
+    # same time (a clash); E3 has no resource assignment and is unrelated.
+    instance = parse_archive(
+        """<HighSchoolTimetableArchive>
+  <Instances>
+    <Instance Id="I1">
+      <MetaData><Name>Test</Name></MetaData>
+      <Times>
+        <TimeGroups></TimeGroups>
+        <Time Id="T1"><Name>T1</Name></Time>
+        <Time Id="T2"><Name>T2</Name></Time>
+      </Times>
+      <Resources>
+        <ResourceTypes>
+          <ResourceType Id="Room"><Name>Room</Name></ResourceType>
+        </ResourceTypes>
+        <ResourceGroups></ResourceGroups>
+        <Resource Id="R1"><Name>R1</Name><ResourceType Reference="Room"/></Resource>
+      </Resources>
+      <Events>
+        <EventGroups></EventGroups>
+        <Event Id="E1">
+          <Name>E1</Name>
+          <Duration>1</Duration>
+          <Resources><Resource Reference="R1"><Role>Room</Role></Resource></Resources>
+        </Event>
+        <Event Id="E2">
+          <Name>E2</Name>
+          <Duration>1</Duration>
+          <Resources><Resource Reference="R1"><Role>Room</Role></Resource></Resources>
+        </Event>
+        <Event Id="E3">
+          <Name>E3</Name><Duration>1</Duration><Resources></Resources>
+        </Event>
+      </Events>
+      <Constraints>
+        <AvoidClashesConstraint Id="C1">
+          <Name>NoClashes</Name>
+          <Required>true</Required>
+          <Weight>1</Weight>
+          <CostFunction>Linear</CostFunction>
+          <AppliesTo>
+            <Resources><Resource Reference="R1"/></Resources>
+          </AppliesTo>
+        </AvoidClashesConstraint>
+      </Constraints>
+    </Instance>
+  </Instances>
+</HighSchoolTimetableArchive>"""
+    )[0]
+    solution = Solution(
+        instance_ref=instance.id,
+        events=[
+            SolutionEvent(event_ref="E1", time_ref="T1", duration=1),
+            SolutionEvent(event_ref="E2", time_ref="T1", duration=1),
+            SolutionEvent(event_ref="E3", time_ref="T2", duration=1),
+        ],
+    )
+    assert _infeasibility(instance, solution) > 0
+
+    for seed in range(20):
+        new_solution = repair_hard_violation(solution, instance, random.Random(seed))
+        diffs = [
+            se.event_ref
+            for old, se in zip(solution.events, new_solution.events, strict=True)
+            if old.time_ref != se.time_ref
+        ]
+        assert diffs != ["E3"], (
+            f"seed={seed}: repair moved E3, which isn't involved in the clash"
+        )
+        assert diffs and diffs[0] in {"E1", "E2"}, (
+            f"seed={seed}: repair moved {diffs}, expected E1 or E2"
+        )
