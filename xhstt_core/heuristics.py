@@ -1,8 +1,14 @@
 import random
+from collections.abc import Callable
 from dataclasses import dataclass, replace
-from typing import Callable
 
-from xhstt_core.evaluator_ref import total_cost, valid_start_time_ids
+from xhstt_core.evaluator_ref import (
+    _events_in_applies_to,
+    evaluate_constraint,
+    resolve_occurrences,
+    total_cost,
+    valid_start_time_ids,
+)
 from xhstt_core.model import Instance, Solution
 from xhstt_core.moves import time_reassign_move, time_swap_move
 
@@ -26,7 +32,9 @@ def move_random(solution: Solution, instance: Instance, rng: random.Random) -> S
     return time_reassign_move(instance, solution, rng)
 
 
-def _best_time_for_event(instance: Instance, solution: Solution, index: int) -> Solution:
+def _best_time_for_event(
+    instance: Instance, solution: Solution, index: int
+) -> Solution:
     """Returns the solution obtained by moving solution.events[index] to
     whichever valid start time (INCLUDING its current one) yields the
     lowest total_cost. Including the current time means the result is
@@ -77,6 +85,41 @@ def swap(solution: Solution, instance: Instance, rng: random.Random) -> Solution
     return time_swap_move(instance, solution, rng)
 
 
+def _movable_violating_indices(instance: Instance, solution: Solution) -> list[int]:
+    """Indices into solution.events whose event participates in at least
+    one violated Required constraint AND has a time_ref we can move (fully
+    preassigned events never appear in solution.events at all -- see
+    construct.build_initial -- so they're excluded automatically)."""
+    occurrences = resolve_occurrences(instance, solution)
+    violated_event_ids: set[str] = set()
+    for constraint in instance.constraints:
+        if not constraint.required:
+            continue
+        if evaluate_constraint(instance, occurrences, constraint) <= 0:
+            continue
+        violated_event_ids |= _events_in_applies_to(instance, constraint.applies_to)
+
+    return [
+        i
+        for i, se in enumerate(solution.events)
+        if se.event_ref in violated_event_ids and se.time_ref is not None
+    ]
+
+
+def repair_hard_violation(
+    solution: Solution, instance: Instance, rng: random.Random
+) -> Solution:
+    """Picks one (movable) event involved in a violated Required
+    constraint at random and moves it to its best available time (see
+    _best_time_for_event) -- never a purely random move, so the operator
+    actually tends to repair rather than just perturb."""
+    candidates = _movable_violating_indices(instance, solution)
+    if not candidates:
+        raise ValueError("no movable event participates in a hard constraint violation")
+    index = rng.choice(candidates)
+    return _best_time_for_event(instance, solution, index)
+
+
 MANUAL_HEURISTICS: list[Heuristic] = [
     Heuristic(
         id="move_random",
@@ -95,5 +138,11 @@ MANUAL_HEURISTICS: list[Heuristic] = [
         name="Swap two events' times",
         protected=True,
         apply=swap,
+    ),
+    Heuristic(
+        id="repair_hard_violation",
+        name="Repair a hard constraint violation",
+        protected=True,
+        apply=repair_hard_violation,
     ),
 ]
