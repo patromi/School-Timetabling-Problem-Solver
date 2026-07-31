@@ -3,6 +3,7 @@ from pathlib import Path
 
 from xhstt_core.construct import build_initial
 from xhstt_core.evaluator_ref import total_cost
+from xhstt_core.heuristics import MANUAL_HEURISTICS
 from xhstt_core.lahc import run_lahc
 from xhstt_core.parser import parse_archive
 
@@ -80,10 +81,12 @@ def test_lahc_reaches_full_feasibility_on_sudoku4x4_within_a_modest_budget():
     # Sudoku4x4 is tiny (16 events, 4 times, 4 rooms) and every one of its
     # constraints is Required=true -- a working local search should drive
     # infeasibility to 0 given a reasonably generous iteration budget.
-    # (Empirically tuned for the current construct.py/moves.py behavior:
-    # the naive move set has no notion of the RT1..RT4 room subtyping
-    # PreferResourcesConstraint needs, so it wastes a lot of proposals on
-    # wrong-subtype rooms and needs tens of thousands of iterations.)
+    # (Empirically tuned for the current default heuristic pool
+    # (xhstt_core.heuristics.MANUAL_HEURISTICS): even with move_best/
+    # repair_hard_violation's cost-aware placement, the pool has no notion
+    # of the RT1..RT4 room subtyping PreferResourcesConstraint needs, so it
+    # still wastes proposals on wrong-subtype rooms and needs a generous
+    # iteration budget.)
     instance = parse_archive(_load("ArtificialSudoku4x4.xml"))[0]
     initial = build_initial(instance, random.Random(0))
 
@@ -92,3 +95,47 @@ def test_lahc_reaches_full_feasibility_on_sudoku4x4_within_a_modest_budget():
     )
 
     assert best_cost == 0
+
+
+def test_lahc_accepts_an_explicit_heuristic_pool_override():
+    # `heuristics=` (this change's renamed/retyped parameter, replacing the
+    # old `moves=`) had zero coverage before this test. A single-entry
+    # pool is the simplest way to prove the override is actually plumbed
+    # through to the selection call, not silently ignored in favor of the
+    # default MANUAL_HEURISTICS.
+    instance = parse_archive(_load("ArtificialSudoku4x4.xml"))[0]
+    initial = build_initial(instance, random.Random(0))
+    move_random = next(h for h in MANUAL_HEURISTICS if h.id == "move_random")
+
+    best, best_cost = run_lahc(
+        instance,
+        initial,
+        random.Random(3),
+        max_iterations=50,
+        heuristics=[move_random],
+    )
+
+    assert len(best.events) == len(initial.events)
+    assert best_cost == total_cost(instance, best)
+
+
+def test_lahc_defaults_to_manual_heuristics_when_no_pool_is_given():
+    # Pins down that omitting `heuristics=` genuinely uses
+    # xhstt_core.heuristics.MANUAL_HEURISTICS (not a stale local copy) --
+    # regression guard for the default-pool wiring itself.
+    instance = parse_archive(_load("ArtificialSudoku4x4.xml"))[0]
+    initial = build_initial(instance, random.Random(0))
+
+    best_default, cost_default = run_lahc(
+        instance, initial, random.Random(3), max_iterations=50
+    )
+    best_explicit, cost_explicit = run_lahc(
+        instance,
+        initial,
+        random.Random(3),
+        max_iterations=50,
+        heuristics=MANUAL_HEURISTICS,
+    )
+
+    assert best_default.events == best_explicit.events
+    assert cost_default == cost_explicit
