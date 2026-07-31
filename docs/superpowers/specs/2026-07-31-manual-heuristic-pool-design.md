@@ -169,3 +169,28 @@ czasy są gorsze niż obecny, wykluczenie obecnego czasu zmusza heurystykę do p
 rozwiązania, łamiąc obie te gwarancje. Poprawka: kandydaci obejmują **też** obecny
 `time_ref`, więc wynik nigdy nie jest gorszy niż wejście (sekcja `move_best` wyżej już
 zawiera poprawioną wersję).
+
+## Korekta 2 — wprowadzona podczas finalnego przeglądu (whole-branch review)
+
+Pierwotna wersja `_movable_violating_indices` (`repair_hard_violation`, krok 3 sekcji
+"Heurystyki" wyżej) rozwiązywała zbiór "zdarzeń uczestniczących w naruszeniu" wyłącznie
+przez `evaluator_ref._events_in_applies_to`, która czyta tylko `AppliesTo.Events`/
+`AppliesTo.EventGroups`. To pomijało ograniczenia zasobowe -- w szczególności
+`AvoidClashesConstraint`, główne ograniczenie twarde, które operator naprawczy miał
+naprawiać -- ponieważ ich `AppliesTo` wskazuje `Resources`/`ResourceGroups`, nie
+zdarzenia. Skutek: na realnych instancjach `repair_hard_violation` był ślepy na kolizje
+zasobów i celował wyłącznie w naruszenia ograniczeń błędnie oznaczonych jako
+`Required="true"`, albo (przy pustym zbiorze) degenerował się do `move_best`.
+
+Poprawka: `_movable_violating_indices` dodatkowo rozwiązuje zbiór zasobów przez
+`evaluator_ref._resources_in_applies_to` dla każdego naruszonego ograniczenia, i przez
+`resolve_occurrences`/`_assigned_resource_ids` znajduje zdarzenia, którym przypisano
+którykolwiek z tych zasobów -- sumując oba źródła (event-scoped i resource-scoped) w
+jeden zbiór `violated_event_ids`, dokładnie tak jak `total_cost`/`evaluate_constraint`
+już traktują oba typy `AppliesTo` jednolicie przy liczeniu kosztu.
+
+Przy okazji naprawiono też: `_movable_violating_indices` teraz odrzuca kandydatów bez
+poprawnego alternatywnego czasu startu (zamiast pozwalać `repair_hard_violation`
+podnieść `ValueError`, mimo że inni kandydaci mogliby zadziałać), a `move_best` filtruje
+zdarzenia bez `time_ref` przed losowym wyborem (zamiast wywalać się `AssertionError` na
+zdarzeniach typu "tylko zasoby" -- patrz `construct.build_initial`).

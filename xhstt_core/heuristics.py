@@ -3,7 +3,9 @@ from collections.abc import Callable
 from dataclasses import dataclass, replace
 
 from xhstt_core.evaluator_ref import (
+    _assigned_resource_ids,
     _events_in_applies_to,
+    _resources_in_applies_to,
     evaluate_constraint,
     resolve_occurrences,
     total_cost,
@@ -28,7 +30,9 @@ class Heuristic:
 
 def move_random(solution: Solution, instance: Instance, rng: random.Random) -> Solution:
     """Thin wrapper around moves.time_reassign_move, adapted to the pool's
-    apply(solution, instance, rng) argument order."""
+    apply(solution, instance, rng) argument order. Raises ValueError (via
+    time_reassign_move) if solution has no events, or the chosen event has
+    no alternative valid time to move to."""
     return time_reassign_move(instance, solution, rng)
 
 
@@ -69,11 +73,20 @@ def _best_time_for_event(
 
 
 def move_best(solution: Solution, instance: Instance, rng: random.Random) -> Solution:
-    """Picks one solution event at random, then moves it to the valid
-    start time that minimizes total_cost (see _best_time_for_event)."""
-    if not solution.events:
-        raise ValueError("cannot apply a move to a solution with no solution events")
-    index = rng.randrange(len(solution.events))
+    """Picks one solution event with a time to reassign at random, then
+    moves it to the valid start time that minimizes total_cost (see
+    _best_time_for_event). Raises ValueError if no solution event has a
+    time_ref to reassign (e.g. every event is a resources-only entry --
+    see construct.build_initial), or if the chosen event turns out to have
+    no valid start time at all (propagated from _best_time_for_event)."""
+    candidates = [
+        i for i, se in enumerate(solution.events) if se.time_ref is not None
+    ]
+    if not candidates:
+        raise ValueError(
+            "cannot apply a move: no solution event has a time to reassign"
+        )
+    index = rng.choice(candidates)
     return _best_time_for_event(instance, solution, index)
 
 
@@ -81,15 +94,22 @@ def swap(solution: Solution, instance: Instance, rng: random.Random) -> Solution
     """Thin wrapper around moves.time_swap_move, adapted to the pool's
     apply(solution, instance, rng) argument order. Two events that happen
     to already share a time_ref produce a harmless structurally-valid
-    no-op, not an error -- no special-casing needed."""
+    no-op, not an error -- no special-casing needed. Raises ValueError
+    (via time_swap_move) if fewer than 2 solution events exist, or no
+    valid swap is found within its attempt budget."""
     return time_swap_move(instance, solution, rng)
 
 
 def _movable_violating_indices(instance: Instance, solution: Solution) -> list[int]:
     """Indices into solution.events whose event participates in at least
-    one violated Required constraint AND has a time_ref we can move (fully
-    preassigned events never appear in solution.events at all -- see
-    construct.build_initial -- so they're excluded automatically)."""
+    one violated Required constraint (via either an event-scoped or a
+    resource-scoped AppliesTo -- e.g. AvoidClashesConstraint applies to
+    Resources/ResourceGroups, not Events, so it needs the resource-side
+    resolution too) AND is actually movable: it has a time_ref set (a
+    fully preassigned event never appears in solution.events at all, and
+    a resources-only entry -- see construct.build_initial -- has
+    time_ref=None; both are excluded here) and a non-empty set of valid
+    alternative start times."""
     occurrences = resolve_occurrences(instance, solution)
     violated_event_ids: set[str] = set()
     for constraint in instance.constraints:
@@ -98,11 +118,23 @@ def _movable_violating_indices(instance: Instance, solution: Solution) -> list[i
         if evaluate_constraint(instance, occurrences, constraint) <= 0:
             continue
         violated_event_ids |= _events_in_applies_to(instance, constraint.applies_to)
+        violated_resource_ids = _resources_in_applies_to(
+            instance, constraint.applies_to
+        )
+        if violated_resource_ids:
+            violated_event_ids |= {
+                o.event_ref
+                for o in occurrences
+                if violated_resource_ids & set(_assigned_resource_ids(o))
+            }
 
     return [
         i
         for i, se in enumerate(solution.events)
-        if se.event_ref in violated_event_ids and se.time_ref is not None
+        if se.event_ref in violated_event_ids
+        and se.time_ref is not None
+        and se.duration is not None
+        and valid_start_time_ids(instance, se.duration)
     ]
 
 
