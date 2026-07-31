@@ -4,7 +4,8 @@ from pathlib import Path
 import pytest
 
 from xhstt_core.construct import build_initial
-from xhstt_core.heuristics import MANUAL_HEURISTICS
+from xhstt_core.evaluator_ref import total_cost
+from xhstt_core.heuristics import MANUAL_HEURISTICS, move_best
 from xhstt_core.model import Solution
 from xhstt_core.parser import parse_archive
 
@@ -54,3 +55,16 @@ def test_heuristic_preserves_events_and_does_not_mutate_input(heuristic) -> None
     assert sorted(se.event_ref for se in new_solution.events) == sorted(
         se.event_ref for se in solution.events
     ), f"{heuristic.id} lost or duplicated an event"
+
+
+def test_move_best_never_increases_total_cost() -> None:
+    instance, solution = _sudoku_solution()
+    before = total_cost(instance, solution)
+
+    ran_at_least_once = False
+    for seed in range(20):
+        new_solution = move_best(solution, instance, random.Random(seed))
+        ran_at_least_once = True
+        after = total_cost(instance, new_solution)
+        assert after <= before, f"seed={seed}: move_best increased total_cost ({before} -> {after})"
+    assert ran_at_least_once
