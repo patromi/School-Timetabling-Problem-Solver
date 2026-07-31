@@ -18,8 +18,9 @@
 - All four `Heuristic` entries get `protected=True`.
 - No delta evaluation: cost comparisons use `evaluator_ref.total_cost` (full re-evaluation) per candidate. This is intentional and already accepted in the spec — do not attempt to add incremental scoring.
 - `moves.py` and `lahc.py` are out of scope: do not edit them.
-- New code needs full type hints (repo's `mypy --strict` convention) even though the default `uv run mypy src/` command doesn't reach `xhstt_core/` — verify explicitly with `uv run mypy xhstt_core/heuristics.py` instead (see Task 4).
+- New code needs full type hints (repo's `mypy --strict` convention) even though the default `uv run mypy src/` command doesn't reach `xhstt_core/` — verify explicitly with `uv run mypy --follow-imports=silent xhstt_core/heuristics.py` instead (see Task 4; plain `--follow-imports` default would also surface ~18 pre-existing errors in other `xhstt_core` files that are not this task's to fix).
 - Docstrings/comments in `xhstt_core/*.py` are in English (matches every existing file in that package); this is a library module, not user-facing CLI output, so no Polish strings are needed here.
+- **Test invocation:** use `uv run python -m pytest ...`, not bare `uv run pytest ...`. Confirmed on this repo: `pyproject.toml` has no `[build-system]` table, so `uv run pytest`'s console-script entry point never gets the repo root on `sys.path` and `xhstt_core` fails to import (`ModuleNotFoundError`). Running via `python -m pytest` adds the current directory to `sys.path`, which fixes it — every existing test passes this way (118 passed, confirmed on `main` before this plan started). This is a known pre-existing repo-infra gap (see open GitHub issue #60 "dodanie uv"), not something to fix as part of this plan.
 
 ---
 
@@ -105,7 +106,7 @@ def test_heuristic_preserves_events_and_does_not_mutate_input(heuristic) -> None
 
 - [ ] **Step 2: Run test to verify it fails on import**
 
-Run: `uv run pytest tests/test_heuristics.py -v`
+Run: `uv run python -m pytest tests/test_heuristics.py -v`
 Expected: FAIL/ERROR — `ModuleNotFoundError: No module named 'xhstt_core.heuristics'` (the module doesn't exist yet).
 
 - [ ] **Step 3: Implement `Heuristic` and `move_random`**
@@ -152,7 +153,7 @@ MANUAL_HEURISTICS: list[Heuristic] = [
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `uv run pytest tests/test_heuristics.py -v`
+Run: `uv run python -m pytest tests/test_heuristics.py -v`
 Expected: PASS (1 test, parametrized with 1 case: `move_random`).
 
 - [ ] **Step 5: Commit**
@@ -200,7 +201,7 @@ def test_move_best_never_increases_total_cost() -> None:
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `uv run pytest tests/test_heuristics.py::test_move_best_never_increases_total_cost -v`
+Run: `uv run python -m pytest tests/test_heuristics.py::test_move_best_never_increases_total_cost -v`
 Expected: FAIL — `ImportError: cannot import name 'move_best' from 'xhstt_core.heuristics'`.
 
 - [ ] **Step 3: Implement `_best_time_for_event` and `move_best`**
@@ -224,6 +225,15 @@ def _best_time_for_event(instance: Instance, solution: Solution, index: int) -> 
     never worse than the input -- move_best and repair_hard_violation both
     depend on this to guarantee they never regress the solution."""
     event = solution.events[index]
+    # construct.build_initial only ever leaves duration=None paired with
+    # time_ref=None (a resources-only SolutionEvent that never needed a
+    # time) -- for any event actually worth reassigning, duration is set.
+    # moves.time_reassign_move carries the same assumption today without
+    # asserting it (a pre-existing gap, out of scope to fix here); this
+    # assert makes the same assumption explicit and satisfies mypy
+    # --strict, and turns a latent None into a clear error instead of a
+    # TypeError inside valid_start_time_ids if it's ever violated.
+    assert event.duration is not None, f"event {event.event_ref!r} has no duration"
     candidates = valid_start_time_ids(instance, event.duration)
     if not candidates:
         raise ValueError(f"event {event.event_ref!r} has no valid start time")
@@ -264,7 +274,7 @@ Add to `MANUAL_HEURISTICS`:
 
 - [ ] **Step 4: Run tests to verify everything passes**
 
-Run: `uv run pytest tests/test_heuristics.py -v`
+Run: `uv run python -m pytest tests/test_heuristics.py -v`
 Expected: PASS — the new cost test, plus the Task 1 structural test now parametrized over 2 heuristics (`move_random`, `move_best`).
 
 - [ ] **Step 5: Commit**
@@ -290,7 +300,7 @@ git commit -m "feat: add move_best (best-slot search shared with repair)"
 
 Task 1's structural test is parametrized directly over `MANUAL_HEURISTICS`, so it will pick up a 3rd case (`swap`) automatically the moment `swap` exists in that list — no test file edit needed this task. Confirm it's currently absent:
 
-Run: `uv run pytest tests/test_heuristics.py -v --collect-only`
+Run: `uv run python -m pytest tests/test_heuristics.py -v --collect-only`
 Expected: only `move_random` and `move_best` cases listed for the structural test (no `swap` case yet).
 
 - [ ] **Step 2: Implement `swap`**
@@ -325,10 +335,10 @@ Add to `MANUAL_HEURISTICS`:
 
 - [ ] **Step 3: Run tests to verify it passes**
 
-Run: `uv run pytest tests/test_heuristics.py -v --collect-only`
+Run: `uv run python -m pytest tests/test_heuristics.py -v --collect-only`
 Expected: structural test now has 3 parametrized cases (`move_random`, `move_best`, `swap`).
 
-Run: `uv run pytest tests/test_heuristics.py -v`
+Run: `uv run python -m pytest tests/test_heuristics.py -v`
 Expected: PASS, all tests.
 
 - [ ] **Step 4: Commit**
@@ -414,7 +424,7 @@ This mirrors the no-reassignable-resource fixture already used in `tests/test_mo
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `uv run pytest tests/test_heuristics.py::test_repair_hard_violation_never_increases_infeasibility tests/test_heuristics.py::test_repair_hard_violation_raises_without_a_violation -v`
+Run: `uv run python -m pytest tests/test_heuristics.py::test_repair_hard_violation_never_increases_infeasibility tests/test_heuristics.py::test_repair_hard_violation_raises_without_a_violation -v`
 Expected: FAIL — `ImportError: cannot import name 'repair_hard_violation' from 'xhstt_core.heuristics'`.
 
 - [ ] **Step 3: Implement `_movable_violating_indices` and `repair_hard_violation`**
@@ -480,24 +490,24 @@ Add to `MANUAL_HEURISTICS`:
 
 - [ ] **Step 4: Run the full test file to verify everything passes**
 
-Run: `uv run pytest tests/test_heuristics.py -v`
+Run: `uv run python -m pytest tests/test_heuristics.py -v`
 Expected: PASS — all tests, including the structural test now parametrized over all 4 heuristics (`move_random`, `move_best`, `swap`, `repair_hard_violation`).
 
 - [ ] **Step 5: Type-check and lint the new files explicitly**
 
-The repo's default `uv run mypy src/` / `uv run ruff check src/` commands don't reach `xhstt_core/` (see `CLAUDE.md`), so point the tools at the new files directly:
+The repo's default `uv run mypy src/` / `uv run ruff check src/` commands don't reach `xhstt_core/` (see `CLAUDE.md`), so point the tools at the new files directly. Plain `uv run mypy xhstt_core/heuristics.py` follows imports into `evaluator_ref.py`/`moves.py`/`model.py` and will report ~18 **pre-existing** errors in those files (confirmed present on `main` before this plan started, e.g. `xhstt_core/moves.py:42` passing `int | None` where `int` is expected) — none of that is this task's to fix. Use `--follow-imports=silent` to scope the report to the file actually being checked:
 
-Run: `uv run mypy xhstt_core/heuristics.py`
-Expected: `Success: no issues found`.
+Run: `uv run mypy --follow-imports=silent xhstt_core/heuristics.py`
+Expected: `Success: no issues found in 1 source file`. If it reports anything, fix `heuristics.py` (the assert in `_best_time_for_event`, Task 2, exists specifically to keep this clean) — do not touch `evaluator_ref.py`/`moves.py`/`model.py` to silence something reported there.
 
 Run: `uv run ruff check xhstt_core/heuristics.py tests/test_heuristics.py`
-Expected: `All checks passed!`
+Expected: `All checks passed!` (this one doesn't follow imports, so it's already scoped to just these two files).
 
 Fix any reported issues before proceeding (common ones: missing return type on a helper, unused import).
 
 - [ ] **Step 6: Run the full existing test suite to confirm no regressions**
 
-Run: `uv run pytest`
+Run: `uv run python -m pytest`
 Expected: PASS — every existing test still passes (this task never touched `moves.py`/`lahc.py`, so this is a safety net, not expected to catch anything).
 
 - [ ] **Step 7: Commit**
