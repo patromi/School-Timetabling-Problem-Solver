@@ -4,7 +4,7 @@ from typing import Callable
 
 from xhstt_core.evaluator_ref import total_cost, valid_start_time_ids
 from xhstt_core.model import Instance, Solution
-from xhstt_core.moves import time_reassign_move
+from xhstt_core.moves import time_reassign_move, time_swap_move
 
 
 @dataclass(frozen=True)
@@ -69,6 +69,14 @@ def move_best(solution: Solution, instance: Instance, rng: random.Random) -> Sol
     return _best_time_for_event(instance, solution, index)
 
 
+def swap(solution: Solution, instance: Instance, rng: random.Random) -> Solution:
+    """Thin wrapper around moves.time_swap_move, adapted to the pool's
+    apply(solution, instance, rng) argument order. Two events that happen
+    to already share a time_ref produce a harmless structurally-valid
+    no-op, not an error -- no special-casing needed."""
+    return time_swap_move(instance, solution, rng)
+
+
 MANUAL_HEURISTICS: list[Heuristic] = [
     Heuristic(
         id="move_random",
@@ -81,5 +89,11 @@ MANUAL_HEURISTICS: list[Heuristic] = [
         name="Best-slot time reassignment",
         protected=True,
         apply=move_best,
+    ),
+    Heuristic(
+        id="swap",
+        name="Swap two events' times",
+        protected=True,
+        apply=swap,
     ),
 ]
