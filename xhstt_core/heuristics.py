@@ -12,7 +12,7 @@ from xhstt_core.evaluator_ref import (
     valid_start_time_ids,
 )
 from xhstt_core.model import Instance, Solution
-from xhstt_core.moves import time_reassign_move, time_swap_move
+from xhstt_core.moves import resource_reassign_move, time_reassign_move, time_swap_move
 
 
 @dataclass(frozen=True)
@@ -100,6 +100,13 @@ def swap(solution: Solution, instance: Instance, rng: random.Random) -> Solution
     return time_swap_move(instance, solution, rng)
 
 
+def resource_reassign(solution: Solution, instance: Instance, rng: random.Random) -> Solution:
+    """Thin wrapper around moves.resource_reassign_move, adapted to the pool's
+    apply(solution, instance, rng) argument order. Raises ValueError (via
+    resource_reassign_move) if no event resource has a same-type alternative."""
+    return resource_reassign_move(instance, solution, rng)
+
+
 def _movable_violating_indices(instance: Instance, solution: Solution) -> list[int]:
     """Indices into solution.events whose event participates in at least
     one violated Required constraint (via either an event-scoped or a
@@ -176,5 +183,11 @@ MANUAL_HEURISTICS: list[Heuristic] = [
         name="Repair a hard constraint violation",
         protected=True,
         apply=repair_hard_violation,
+    ),
+    Heuristic(
+        id="resource_reassign",
+        name="Reassign an event resource to a same-type alternative",
+        protected=True,
+        apply=resource_reassign,
     ),
 ]
