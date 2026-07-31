@@ -79,9 +79,7 @@ def move_best(solution: Solution, instance: Instance, rng: random.Random) -> Sol
     time_ref to reassign (e.g. every event is a resources-only entry --
     see construct.build_initial), or if the chosen event turns out to have
     no valid start time at all (propagated from _best_time_for_event)."""
-    candidates = [
-        i for i, se in enumerate(solution.events) if se.time_ref is not None
-    ]
+    candidates = [i for i, se in enumerate(solution.events) if se.time_ref is not None]
     if not candidates:
         raise ValueError(
             "cannot apply a move: no solution event has a time to reassign"
@@ -100,7 +98,9 @@ def swap(solution: Solution, instance: Instance, rng: random.Random) -> Solution
     return time_swap_move(instance, solution, rng)
 
 
-def resource_reassign(solution: Solution, instance: Instance, rng: random.Random) -> Solution:
+def resource_reassign(
+    solution: Solution, instance: Instance, rng: random.Random
+) -> Solution:
     """Thin wrapper around moves.resource_reassign_move, adapted to the pool's
     apply(solution, instance, rng) argument order. Raises ValueError (via
     resource_reassign_move) if no event resource has a same-type alternative."""

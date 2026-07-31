@@ -57,9 +57,8 @@ def run_lahc(
         if on_progress is not None:
             now = time.monotonic()
             if (
-                (step + 1) % progress_every == 0
-                or now - last_progress_time >= progress_seconds
-            ):
+                step + 1
+            ) % progress_every == 0 or now - last_progress_time >= progress_seconds:
                 on_progress(step + 1, best_cost)
                 last_progress_time = now
 
