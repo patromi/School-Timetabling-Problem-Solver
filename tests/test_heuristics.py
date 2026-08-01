@@ -13,6 +13,7 @@ from xhstt_core.heuristics import (
     Heuristic,
     move_best,
     repair_hard_violation,
+    ruin_and_recreate,
 )
 from xhstt_core.model import Instance, Solution, SolutionEvent
 from xhstt_core.parser import parse_archive
@@ -284,4 +285,50 @@ def test_repair_hard_violation_targets_the_violating_event_scoped_via_resources(
         )
         assert diffs and diffs[0] in {"E1", "E2"}, (
             f"seed={seed}: repair moved {diffs}, expected E1 or E2"
+        )
+
+
+def test_ruin_and_recreate_raises_without_a_movable_event() -> None:
+    instance = parse_archive(
+        """<HighSchoolTimetableArchive>
+  <Instances>
+    <Instance Id="I1">
+      <MetaData><Name>Test</Name></MetaData>
+      <Times><TimeGroups></TimeGroups><Time Id="Day_1"><Name>Day_1</Name></Time></Times>
+      <Resources><ResourceTypes></ResourceTypes><ResourceGroups></ResourceGroups></Resources>
+      <Events>
+        <EventGroups></EventGroups>
+        <Event Id="E1">
+          <Name>E1</Name>
+          <Duration>1</Duration>
+          <Time Reference="Day_1"/>
+          <Resources></Resources>
+        </Event>
+      </Events>
+      <Constraints></Constraints>
+    </Instance>
+  </Instances>
+</HighSchoolTimetableArchive>"""
+    )[0]
+    solution = build_initial(instance, random.Random(0))
+    assert solution.events == [], (
+        "E1 is fully preassigned, so build_initial must skip it"
+    )
+
+    with pytest.raises(ValueError):
+        ruin_and_recreate(solution, instance, random.Random(0))
+
+
+def test_ruin_and_recreate_touches_at_most_the_ruin_budget() -> None:
+    instance, solution = _sudoku_solution()
+
+    for seed in range(20):
+        new_solution = ruin_and_recreate(solution, instance, random.Random(seed))
+        diffs = [
+            old.event_ref
+            for old, new in zip(solution.events, new_solution.events, strict=True)
+            if old.time_ref != new.time_ref
+        ]
+        assert len(diffs) <= 6, (
+            f"seed={seed}: touched {len(diffs)} events, expected at most 6"
         )

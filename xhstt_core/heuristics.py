@@ -12,7 +12,12 @@ from xhstt_core.evaluator_ref import (
     valid_start_time_ids,
 )
 from xhstt_core.model import Instance, Solution
-from xhstt_core.moves import resource_reassign_move, time_reassign_move, time_swap_move
+from xhstt_core.moves import (
+    kempe_chain_move,
+    resource_reassign_move,
+    time_reassign_move,
+    time_swap_move,
+)
 
 
 @dataclass(frozen=True)
@@ -107,6 +112,66 @@ def resource_reassign(
     return resource_reassign_move(instance, solution, rng)
 
 
+def kempe_chain(solution: Solution, instance: Instance, rng: random.Random) -> Solution:
+    """Thin wrapper around moves.kempe_chain_move, adapted to the pool's
+    apply(solution, instance, rng) argument order. Raises ValueError (via
+    kempe_chain_move) if the instance has fewer than 2 times, fewer than 2
+    eligible events sit at the two chosen times, or none of them share a
+    resource to chain on."""
+    return kempe_chain_move(instance, solution, rng)
+
+
+_RUIN_FRACTION = 0.1
+_RUIN_MIN_EVENTS = 2
+_RUIN_MAX_EVENTS = 6
+
+
+def ruin_and_recreate(
+    solution: Solution, instance: Instance, rng: random.Random
+) -> Solution:
+    """"Ruin-and-recreate" perturbation (Schrimpf et al. 1998): "ruins" a
+    small random slice of the solution -- about _RUIN_FRACTION of its
+    movable events, clamped to [_RUIN_MIN_EVENTS, _RUIN_MAX_EVENTS] -- by
+    reassigning each to a uniformly random valid time, then "recreates"
+    them one at a time in random order, each landing on whichever valid
+    time currently minimizes total_cost given everything already rebuilt
+    (the same greedy step _best_time_for_event uses for move_best). Reaches
+    further in one call than a single move_random/move_best step -- a
+    stronger perturbation meant to help LAHC escape plateaus a one-event
+    move can't -- at the cost of being far more expensive per call (O(k)
+    full evaluations across every valid time, for each of k ruined
+    events)."""
+    movable = [
+        i
+        for i, se in enumerate(solution.events)
+        if se.time_ref is not None and se.duration is not None
+    ]
+    if not movable:
+        raise ValueError(
+            "cannot apply ruin-and-recreate: no solution event has a time to reassign"
+        )
+
+    ruin_target = max(_RUIN_MIN_EVENTS, round(len(movable) * _RUIN_FRACTION))
+    k = min(len(movable), _RUIN_MAX_EVENTS, ruin_target)
+    ruined_indices = rng.sample(movable, k)
+
+    events = list(solution.events)
+    for i in ruined_indices:
+        se = events[i]
+        assert se.duration is not None
+        candidates = valid_start_time_ids(instance, se.duration)
+        if not candidates:
+            raise ValueError(f"event {se.event_ref!r} has no valid start time")
+        events[i] = replace(se, time_ref=rng.choice(candidates))
+    current = replace(solution, events=events)
+
+    recreate_order = list(ruined_indices)
+    rng.shuffle(recreate_order)
+    for i in recreate_order:
+        current = _best_time_for_event(instance, current, i)
+    return current
+
+
 def _movable_violating_indices(instance: Instance, solution: Solution) -> list[int]:
     """Indices into solution.events whose event participates in at least
     one violated Required constraint (via either an event-scoped or a
@@ -189,5 +254,17 @@ MANUAL_HEURISTICS: list[Heuristic] = [
         name="Reassign an event resource to a same-type alternative",
         protected=True,
         apply=resource_reassign,
+    ),
+    Heuristic(
+        id="kempe_chain",
+        name="Kempe chain interchange between two times",
+        protected=True,
+        apply=kempe_chain,
+    ),
+    Heuristic(
+        id="ruin_and_recreate",
+        name="Ruin a small portion of the solution and greedily rebuild it",
+        protected=True,
+        apply=ruin_and_recreate,
     ),
 ]
