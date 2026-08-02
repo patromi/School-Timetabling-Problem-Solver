@@ -428,7 +428,7 @@ def test_resource_reassign_move_raises_when_no_event_has_a_reassignable_resource
         resource_reassign_move(instance, solution, random.Random(0))
 
 
-def test_large_perturbation_move_changes_a_large_fraction_of_movable_events():
+def test_large_perturbation_move_changes_a_large_fraction_of_movable_events() -> None:
     instance, solution = _sudoku_solution()
     movable = [
         se
@@ -440,28 +440,37 @@ def test_large_perturbation_move_changes_a_large_fraction_of_movable_events():
     # change, update this expectation to match.
     expected_k = min(len(movable), max(4, round(len(movable) * 0.3)))
 
-    # seed=8 chosen so none of the 5 chosen events coincidentally lands back
-    # on its own current time -- a real possibility by design (see
-    # large_perturbation_move's docstring), which would make this assertion
-    # flaky under a different seed.
-    new_solution = large_perturbation_move(instance, solution, random.Random(8))
+    # A selected event can coincidentally land back on its own current
+    # time_ref by design (see large_perturbation_move's docstring) -- a
+    # harmless no-op, not a bug -- so "k events selected" and "k events
+    # changed" aren't the same thing. Swept across seeds instead of
+    # pinning one: len(diffs) must never exceed expected_k, and across
+    # enough seeds it must reach expected_k at least once (proving the
+    # operator does select a full k, not fewer).
+    observed_diff_counts = []
+    for seed in range(50):
+        new_solution = large_perturbation_move(instance, solution, random.Random(seed))
+        assert len(new_solution.events) == len(solution.events)
+        diffs = [
+            (a, b)
+            for a, b in zip(solution.events, new_solution.events, strict=True)
+            if a.time_ref != b.time_ref
+        ]
+        assert len(diffs) <= expected_k, f"seed={seed}: {len(diffs)} > {expected_k}"
+        for old, new in diffs:
+            assert old.event_ref == new.event_ref
+            assert new.resources == old.resources
+        for a, b in zip(solution.events, new_solution.events, strict=True):
+            if a.time_ref == b.time_ref:
+                assert a == b
+        observed_diff_counts.append(len(diffs))
 
-    assert len(new_solution.events) == len(solution.events)
-    diffs = [
-        (a, b)
-        for a, b in zip(solution.events, new_solution.events)
-        if a.time_ref != b.time_ref
-    ]
-    assert len(diffs) == expected_k
-    for old, new in diffs:
-        assert old.event_ref == new.event_ref
-        assert new.resources == old.resources
-    for a, b in zip(solution.events, new_solution.events):
-        if a.time_ref == b.time_ref:
-            assert a == b
+    assert max(observed_diff_counts) == expected_k, (
+        f"no seed in range(50) selected the full {expected_k}: {observed_diff_counts}"
+    )
 
 
-def test_large_perturbation_move_is_deterministic_given_same_seed():
+def test_large_perturbation_move_is_deterministic_given_same_seed() -> None:
     instance, solution = _sudoku_solution()
 
     a = large_perturbation_move(instance, solution, random.Random(9))
@@ -470,7 +479,7 @@ def test_large_perturbation_move_is_deterministic_given_same_seed():
     assert a.events == b.events
 
 
-def test_large_perturbation_move_does_not_mutate_the_input_solution():
+def test_large_perturbation_move_does_not_mutate_the_input_solution() -> None:
     instance, solution = _sudoku_solution()
     original_times = [e.time_ref for e in solution.events]
 
@@ -479,7 +488,7 @@ def test_large_perturbation_move_does_not_mutate_the_input_solution():
     assert [e.time_ref for e in solution.events] == original_times
 
 
-def test_large_perturbation_move_raises_when_no_movable_event_exists():
+def test_large_perturbation_move_raises_when_no_movable_event_exists() -> None:
     instance = parse_archive(
         """<HighSchoolTimetableArchive>
   <Instances>
@@ -513,7 +522,7 @@ def test_large_perturbation_move_raises_when_no_movable_event_exists():
         large_perturbation_move(instance, solution, random.Random(0))
 
 
-def test_large_perturbation_move_never_overflows_a_day_boundary_or_the_time_array():
+def test_large_perturbation_move_never_overflows_a_day_boundary_or_the_time_array() -> None:
     instance = parse_archive(_two_day_multi_period_archive())[0]
     solution = Solution(
         instance_ref=instance.id,
