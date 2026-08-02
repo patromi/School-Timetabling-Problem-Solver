@@ -6,6 +6,7 @@ from xhstt_core.construct import build_initial
 from xhstt_core.model import Solution, SolutionEvent
 from xhstt_core.moves import (
     kempe_chain_move,
+    large_perturbation_move,
     resource_reassign_move,
     time_reassign_move,
     time_swap_move,
@@ -255,7 +256,9 @@ def test_time_reassign_move_never_overflows_a_day_boundary_or_the_time_array():
     for seed in range(50):
         new_solution = time_reassign_move(instance, solution, random.Random(seed))
         e1 = next(se for se in new_solution.events if se.event_ref == "E1")
-        assert e1.time_ref not in invalid_for_e1, f"seed={seed}: E1 landed on {e1.time_ref}"
+        assert e1.time_ref not in invalid_for_e1, (
+            f"seed={seed}: E1 landed on {e1.time_ref}"
+        )
 
 
 def test_time_swap_move_never_overflows_a_day_boundary_or_the_time_array():
@@ -425,3 +428,106 @@ def test_resource_reassign_move_raises_when_no_event_has_a_reassignable_resource
 
     with pytest.raises(ValueError):
         resource_reassign_move(instance, solution, random.Random(0))
+
+
+def test_large_perturbation_move_changes_a_large_fraction_of_movable_events():
+    instance, solution = _sudoku_solution()
+    movable = [
+        se
+        for se in solution.events
+        if se.time_ref is not None and se.duration is not None
+    ]
+    # Mirrors moves.py's _LARGE_PERTURBATION_FRACTION=0.3 /
+    # _LARGE_PERTURBATION_MIN_EVENTS=4 exactly -- if those constants ever
+    # change, update this expectation to match.
+    expected_k = min(len(movable), max(4, round(len(movable) * 0.3)))
+
+    new_solution = large_perturbation_move(instance, solution, random.Random(5))
+
+    assert len(new_solution.events) == len(solution.events)
+    diffs = [
+        (a, b)
+        for a, b in zip(solution.events, new_solution.events)
+        if a.time_ref != b.time_ref
+    ]
+    assert len(diffs) == expected_k
+    for old, new in diffs:
+        assert old.event_ref == new.event_ref
+        assert new.resources == old.resources
+    for a, b in zip(solution.events, new_solution.events):
+        if a.time_ref == b.time_ref:
+            assert a == b
+
+
+def test_large_perturbation_move_is_deterministic_given_same_seed():
+    instance, solution = _sudoku_solution()
+
+    a = large_perturbation_move(instance, solution, random.Random(9))
+    b = large_perturbation_move(instance, solution, random.Random(9))
+
+    assert a.events == b.events
+
+
+def test_large_perturbation_move_does_not_mutate_the_input_solution():
+    instance, solution = _sudoku_solution()
+    original_times = [e.time_ref for e in solution.events]
+
+    large_perturbation_move(instance, solution, random.Random(5))
+
+    assert [e.time_ref for e in solution.events] == original_times
+
+
+def test_large_perturbation_move_raises_when_no_movable_event_exists():
+    instance = parse_archive(
+        """<HighSchoolTimetableArchive>
+  <Instances>
+    <Instance Id="I1">
+      <MetaData><Name>Test</Name></MetaData>
+      <Times><TimeGroups></TimeGroups><Time Id="T1"><Name>T1</Name></Time></Times>
+      <Resources>
+        <ResourceTypes><ResourceType Id="Room"><Name>Room</Name></ResourceType></ResourceTypes>
+        <ResourceGroups></ResourceGroups>
+        <Resource Id="R1"><Name>R1</Name><ResourceType Reference="Room"/></Resource>
+      </Resources>
+      <Events>
+        <EventGroups></EventGroups>
+        <Event Id="E1">
+          <Name>E1</Name>
+          <Duration>1</Duration>
+          <Time Reference="T1"/>
+          <Resources>
+            <Resource><Role>Room</Role><ResourceType Reference="Room"/></Resource>
+          </Resources>
+        </Event>
+      </Events>
+      <Constraints></Constraints>
+    </Instance>
+  </Instances>
+</HighSchoolTimetableArchive>"""
+    )[0]
+    solution = build_initial(instance, random.Random(0))
+
+    with pytest.raises(ValueError):
+        large_perturbation_move(instance, solution, random.Random(0))
+
+
+def test_large_perturbation_move_never_overflows_a_day_boundary_or_the_time_array():
+    instance = parse_archive(_two_day_multi_period_archive())[0]
+    solution = Solution(
+        instance_ref=instance.id,
+        events=[
+            SolutionEvent(event_ref="E1", time_ref="Mon_1", duration=2),
+            SolutionEvent(event_ref="E2", time_ref="Tue_1", duration=1),
+        ],
+    )
+    # Both events are movable, and _LARGE_PERTURBATION_MIN_EVENTS=4 exceeds
+    # the 2 available, so both get perturbed on every seed -- this is a
+    # deliberately harder overflow check than the single-event moves get.
+    invalid_for_e1 = {"Mon_3", "Tue_2"}
+
+    for seed in range(50):
+        new_solution = large_perturbation_move(instance, solution, random.Random(seed))
+        e1 = next(se for se in new_solution.events if se.event_ref == "E1")
+        assert e1.time_ref not in invalid_for_e1, (
+            f"seed={seed}: E1 landed on {e1.time_ref}"
+        )
