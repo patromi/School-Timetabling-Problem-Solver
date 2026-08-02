@@ -17,7 +17,9 @@ from xhstt_core.model import (
 _MAX_SWAP_ATTEMPTS = 20
 
 
-def time_reassign_move(instance: Instance, solution: Solution, rng: random.Random) -> Solution:
+def time_reassign_move(
+    instance: Instance, solution: Solution, rng: random.Random
+) -> Solution:
     """Picks one solution event at random and reassigns it to a different
     (uniformly random) VALID time -- one where the event's duration still
     fits without overflowing past the last defined Time or crossing into
@@ -58,6 +60,7 @@ def time_reassign_move(instance: Instance, solution: Solution, rng: random.Rando
         )
     index = rng.choice(candidates)
     event = solution.events[index]
+    assert event.duration is not None
     other_times = [
         t for t in valid_start_time_ids(instance, event.duration) if t != event.time_ref
     ]
@@ -69,7 +72,9 @@ def time_reassign_move(instance: Instance, solution: Solution, rng: random.Rando
     return replace(solution, events=new_events)
 
 
-def time_swap_move(instance: Instance, solution: Solution, rng: random.Random) -> Solution:
+def time_swap_move(
+    instance: Instance, solution: Solution, rng: random.Random
+) -> Solution:
     """Picks two distinct solution events at random and swaps their times.
     Returns a new Solution; the input is untouched. Structural sharing as
     in time_reassign_move.
@@ -88,6 +93,7 @@ def time_swap_move(instance: Instance, solution: Solution, rng: random.Random) -
         a, b = solution.events[i], solution.events[j]
         if a.time_ref is None or b.time_ref is None:
             continue
+        assert a.duration is not None and b.duration is not None
         if b.time_ref not in valid_start_time_ids(instance, a.duration):
             continue
         if a.time_ref not in valid_start_time_ids(instance, b.duration):
@@ -99,7 +105,9 @@ def time_swap_move(instance: Instance, solution: Solution, rng: random.Random) -
     raise ValueError("no valid time swap found within the attempt budget")
 
 
-def resource_reassign_move(instance: Instance, solution: Solution, rng: random.Random) -> Solution:
+def resource_reassign_move(
+    instance: Instance, solution: Solution, rng: random.Random
+) -> Solution:
     """Picks one (solution event, event resource) pair at random and
     reassigns it to a different resource of the same ResourceType. Returns
     a new Solution; the input is untouched. Structural sharing as in
@@ -124,8 +132,12 @@ def resource_reassign_move(instance: Instance, solution: Solution, rng: random.R
     se_index, r_index, type_ref = rng.choice(candidates)
     target_event = solution.events[se_index]
     target_resource = target_event.resources[r_index]
-    alternatives = [r for r in resources_by_type[type_ref] if r != target_resource.resource_ref]
-    new_resource = SolutionEventResource(role=target_resource.role, resource_ref=rng.choice(alternatives))
+    alternatives = [
+        r for r in resources_by_type[type_ref] if r != target_resource.resource_ref
+    ]
+    new_resource = SolutionEventResource(
+        role=target_resource.role, resource_ref=rng.choice(alternatives)
+    )
 
     new_resources = list(target_event.resources)
     new_resources[r_index] = new_resource
@@ -225,4 +237,68 @@ def kempe_chain_move(
     for i in component:
         se = new_events[i]
         new_events[i] = replace(se, time_ref=t2 if se.time_ref == t1 else t1)
+    return replace(solution, events=new_events)
+
+
+_LARGE_PERTURBATION_FRACTION = 0.3
+_LARGE_PERTURBATION_MIN_EVENTS = 4
+
+
+def large_perturbation_move(
+    instance: Instance, solution: Solution, rng: random.Random
+) -> Solution:
+    """Large random perturbation meant to kick LAHC out of a local minimum,
+    as opposed to ruin_and_recreate's small, greedily-rebuilt portion:
+    picks about _LARGE_PERTURBATION_FRACTION of the solution's movable
+    events (floored at _LARGE_PERTURBATION_MIN_EVENTS, capped at however
+    many movable events actually exist -- unlike ruin_and_recreate there
+    is no upper cap otherwise, which is what makes this "large") and
+    reassigns each, independently, to a uniformly random valid start time.
+    No cost-minimizing recreate step -- O(1) evaluator-free work per
+    reassigned event, instead of ruin_and_recreate's O(valid times)
+    total_cost calls -- which is what makes this operator cheap enough to
+    touch a large fraction of the solution in one call. Returns a new
+    Solution; the input is untouched.
+
+    Because it operates on whatever Solution it's given, the exact same
+    function can later be pointed at the solver's best-known solution
+    instead of its current one, to implement a stagnation-triggered
+    "restart from best" step once the solver loop grows one (Etap 5/6) --
+    no separate code path needed here, just a different caller.
+
+    Raises ValueError if the solution has no movable event (a time_ref and
+    a duration set -- see time_reassign_move) to perturb, or if one of the
+    chosen movable events has no valid start time at all."""
+    movable = [
+        i
+        for i, se in enumerate(solution.events)
+        if se.time_ref is not None and se.duration is not None
+    ]
+    if not movable:
+        raise ValueError(
+            "cannot apply a move: no solution event has a time to reassign"
+        )
+
+    k = min(
+        len(movable),
+        max(
+            _LARGE_PERTURBATION_MIN_EVENTS,
+            round(len(movable) * _LARGE_PERTURBATION_FRACTION),
+        ),
+    )
+    chosen = rng.sample(movable, k)
+
+    new_events = list(solution.events)
+    for i in chosen:
+        se = new_events[i]
+        assert se.duration is not None
+        candidates = valid_start_time_ids(instance, se.duration)
+        if not candidates:
+            raise ValueError(f"event {se.event_ref!r} has no valid start time")
+        other_times = [t for t in candidates if t != se.time_ref]
+        if not other_times:
+            raise ValueError(
+                f"event {se.event_ref!r} has no alternative valid start time"
+            )
+        new_events[i] = replace(se, time_ref=rng.choice(other_times))
     return replace(solution, events=new_events)
