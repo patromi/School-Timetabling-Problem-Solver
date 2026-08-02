@@ -17,9 +17,7 @@ from xhstt_core.model import (
 _MAX_SWAP_ATTEMPTS = 20
 
 
-def time_reassign_move(
-    instance: Instance, solution: Solution, rng: random.Random
-) -> Solution:
+def time_reassign_move(instance: Instance, solution: Solution, rng: random.Random) -> Solution:
     """Picks one solution event at random and reassigns it to a different
     (uniformly random) VALID time -- one where the event's duration still
     fits without overflowing past the last defined Time or crossing into
@@ -60,7 +58,6 @@ def time_reassign_move(
         )
     index = rng.choice(candidates)
     event = solution.events[index]
-    assert event.duration is not None
     other_times = [
         t for t in valid_start_time_ids(instance, event.duration) if t != event.time_ref
     ]
@@ -72,9 +69,7 @@ def time_reassign_move(
     return replace(solution, events=new_events)
 
 
-def time_swap_move(
-    instance: Instance, solution: Solution, rng: random.Random
-) -> Solution:
+def time_swap_move(instance: Instance, solution: Solution, rng: random.Random) -> Solution:
     """Picks two distinct solution events at random and swaps their times.
     Returns a new Solution; the input is untouched. Structural sharing as
     in time_reassign_move.
@@ -93,7 +88,6 @@ def time_swap_move(
         a, b = solution.events[i], solution.events[j]
         if a.time_ref is None or b.time_ref is None:
             continue
-        assert a.duration is not None and b.duration is not None
         if b.time_ref not in valid_start_time_ids(instance, a.duration):
             continue
         if a.time_ref not in valid_start_time_ids(instance, b.duration):
@@ -105,9 +99,7 @@ def time_swap_move(
     raise ValueError("no valid time swap found within the attempt budget")
 
 
-def resource_reassign_move(
-    instance: Instance, solution: Solution, rng: random.Random
-) -> Solution:
+def resource_reassign_move(instance: Instance, solution: Solution, rng: random.Random) -> Solution:
     """Picks one (solution event, event resource) pair at random and
     reassigns it to a different resource of the same ResourceType. Returns
     a new Solution; the input is untouched. Structural sharing as in
@@ -132,12 +124,8 @@ def resource_reassign_move(
     se_index, r_index, type_ref = rng.choice(candidates)
     target_event = solution.events[se_index]
     target_resource = target_event.resources[r_index]
-    alternatives = [
-        r for r in resources_by_type[type_ref] if r != target_resource.resource_ref
-    ]
-    new_resource = SolutionEventResource(
-        role=target_resource.role, resource_ref=rng.choice(alternatives)
-    )
+    alternatives = [r for r in resources_by_type[type_ref] if r != target_resource.resource_ref]
+    new_resource = SolutionEventResource(role=target_resource.role, resource_ref=rng.choice(alternatives))
 
     new_resources = list(target_event.resources)
     new_resources[r_index] = new_resource
@@ -295,10 +283,5 @@ def large_perturbation_move(
         candidates = valid_start_time_ids(instance, se.duration)
         if not candidates:
             raise ValueError(f"event {se.event_ref!r} has no valid start time")
-        other_times = [t for t in candidates if t != se.time_ref]
-        if not other_times:
-            raise ValueError(
-                f"event {se.event_ref!r} has no alternative valid start time"
-            )
-        new_events[i] = replace(se, time_ref=rng.choice(other_times))
+        new_events[i] = replace(se, time_ref=rng.choice(candidates))
     return replace(solution, events=new_events)
