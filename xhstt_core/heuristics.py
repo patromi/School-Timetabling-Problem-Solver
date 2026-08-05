@@ -2,13 +2,13 @@ import random
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 
+from xhstt_core.cost import evaluate_cost
 from xhstt_core.evaluator_ref import (
     _assigned_resource_ids,
     _events_in_applies_to,
     _resources_in_applies_to,
     evaluate_constraint,
     resolve_occurrences,
-    total_cost,
     valid_start_time_ids,
 )
 from xhstt_core.model import Instance, Solution
@@ -47,9 +47,10 @@ def _best_time_for_event(
 ) -> Solution:
     """Returns the solution obtained by moving solution.events[index] to
     whichever valid start time (INCLUDING its current one) yields the
-    lowest total_cost. Including the current time means the result is
-    never worse than the input -- move_best and repair_hard_violation both
-    depend on this to guarantee they never regress the solution."""
+    lowest cost (evaluate_cost(...).as_scalar(), numerically identical to
+    evaluator_ref.total_cost). Including the current time means the result
+    is never worse than the input -- move_best and repair_hard_violation
+    both depend on this to guarantee they never regress the solution."""
     event = solution.events[index]
     # construct.build_initial only ever leaves duration=None paired with
     # time_ref=None (a resources-only SolutionEvent that never needed a
@@ -70,7 +71,7 @@ def _best_time_for_event(
         new_events = list(solution.events)
         new_events[index] = replace(event, time_ref=time_ref)
         candidate_solution = replace(solution, events=new_events)
-        cost = total_cost(instance, candidate_solution)
+        cost = evaluate_cost(instance, candidate_solution).as_scalar()
         if best_cost is None or cost < best_cost:
             best_cost = cost
             best_solution = candidate_solution
@@ -140,7 +141,7 @@ _RUIN_MAX_EVENTS = 6
 def ruin_and_recreate(
     solution: Solution, instance: Instance, rng: random.Random
 ) -> Solution:
-    """"Ruin-and-recreate" perturbation (Schrimpf et al. 1998): "ruins" a
+    """ "Ruin-and-recreate" perturbation (Schrimpf et al. 1998): "ruins" a
     small random slice of the solution -- about _RUIN_FRACTION of its
     movable events, clamped to [_RUIN_MIN_EVENTS, _RUIN_MAX_EVENTS] -- by
     reassigning each to a uniformly random valid time, then "recreates"

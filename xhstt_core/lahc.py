@@ -2,7 +2,7 @@ import random
 import time
 from collections.abc import Callable
 
-from xhstt_core.evaluator_ref import total_cost
+from xhstt_core.cost import evaluate_cost
 from xhstt_core.heuristics import MANUAL_HEURISTICS, Heuristic
 from xhstt_core.model import Instance, Solution
 
@@ -34,7 +34,7 @@ def run_lahc(
     pool = heuristics if heuristics is not None else MANUAL_HEURISTICS
 
     current = initial
-    current_cost = total_cost(instance, current)
+    current_cost = evaluate_cost(instance, current).as_scalar()
     best, best_cost = current, current_cost
     history = [current_cost] * history_length
     last_progress_time = time.monotonic()
@@ -45,7 +45,7 @@ def run_lahc(
             candidate = heuristic.apply(current, instance, rng)
         except ValueError:
             continue
-        candidate_cost = total_cost(instance, candidate)
+        candidate_cost = evaluate_cost(instance, candidate).as_scalar()
 
         v = step % history_length
         if candidate_cost <= current_cost or candidate_cost <= history[v]:
