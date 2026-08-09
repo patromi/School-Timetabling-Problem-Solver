@@ -10,7 +10,7 @@ issue#<issue>
 
 > [!TIP]
 > **Zadania w VS Code (Tasks)**:
-> Jeśli korzystasz z VS Code, wszystkie opisane poniżej komendy (instalacja środowiska, uruchamianie solvera, testy, lintery, DVC) możesz uruchamiać wygodnie z poziomu edytora.
+> Jeśli korzystasz z VS Code, wszystkie opisane poniżej komendy (instalacja środowiska, uruchamianie solvera, testy, lintery) możesz uruchamiać wygodnie z poziomu edytora.
 > Aby to zrobić, otwórz menu `Terminal` -> `Run Task...` (lub użyj skrótu klawiszowego `Ctrl+Shift+B` / `Cmd+Shift+B`) i wybierz odpowiednie zadanie z listy.
 
 Do zarządzania zależnościami i środowiskiem w Pythonie używamy narzędzia `uv`.
@@ -71,30 +71,27 @@ W repozytorium skonfigurowane są pre-commit hooki, które automatycznie sprawdz
   uv run pre-commit run --all-files
   ```
 
-### Zarządzanie danymi (DVC)
+### Zarządzanie danymi (Git LFS)
 
-Duże pliki z danymi (np. w folderze `data/raw/`) są wersjonowane za pomocą narzędzia DVC i przechowywane na Google Drive.
+Duże pliki z danymi (np. w folderze `data/`) są wersjonowane za pomocą narzędzia **Git LFS** (Large File Storage).
 
-* **Pobranie aktualnych danych na start**:
-  1. Skonfiguruj klucze uwierzytelniające lokalnie (uzyskaj `gdrive_client_id` oraz `gdrive_client_secret` od autora projektu i wklej poniżej):
-     ```bash
-     uv run dvc remote modify franekremote --local gdrive_client_id "TWÓJ_CLIENT_ID"
-     uv run dvc remote modify franekremote --local gdrive_client_secret "TWÓJ_CLIENT_SECRET"
-     ```
-  2. Pobierz pliki poleceniem:
-     ```bash
-     uv run dvc pull
-     ```
-     *(Uwaga: Zostaniesz poproszony o jednorazowe zalogowanie się w przeglądarce do konta Google).*
+* **Instalacja Git LFS**:
+  Przed rozpoczęciem pracy upewnij się, że masz zainstalowany Git LFS na swoim systemie (np. na Windows: `winget install github.gitlfs` lub pobierz instalator ze strony https://git-lfs.github.com/). Następnie zainicjalizuj go jednorazowo w swoim systemie komendą:
+  ```bash
+  git lfs install
+  ```
 
-* **Aktualizacja / dodanie nowych danych**:
-  1. Dodaj lub zmień pliki w folderze danych (np. `data/raw/`).
-  2. Zaktualizuj śledzenie w DVC:
-     ```bash
-     uv run dvc add data/raw
-     ```
-  3. Wyślij dane na Google Drive:
-     ```bash
-     uv run dvc push
-     ```
-  4. Skomituj plik `data/raw.dvc` oraz pliki `.gitignore` wygenerowane przez DVC do repozytorium Git.
+* **Pobranie i wysyłanie danych**:
+  Pliki śledzone przez Git LFS są pobierane i wysyłane automatycznie przy standardowych poleceniach Gita:
+  ```bash
+  git pull
+  git push
+  ```
+
+* **Dodanie nowych dużych plików**:
+  Wszelkie nowe pliki umieszczane w folderze `data/` zostaną automatycznie objęte wersjonowaniem LFS dzięki regułom zdefiniowanym w pliku `.gitattributes`. Wystarczy dodać je do commita w zwykły sposób:
+  ```bash
+  git add data/
+  git commit -m "[issue#...]: Dodanie nowych plików danych"
+  git push
+  ```
