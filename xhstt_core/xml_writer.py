@@ -57,7 +57,7 @@ def extract_instance_archive(archive_xml: str, instance_id: str) -> str:
     instance can be written and submitted to HSEval without dragging the
     other instances along."""
     match = re.search(
-        rf'<Instance Id={quoteattr(instance_id)}[^>]*>.*?</Instance>',
+        rf"<Instance Id={quoteattr(instance_id)}[^>]*>.*?</Instance>",
         archive_xml,
         re.DOTALL,
     )
@@ -77,10 +77,14 @@ def render_archive_with_solution_groups(
     `groups` (added if absent) -- the shape HSEval's op=report endpoint
     expects for evaluating solver-produced solutions against a real
     instance."""
-    groups_xml = "<SolutionGroups>" + "".join(
-        render_solution_group(g) for g in groups
-    ) + "</SolutionGroups>"
+    groups_xml = (
+        "<SolutionGroups>"
+        + "".join(render_solution_group(g) for g in groups)
+        + "</SolutionGroups>"
+    )
 
     if _SOLUTION_GROUPS_RE.search(archive_xml):
         return _SOLUTION_GROUPS_RE.sub(groups_xml, archive_xml, count=1)
-    return _ARCHIVE_CLOSE_RE.sub(groups_xml + "</HighSchoolTimetableArchive>", archive_xml, count=1)
+    return _ARCHIVE_CLOSE_RE.sub(
+        groups_xml + "</HighSchoolTimetableArchive>", archive_xml, count=1
+    )
