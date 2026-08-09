@@ -1,6 +1,6 @@
 import random
 import time
-from typing import Callable
+from collections.abc import Callable
 
 from xhstt_core.evaluator_ref import total_cost
 from xhstt_core.model import Instance, Solution
@@ -58,7 +58,9 @@ def run_lahc(
 
         if on_progress is not None:
             now = time.monotonic()
-            if (step + 1) % progress_every == 0 or now - last_progress_time >= progress_seconds:
+            if (
+                step + 1
+            ) % progress_every == 0 or now - last_progress_time >= progress_seconds:
                 on_progress(step + 1, best_cost)
                 last_progress_time = now
 

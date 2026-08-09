@@ -10,7 +10,9 @@ from xhstt_core.model import Instance, Solution, SolutionEventResource
 _MAX_SWAP_ATTEMPTS = 20
 
 
-def time_reassign_move(instance: Instance, solution: Solution, rng: random.Random) -> Solution:
+def time_reassign_move(
+    instance: Instance, solution: Solution, rng: random.Random
+) -> Solution:
     """Picks one solution event at random and reassigns it to a different
     (uniformly random) VALID time -- one where the event's duration still
     fits without overflowing past the last defined Time or crossing into
@@ -49,7 +51,9 @@ def time_reassign_move(instance: Instance, solution: Solution, rng: random.Rando
     return replace(solution, events=new_events)
 
 
-def time_swap_move(instance: Instance, solution: Solution, rng: random.Random) -> Solution:
+def time_swap_move(
+    instance: Instance, solution: Solution, rng: random.Random
+) -> Solution:
     """Picks two distinct solution events at random and swaps their times.
     Returns a new Solution; the input is untouched. Structural sharing as
     in time_reassign_move.
@@ -79,7 +83,9 @@ def time_swap_move(instance: Instance, solution: Solution, rng: random.Random) -
     raise ValueError("no valid time swap found within the attempt budget")
 
 
-def resource_reassign_move(instance: Instance, solution: Solution, rng: random.Random) -> Solution:
+def resource_reassign_move(
+    instance: Instance, solution: Solution, rng: random.Random
+) -> Solution:
     """Picks one (solution event, event resource) pair at random and
     reassigns it to a different resource of the same ResourceType. Returns
     a new Solution; the input is untouched. Structural sharing as in
@@ -104,8 +110,12 @@ def resource_reassign_move(instance: Instance, solution: Solution, rng: random.R
     se_index, r_index, type_ref = rng.choice(candidates)
     target_event = solution.events[se_index]
     target_resource = target_event.resources[r_index]
-    alternatives = [r for r in resources_by_type[type_ref] if r != target_resource.resource_ref]
-    new_resource = SolutionEventResource(role=target_resource.role, resource_ref=rng.choice(alternatives))
+    alternatives = [
+        r for r in resources_by_type[type_ref] if r != target_resource.resource_ref
+    ]
+    new_resource = SolutionEventResource(
+        role=target_resource.role, resource_ref=rng.choice(alternatives)
+    )
 
     new_resources = list(target_event.resources)
     new_resources[r_index] = new_resource

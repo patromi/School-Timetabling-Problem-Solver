@@ -60,3 +60,6 @@ venv.bak/
 .idea/
 *.swp
 *.swo
+
+# Solver output results
+output/
