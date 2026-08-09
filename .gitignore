@@ -53,14 +53,6 @@ venv.bak/
 
 # Project Directories & Data files
 # We ignore the contents of these directories but track the directories themselves using .gitkeep files.
-data/processed/*
-!data/processed/.gitkeep
-data/raw/*
-!data/raw/.gitkeep
-data/results/*
-!data/results/.gitkeep
-generated/*
-!generated/.gitkeep
 
 # IDEs and Editors
 .vscode/*
