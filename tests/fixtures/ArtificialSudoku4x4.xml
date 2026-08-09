@@ -1,0 +1,878 @@
+<HighSchoolTimetableArchive>
+	<Instances>
+		<Instance Id="ArtificialSudoku4x4_XHSTT2014A">
+			<MetaData>
+				<Name>Sudoku4x4</Name>
+				<Contributor>Gerhard Post, University of Twente</Contributor>
+				<Date>25/11/2009 16:44:55</Date>
+				<Country>Artificial</Country>
+				<Description>This dataset is a 4x4 Sudoku (initially empty).</Description>
+				<Remarks>Dataset automatically created from SchoolTimeTablingProject.</Remarks>
+			</MetaData>
+			<Times>
+				<TimeGroups>
+					<Day Id="gr_Day">
+						<Name>Day</Name>
+					</Day>
+				</TimeGroups>
+				<Time Id="Day_1">
+					<Name>Day_1</Name>
+					<Day Reference="gr_Day"/>
+				</Time>
+				<Time Id="Day_2">
+					<Name>Day_2</Name>
+					<Day Reference="gr_Day"/>
+				</Time>
+				<Time Id="Day_3">
+					<Name>Day_3</Name>
+					<Day Reference="gr_Day"/>
+				</Time>
+				<Time Id="Day_4">
+					<Name>Day_4</Name>
+					<Day Reference="gr_Day"/>
+				</Time>
+			</Times>
+			<Resources>
+				<ResourceTypes>
+					<ResourceType Id="Teacher">
+						<Name>Teacher</Name>
+					</ResourceType>
+					<ResourceType Id="Class">
+						<Name>Class</Name>
+					</ResourceType>
+					<ResourceType Id="Room">
+						<Name>Room</Name>
+					</ResourceType>
+				</ResourceTypes>
+				<ResourceGroups>
+					<ResourceGroup Id="gr_Teachers">
+						<Name>allTeachers</Name>
+						<ResourceType Reference="Teacher"/>
+					</ResourceGroup>
+					<ResourceGroup Id="gr_Classes">
+						<Name>allClasses</Name>
+						<ResourceType Reference="Class"/>
+					</ResourceGroup>
+					<ResourceGroup Id="gr_Rooms">
+						<Name>allRooms</Name>
+						<ResourceType Reference="Room"/>
+					</ResourceGroup>
+					<ResourceGroup Id="gr_RT1">
+						<Name>RT1</Name>
+						<ResourceType Reference="Room"/>
+					</ResourceGroup>
+					<ResourceGroup Id="gr_RT2">
+						<Name>RT2</Name>
+						<ResourceType Reference="Room"/>
+					</ResourceGroup>
+					<ResourceGroup Id="gr_RT3">
+						<Name>RT3</Name>
+						<ResourceType Reference="Room"/>
+					</ResourceGroup>
+					<ResourceGroup Id="gr_RT4">
+						<Name>RT4</Name>
+						<ResourceType Reference="Room"/>
+					</ResourceGroup>
+				</ResourceGroups>
+				<Resource Id="T1">
+					<Name>T1</Name>
+					<ResourceType Reference="Teacher"/>
+					<ResourceGroups>
+						<ResourceGroup Reference="gr_Teachers"/>
+					</ResourceGroups>
+				</Resource>
+				<Resource Id="T2">
+					<Name>T2</Name>
+					<ResourceType Reference="Teacher"/>
+					<ResourceGroups>
+						<ResourceGroup Reference="gr_Teachers"/>
+					</ResourceGroups>
+				</Resource>
+				<Resource Id="T3">
+					<Name>T3</Name>
+					<ResourceType Reference="Teacher"/>
+					<ResourceGroups>
+						<ResourceGroup Reference="gr_Teachers"/>
+					</ResourceGroups>
+				</Resource>
+				<Resource Id="T4">
+					<Name>T4</Name>
+					<ResourceType Reference="Teacher"/>
+					<ResourceGroups>
+						<ResourceGroup Reference="gr_Teachers"/>
+					</ResourceGroups>
+				</Resource>
+				<Resource Id="C1">
+					<Name>C1</Name>
+					<ResourceType Reference="Class"/>
+					<ResourceGroups>
+						<ResourceGroup Reference="gr_Classes"/>
+					</ResourceGroups>
+				</Resource>
+				<Resource Id="C2">
+					<Name>C2</Name>
+					<ResourceType Reference="Class"/>
+					<ResourceGroups>
+						<ResourceGroup Reference="gr_Classes"/>
+					</ResourceGroups>
+				</Resource>
+				<Resource Id="C3">
+					<Name>C3</Name>
+					<ResourceType Reference="Class"/>
+					<ResourceGroups>
+						<ResourceGroup Reference="gr_Classes"/>
+					</ResourceGroups>
+				</Resource>
+				<Resource Id="C4">
+					<Name>C4</Name>
+					<ResourceType Reference="Class"/>
+					<ResourceGroups>
+						<ResourceGroup Reference="gr_Classes"/>
+					</ResourceGroups>
+				</Resource>
+				<Resource Id="R1">
+					<Name>R1</Name>
+					<ResourceType Reference="Room"/>
+					<ResourceGroups>
+						<ResourceGroup Reference="gr_Rooms"/>
+						<ResourceGroup Reference="gr_RT1"/>
+					</ResourceGroups>
+				</Resource>
+				<Resource Id="R2">
+					<Name>R2</Name>
+					<ResourceType Reference="Room"/>
+					<ResourceGroups>
+						<ResourceGroup Reference="gr_Rooms"/>
+						<ResourceGroup Reference="gr_RT2"/>
+					</ResourceGroups>
+				</Resource>
+				<Resource Id="R3">
+					<Name>R3</Name>
+					<ResourceType Reference="Room"/>
+					<ResourceGroups>
+						<ResourceGroup Reference="gr_Rooms"/>
+						<ResourceGroup Reference="gr_RT3"/>
+					</ResourceGroups>
+				</Resource>
+				<Resource Id="R4">
+					<Name>R4</Name>
+					<ResourceType Reference="Room"/>
+					<ResourceGroups>
+						<ResourceGroup Reference="gr_Rooms"/>
+						<ResourceGroup Reference="gr_RT4"/>
+					</ResourceGroups>
+				</Resource>
+			</Resources>
+			<Events>
+				<EventGroups>
+					<Course Id="gr_math-C1">
+						<Name>math-C1</Name>
+					</Course>
+					<Course Id="gr_english-C1">
+						<Name>english-C1</Name>
+					</Course>
+					<Course Id="gr_econ-C1">
+						<Name>econ-C1</Name>
+					</Course>
+					<Course Id="gr_sports-C1">
+						<Name>sports-C1</Name>
+					</Course>
+					<Course Id="gr_math-C2">
+						<Name>math-C2</Name>
+					</Course>
+					<Course Id="gr_english-C2">
+						<Name>english-C2</Name>
+					</Course>
+					<Course Id="gr_econ-C2">
+						<Name>econ-C2</Name>
+					</Course>
+					<Course Id="gr_sports-C2">
+						<Name>sports-C2</Name>
+					</Course>
+					<Course Id="gr_math-C3">
+						<Name>math-C3</Name>
+					</Course>
+					<Course Id="gr_english-C3">
+						<Name>english-C3</Name>
+					</Course>
+					<Course Id="gr_econ-C3">
+						<Name>econ-C3</Name>
+					</Course>
+					<Course Id="gr_sports-C3">
+						<Name>sports-C3</Name>
+					</Course>
+					<Course Id="gr_math-C4">
+						<Name>math-C4</Name>
+					</Course>
+					<Course Id="gr_english-C4">
+						<Name>english-C4</Name>
+					</Course>
+					<Course Id="gr_econ-C4">
+						<Name>econ-C4</Name>
+					</Course>
+					<Course Id="gr_sports-C4">
+						<Name>sports-C4</Name>
+					</Course>
+					<EventGroup Id="gr_AllEvents">
+						<Name>EventsOfDurationOne</Name>
+					</EventGroup>
+					<EventGroup Id="gr_EventsRT1">
+						<Name>RT1</Name>
+					</EventGroup>
+					<EventGroup Id="gr_EventsRT2">
+						<Name>RT2</Name>
+					</EventGroup>
+					<EventGroup Id="gr_EventsRT3">
+						<Name>RT3</Name>
+					</EventGroup>
+					<EventGroup Id="gr_EventsRT4">
+						<Name>RT4</Name>
+					</EventGroup>
+				</EventGroups>
+				<Event Id="Event1">
+					<Name>math-C1_1</Name>
+					<Duration>1</Duration>
+					<Course Reference="gr_math-C1"/>
+					<Resources>
+						<Resource Reference="C1">
+							<Role>Class</Role>
+							<ResourceType Reference="Class"/>
+						</Resource>
+						<Resource Reference="T1">
+							<Role>Teacher</Role>
+							<ResourceType Reference="Teacher"/>
+						</Resource>
+						<Resource>
+							<Role>RoomRT1</Role>
+							<ResourceType Reference="Room"/>
+						</Resource>
+					</Resources>
+					<EventGroups>
+						<EventGroup Reference="gr_EventsRT1"/>
+						<EventGroup Reference="gr_AllEvents"/>
+					</EventGroups>
+				</Event>
+				<Event Id="Event2">
+					<Name>english-C1_1</Name>
+					<Duration>1</Duration>
+					<Course Reference="gr_english-C1"/>
+					<Resources>
+						<Resource Reference="C1">
+							<Role>Class</Role>
+							<ResourceType Reference="Class"/>
+						</Resource>
+						<Resource Reference="T2">
+							<Role>Teacher</Role>
+							<ResourceType Reference="Teacher"/>
+						</Resource>
+						<Resource>
+							<Role>RoomRT1</Role>
+							<ResourceType Reference="Room"/>
+						</Resource>
+					</Resources>
+					<EventGroups>
+						<EventGroup Reference="gr_EventsRT1"/>
+						<EventGroup Reference="gr_AllEvents"/>
+					</EventGroups>
+				</Event>
+				<Event Id="Event3">
+					<Name>econ-C1_1</Name>
+					<Duration>1</Duration>
+					<Course Reference="gr_econ-C1"/>
+					<Resources>
+						<Resource Reference="C1">
+							<Role>Class</Role>
+							<ResourceType Reference="Class"/>
+						</Resource>
+						<Resource Reference="T3">
+							<Role>Teacher</Role>
+							<ResourceType Reference="Teacher"/>
+						</Resource>
+						<Resource>
+							<Role>RoomRT2</Role>
+							<ResourceType Reference="Room"/>
+						</Resource>
+					</Resources>
+					<EventGroups>
+						<EventGroup Reference="gr_EventsRT2"/>
+						<EventGroup Reference="gr_AllEvents"/>
+					</EventGroups>
+				</Event>
+				<Event Id="Event4">
+					<Name>sports-C1_1</Name>
+					<Duration>1</Duration>
+					<Course Reference="gr_sports-C1"/>
+					<Resources>
+						<Resource Reference="C1">
+							<Role>Class</Role>
+							<ResourceType Reference="Class"/>
+						</Resource>
+						<Resource Reference="T4">
+							<Role>Teacher</Role>
+							<ResourceType Reference="Teacher"/>
+						</Resource>
+						<Resource>
+							<Role>RoomRT2</Role>
+							<ResourceType Reference="Room"/>
+						</Resource>
+					</Resources>
+					<EventGroups>
+						<EventGroup Reference="gr_EventsRT2"/>
+						<EventGroup Reference="gr_AllEvents"/>
+					</EventGroups>
+				</Event>
+				<Event Id="Event5">
+					<Name>math-C2_1</Name>
+					<Duration>1</Duration>
+					<Course Reference="gr_math-C2"/>
+					<Resources>
+						<Resource Reference="C2">
+							<Role>Class</Role>
+							<ResourceType Reference="Class"/>
+						</Resource>
+						<Resource Reference="T1">
+							<Role>Teacher</Role>
+							<ResourceType Reference="Teacher"/>
+						</Resource>
+						<Resource>
+							<Role>RoomRT1</Role>
+							<ResourceType Reference="Room"/>
+						</Resource>
+					</Resources>
+					<EventGroups>
+						<EventGroup Reference="gr_EventsRT1"/>
+						<EventGroup Reference="gr_AllEvents"/>
+					</EventGroups>
+				</Event>
+				<Event Id="Event6">
+					<Name>english-C2_1</Name>
+					<Duration>1</Duration>
+					<Course Reference="gr_english-C2"/>
+					<Resources>
+						<Resource Reference="C2">
+							<Role>Class</Role>
+							<ResourceType Reference="Class"/>
+						</Resource>
+						<Resource Reference="T2">
+							<Role>Teacher</Role>
+							<ResourceType Reference="Teacher"/>
+						</Resource>
+						<Resource>
+							<Role>RoomRT1</Role>
+							<ResourceType Reference="Room"/>
+						</Resource>
+					</Resources>
+					<EventGroups>
+						<EventGroup Reference="gr_EventsRT1"/>
+						<EventGroup Reference="gr_AllEvents"/>
+					</EventGroups>
+				</Event>
+				<Event Id="Event7">
+					<Name>econ-C2_1</Name>
+					<Duration>1</Duration>
+					<Course Reference="gr_econ-C2"/>
+					<Resources>
+						<Resource Reference="C2">
+							<Role>Class</Role>
+							<ResourceType Reference="Class"/>
+						</Resource>
+						<Resource Reference="T3">
+							<Role>Teacher</Role>
+							<ResourceType Reference="Teacher"/>
+						</Resource>
+						<Resource>
+							<Role>RoomRT2</Role>
+							<ResourceType Reference="Room"/>
+						</Resource>
+					</Resources>
+					<EventGroups>
+						<EventGroup Reference="gr_EventsRT2"/>
+						<EventGroup Reference="gr_AllEvents"/>
+					</EventGroups>
+				</Event>
+				<Event Id="Event8">
+					<Name>sports-C2_1</Name>
+					<Duration>1</Duration>
+					<Course Reference="gr_sports-C2"/>
+					<Resources>
+						<Resource Reference="C2">
+							<Role>Class</Role>
+							<ResourceType Reference="Class"/>
+						</Resource>
+						<Resource Reference="T4">
+							<Role>Teacher</Role>
+							<ResourceType Reference="Teacher"/>
+						</Resource>
+						<Resource>
+							<Role>RoomRT2</Role>
+							<ResourceType Reference="Room"/>
+						</Resource>
+					</Resources>
+					<EventGroups>
+						<EventGroup Reference="gr_EventsRT2"/>
+						<EventGroup Reference="gr_AllEvents"/>
+					</EventGroups>
+				</Event>
+				<Event Id="Event9">
+					<Name>math-C3_1</Name>
+					<Duration>1</Duration>
+					<Course Reference="gr_math-C3"/>
+					<Resources>
+						<Resource Reference="C3">
+							<Role>Class</Role>
+							<ResourceType Reference="Class"/>
+						</Resource>
+						<Resource Reference="T1">
+							<Role>Teacher</Role>
+							<ResourceType Reference="Teacher"/>
+						</Resource>
+						<Resource>
+							<Role>RoomRT3</Role>
+							<ResourceType Reference="Room"/>
+						</Resource>
+					</Resources>
+					<EventGroups>
+						<EventGroup Reference="gr_EventsRT3"/>
+						<EventGroup Reference="gr_AllEvents"/>
+					</EventGroups>
+				</Event>
+				<Event Id="Event10">
+					<Name>english-C3_1</Name>
+					<Duration>1</Duration>
+					<Course Reference="gr_english-C3"/>
+					<Resources>
+						<Resource Reference="C3">
+							<Role>Class</Role>
+							<ResourceType Reference="Class"/>
+						</Resource>
+						<Resource Reference="T2">
+							<Role>Teacher</Role>
+							<ResourceType Reference="Teacher"/>
+						</Resource>
+						<Resource>
+							<Role>RoomRT3</Role>
+							<ResourceType Reference="Room"/>
+						</Resource>
+					</Resources>
+					<EventGroups>
+						<EventGroup Reference="gr_EventsRT3"/>
+						<EventGroup Reference="gr_AllEvents"/>
+					</EventGroups>
+				</Event>
+				<Event Id="Event11">
+					<Name>econ-C3_1</Name>
+					<Duration>1</Duration>
+					<Course Reference="gr_econ-C3"/>
+					<Resources>
+						<Resource Reference="C3">
+							<Role>Class</Role>
+							<ResourceType Reference="Class"/>
+						</Resource>
+						<Resource Reference="T3">
+							<Role>Teacher</Role>
+							<ResourceType Reference="Teacher"/>
+						</Resource>
+						<Resource>
+							<Role>RoomRT4</Role>
+							<ResourceType Reference="Room"/>
+						</Resource>
+					</Resources>
+					<EventGroups>
+						<EventGroup Reference="gr_EventsRT4"/>
+						<EventGroup Reference="gr_AllEvents"/>
+					</EventGroups>
+				</Event>
+				<Event Id="Event12">
+					<Name>sports-C3_1</Name>
+					<Duration>1</Duration>
+					<Course Reference="gr_sports-C3"/>
+					<Resources>
+						<Resource Reference="C3">
+							<Role>Class</Role>
+							<ResourceType Reference="Class"/>
+						</Resource>
+						<Resource Reference="T4">
+							<Role>Teacher</Role>
+							<ResourceType Reference="Teacher"/>
+						</Resource>
+						<Resource>
+							<Role>RoomRT4</Role>
+							<ResourceType Reference="Room"/>
+						</Resource>
+					</Resources>
+					<EventGroups>
+						<EventGroup Reference="gr_EventsRT4"/>
+						<EventGroup Reference="gr_AllEvents"/>
+					</EventGroups>
+				</Event>
+				<Event Id="Event13">
+					<Name>math-C4_1</Name>
+					<Duration>1</Duration>
+					<Course Reference="gr_math-C4"/>
+					<Resources>
+						<Resource Reference="C4">
+							<Role>Class</Role>
+							<ResourceType Reference="Class"/>
+						</Resource>
+						<Resource Reference="T1">
+							<Role>Teacher</Role>
+							<ResourceType Reference="Teacher"/>
+						</Resource>
+						<Resource>
+							<Role>RoomRT3</Role>
+							<ResourceType Reference="Room"/>
+						</Resource>
+					</Resources>
+					<EventGroups>
+						<EventGroup Reference="gr_EventsRT3"/>
+						<EventGroup Reference="gr_AllEvents"/>
+					</EventGroups>
+				</Event>
+				<Event Id="Event14">
+					<Name>english-C4_1</Name>
+					<Duration>1</Duration>
+					<Course Reference="gr_english-C4"/>
+					<Resources>
+						<Resource Reference="C4">
+							<Role>Class</Role>
+							<ResourceType Reference="Class"/>
+						</Resource>
+						<Resource Reference="T2">
+							<Role>Teacher</Role>
+							<ResourceType Reference="Teacher"/>
+						</Resource>
+						<Resource>
+							<Role>RoomRT3</Role>
+							<ResourceType Reference="Room"/>
+						</Resource>
+					</Resources>
+					<EventGroups>
+						<EventGroup Reference="gr_EventsRT3"/>
+						<EventGroup Reference="gr_AllEvents"/>
+					</EventGroups>
+				</Event>
+				<Event Id="Event15">
+					<Name>econ-C4_1</Name>
+					<Duration>1</Duration>
+					<Course Reference="gr_econ-C4"/>
+					<Resources>
+						<Resource Reference="C4">
+							<Role>Class</Role>
+							<ResourceType Reference="Class"/>
+						</Resource>
+						<Resource Reference="T3">
+							<Role>Teacher</Role>
+							<ResourceType Reference="Teacher"/>
+						</Resource>
+						<Resource>
+							<Role>RoomRT4</Role>
+							<ResourceType Reference="Room"/>
+						</Resource>
+					</Resources>
+					<EventGroups>
+						<EventGroup Reference="gr_EventsRT4"/>
+						<EventGroup Reference="gr_AllEvents"/>
+					</EventGroups>
+				</Event>
+				<Event Id="Event16">
+					<Name>sports-C4_1</Name>
+					<Duration>1</Duration>
+					<Course Reference="gr_sports-C4"/>
+					<Resources>
+						<Resource Reference="C4">
+							<Role>Class</Role>
+							<ResourceType Reference="Class"/>
+						</Resource>
+						<Resource Reference="T4">
+							<Role>Teacher</Role>
+							<ResourceType Reference="Teacher"/>
+						</Resource>
+						<Resource>
+							<Role>RoomRT4</Role>
+							<ResourceType Reference="Room"/>
+						</Resource>
+					</Resources>
+					<EventGroups>
+						<EventGroup Reference="gr_EventsRT4"/>
+						<EventGroup Reference="gr_AllEvents"/>
+					</EventGroups>
+				</Event>
+			</Events>
+			<Constraints>
+				<AssignResourceConstraint Id="AssignResources_1">
+					<Name>AssignResourcesRT1</Name>
+					<Required>true</Required>
+					<Weight>1</Weight>
+					<CostFunction>Linear</CostFunction>
+					<AppliesTo>
+						<EventGroups>
+							<EventGroup Reference="gr_EventsRT1"/>
+						</EventGroups>
+					</AppliesTo>
+					<Role>RoomRT1</Role>
+				</AssignResourceConstraint>
+				<AssignResourceConstraint Id="AssignResources_2">
+					<Name>AssignResourcesRT2</Name>
+					<Required>true</Required>
+					<Weight>1</Weight>
+					<CostFunction>Linear</CostFunction>
+					<AppliesTo>
+						<EventGroups>
+							<EventGroup Reference="gr_EventsRT2"/>
+						</EventGroups>
+					</AppliesTo>
+					<Role>RoomRT2</Role>
+				</AssignResourceConstraint>
+				<AssignResourceConstraint Id="AssignResources_3">
+					<Name>AssignResourcesRT3</Name>
+					<Required>true</Required>
+					<Weight>1</Weight>
+					<CostFunction>Linear</CostFunction>
+					<AppliesTo>
+						<EventGroups>
+							<EventGroup Reference="gr_EventsRT3"/>
+						</EventGroups>
+					</AppliesTo>
+					<Role>RoomRT3</Role>
+				</AssignResourceConstraint>
+				<AssignResourceConstraint Id="AssignResources_4">
+					<Name>AssignResourcesRT4</Name>
+					<Required>true</Required>
+					<Weight>1</Weight>
+					<CostFunction>Linear</CostFunction>
+					<AppliesTo>
+						<EventGroups>
+							<EventGroup Reference="gr_EventsRT4"/>
+						</EventGroups>
+					</AppliesTo>
+					<Role>RoomRT4</Role>
+				</AssignResourceConstraint>
+				<AssignTimeConstraint Id="AssignTimes_5">
+					<Name>AssignTimes</Name>
+					<Required>true</Required>
+					<Weight>1</Weight>
+					<CostFunction>Linear</CostFunction>
+					<AppliesTo>
+						<EventGroups>
+							<EventGroup Reference="gr_AllEvents"/>
+						</EventGroups>
+					</AppliesTo>
+				</AssignTimeConstraint>
+				<PreferResourcesConstraint Id="PreferredResources_6">
+					<Name>PreferredResourcesRT1</Name>
+					<Required>true</Required>
+					<Weight>1</Weight>
+					<CostFunction>Linear</CostFunction>
+					<AppliesTo>
+						<EventGroups>
+							<EventGroup Reference="gr_EventsRT1"/>
+						</EventGroups>
+					</AppliesTo>
+					<ResourceGroups>
+						<ResourceGroup Reference="gr_RT1"/>
+					</ResourceGroups>
+					<Role>RoomRT1</Role>
+				</PreferResourcesConstraint>
+				<PreferResourcesConstraint Id="PreferredResources_7">
+					<Name>PreferredResourcesRT2</Name>
+					<Required>true</Required>
+					<Weight>1</Weight>
+					<CostFunction>Linear</CostFunction>
+					<AppliesTo>
+						<EventGroups>
+							<EventGroup Reference="gr_EventsRT2"/>
+						</EventGroups>
+					</AppliesTo>
+					<ResourceGroups>
+						<ResourceGroup Reference="gr_RT2"/>
+					</ResourceGroups>
+					<Role>RoomRT2</Role>
+				</PreferResourcesConstraint>
+				<PreferResourcesConstraint Id="PreferredResources_8">
+					<Name>PreferredResourcesRT3</Name>
+					<Required>true</Required>
+					<Weight>1</Weight>
+					<CostFunction>Linear</CostFunction>
+					<AppliesTo>
+						<EventGroups>
+							<EventGroup Reference="gr_EventsRT3"/>
+						</EventGroups>
+					</AppliesTo>
+					<ResourceGroups>
+						<ResourceGroup Reference="gr_RT3"/>
+					</ResourceGroups>
+					<Role>RoomRT3</Role>
+				</PreferResourcesConstraint>
+				<PreferResourcesConstraint Id="PreferredResources_9">
+					<Name>PreferredResourcesRT4</Name>
+					<Required>true</Required>
+					<Weight>1</Weight>
+					<CostFunction>Linear</CostFunction>
+					<AppliesTo>
+						<EventGroups>
+							<EventGroup Reference="gr_EventsRT4"/>
+						</EventGroups>
+					</AppliesTo>
+					<ResourceGroups>
+						<ResourceGroup Reference="gr_RT4"/>
+					</ResourceGroups>
+					<Role>RoomRT4</Role>
+				</PreferResourcesConstraint>
+				<AvoidClashesConstraint Id="NoResourceClashes_13">
+					<Name>NoResourceClashes</Name>
+					<Required>true</Required>
+					<Weight>1</Weight>
+					<CostFunction>Linear</CostFunction>
+					<AppliesTo>
+						<ResourceGroups>
+							<ResourceGroup Reference="gr_Teachers"/>
+							<ResourceGroup Reference="gr_Rooms"/>
+							<ResourceGroup Reference="gr_Classes"/>
+						</ResourceGroups>
+					</AppliesTo>
+				</AvoidClashesConstraint>
+			</Constraints>
+		</Instance>
+	</Instances>
+	<SolutionGroups>
+		<SolutionGroup Id="GerhardPost_2009-04-29">
+			<MetaData>
+				<Contributor>Gerhard Post, University of Twente</Contributor>
+				<Date>25/11/2009 16:44:55</Date>
+				<Description>4x4 Sudoku, initially empty.</Description>
+			</MetaData>
+			<Solution Reference="ArtificialSudoku4x4_XHSTT2014A">
+				<Events>
+					<Event Reference="Event1">
+						<Time Reference="Day_1"/>
+						<Resources>
+							<Resource Reference="R1">
+								<Role>RoomRT1</Role>
+							</Resource>
+						</Resources>
+					</Event>
+					<Event Reference="Event2">
+						<Time Reference="Day_2"/>
+						<Resources>
+							<Resource Reference="R1">
+								<Role>RoomRT1</Role>
+							</Resource>
+						</Resources>
+					</Event>
+					<Event Reference="Event3">
+						<Time Reference="Day_3"/>
+						<Resources>
+							<Resource Reference="R2">
+								<Role>RoomRT2</Role>
+							</Resource>
+						</Resources>
+					</Event>
+					<Event Reference="Event4">
+						<Time Reference="Day_4"/>
+						<Resources>
+							<Resource Reference="R2">
+								<Role>RoomRT2</Role>
+							</Resource>
+						</Resources>
+					</Event>
+					<Event Reference="Event5">
+						<Time Reference="Day_3"/>
+						<Resources>
+							<Resource Reference="R1">
+								<Role>RoomRT1</Role>
+							</Resource>
+						</Resources>
+					</Event>
+					<Event Reference="Event6">
+						<Time Reference="Day_4"/>
+						<Resources>
+							<Resource Reference="R1">
+								<Role>RoomRT1</Role>
+							</Resource>
+						</Resources>
+					</Event>
+					<Event Reference="Event7">
+						<Time Reference="Day_1"/>
+						<Resources>
+							<Resource Reference="R2">
+								<Role>RoomRT2</Role>
+							</Resource>
+						</Resources>
+					</Event>
+					<Event Reference="Event8">
+						<Time Reference="Day_2"/>
+						<Resources>
+							<Resource Reference="R2">
+								<Role>RoomRT2</Role>
+							</Resource>
+						</Resources>
+					</Event>
+					<Event Reference="Event9">
+						<Time Reference="Day_2"/>
+						<Resources>
+							<Resource Reference="R3">
+								<Role>RoomRT3</Role>
+							</Resource>
+						</Resources>
+					</Event>
+					<Event Reference="Event10">
+						<Time Reference="Day_1"/>
+						<Resources>
+							<Resource Reference="R3">
+								<Role>RoomRT3</Role>
+							</Resource>
+						</Resources>
+					</Event>
+					<Event Reference="Event11">
+						<Time Reference="Day_4"/>
+						<Resources>
+							<Resource Reference="R4">
+								<Role>RoomRT4</Role>
+							</Resource>
+						</Resources>
+					</Event>
+					<Event Reference="Event12">
+						<Time Reference="Day_3"/>
+						<Resources>
+							<Resource Reference="R4">
+								<Role>RoomRT4</Role>
+							</Resource>
+						</Resources>
+					</Event>
+					<Event Reference="Event13">
+						<Time Reference="Day_4"/>
+						<Resources>
+							<Resource Reference="R3">
+								<Role>RoomRT3</Role>
+							</Resource>
+						</Resources>
+					</Event>
+					<Event Reference="Event14">
+						<Time Reference="Day_3"/>
+						<Resources>
+							<Resource Reference="R3">
+								<Role>RoomRT3</Role>
+							</Resource>
+						</Resources>
+					</Event>
+					<Event Reference="Event15">
+						<Time Reference="Day_2"/>
+						<Resources>
+							<Resource Reference="R4">
+								<Role>RoomRT4</Role>
+							</Resource>
+						</Resources>
+					</Event>
+					<Event Reference="Event16">
+						<Time Reference="Day_1"/>
+						<Resources>
+							<Resource Reference="R4">
+								<Role>RoomRT4</Role>
+							</Resource>
+						</Resources>
+					</Event>
+				</Events>
+			</Solution>
+		</SolutionGroup>
+	</SolutionGroups>
+</HighSchoolTimetableArchive>
