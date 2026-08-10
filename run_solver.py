@@ -108,7 +108,7 @@ def main(argv: list[str] | None = None) -> None:
     instances = parse_archive(archive_text)
     print(f"  {len(instances)} instancji wczytanych w {time.time() - t0:.2f}s\n")
 
-    if args.list or not args.instance_id:
+    if args.list or (not args.instance_id and len(instances) != 1):
         print(format_instance_table(instances))
         if not args.instance_id:
             print(
@@ -116,7 +116,8 @@ def main(argv: list[str] | None = None) -> None:
             )
         return
 
-    instance = find_instance(instances, args.instance_id)
+    instance_id = args.instance_id or instances[0].id
+    instance = find_instance(instances, instance_id)
     print(f"Instancja: {instance.id} ({instance.name})")
     print(
         f"  Zdarzenia={len(instance.events)}  Czasy={len(instance.times)}  "

@@ -26,9 +26,22 @@ Do zarządzania zależnościami i środowiskiem w Pythonie używamy narzędzia `
   uv run python src/solver/main.py [ścieżka_do_pliku_xml]
   ```
 * **Uruchomienie przepływu (workflow) za pomocą Snakemake**:
+  Potok automatycznie wykrywa wszystkie pliki instancji `.xml` w katalogu `data/raw/` (z wyłączeniem pustych plików i szablonu `instance.xml`), uruchamia dla nich solver równolegle, a na koniec generuje zbiorcze raporty podsumowujące koszty rozwiązań (`summary.csv` oraz `summary.md` w `data/results/`).
+
+  Uruchomienie z domyślnymi parametrami (30 000 iteracji, seed=0):
   ```bash
   uv run snakemake --cores all
   ```
+
+  Konfiguracja parametrów obliczeń za pomocą zmiennych środowiskowych (np. szybki test na 500 iteracji):
+  * **Windows (PowerShell)**:
+    ```powershell
+    $env:SOLVER_ITERATIONS="500"; uv run snakemake --cores all
+    ```
+  * **Linux / macOS**:
+    ```bash
+    SOLVER_ITERATIONS=500 uv run snakemake --cores all
+    ```
 
 ### Testowanie i jakość kodu
 
