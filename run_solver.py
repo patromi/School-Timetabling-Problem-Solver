@@ -18,7 +18,10 @@ from xhstt_core.html_report import render_timetable_page
 from xhstt_core.lahc import run_lahc
 from xhstt_core.model import Instance, Solution, SolutionGroup
 from xhstt_core.parser import parse_archive
-from xhstt_core.xml_writer import extract_instance_archive, render_archive_with_solution_groups
+from xhstt_core.xml_writer import (
+    extract_instance_archive,
+    render_archive_with_solution_groups,
+)
 
 DEFAULT_ARCHIVE = Path(__file__).parent / "data" / "xhstt2014" / "XHSTT-2014.xml"
 
@@ -65,19 +68,27 @@ def cost_breakdown(instance: Instance, solution: Solution) -> tuple[int, int]:
 
 
 def _parse_args(argv: list[str] | None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Uruchamia solver LAHC na instancji XHSTT.")
+    parser = argparse.ArgumentParser(
+        description="Uruchamia solver LAHC na instancji XHSTT."
+    )
     parser.add_argument(
-        "instance_id", nargs="?", help="Id instancji (np. AU-BG-98). Pomin, by wypisac liste."
+        "instance_id",
+        nargs="?",
+        help="Id instancji (np. AU-BG-98). Pomin, by wypisac liste.",
     )
     parser.add_argument("--archive", type=Path, default=DEFAULT_ARCHIVE)
     parser.add_argument("--iterations", type=int, default=30_000)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--history", type=int, default=30)
     parser.add_argument(
-        "--output", type=Path, default=None,
+        "--output",
+        type=Path,
+        default=None,
         help="Gdzie zapisac wynikowy XML (domyslnie output/<id>_solution.xml)",
     )
-    parser.add_argument("--list", action="store_true", help="Wypisz dostepne instancje i zakoncz.")
+    parser.add_argument(
+        "--list", action="store_true", help="Wypisz dostepne instancje i zakoncz."
+    )
     return parser.parse_args(argv)
 
 
@@ -97,13 +108,16 @@ def main(argv: list[str] | None = None) -> None:
     instances = parse_archive(archive_text)
     print(f"  {len(instances)} instancji wczytanych w {time.time() - t0:.2f}s\n")
 
-    if args.list or not args.instance_id:
+    if args.list or (not args.instance_id and len(instances) != 1):
         print(format_instance_table(instances))
         if not args.instance_id:
-            print("\nUzycie: python run_solver.py <ID_INSTANCJI> [--iterations N] [--seed N]")
+            print(
+                "\nUzycie: python run_solver.py <ID_INSTANCJI> [--iterations N] [--seed N]"
+            )
         return
 
-    instance = find_instance(instances, args.instance_id)
+    instance_id = args.instance_id or instances[0].id
+    instance = find_instance(instances, instance_id)
     print(f"Instancja: {instance.id} ({instance.name})")
     print(
         f"  Zdarzenia={len(instance.events)}  Czasy={len(instance.times)}  "
@@ -120,7 +134,9 @@ def main(argv: list[str] | None = None) -> None:
         f"infeasibility={infeasibility_0}  objective={objective_0}\n"
     )
 
-    print(f"Uruchamianie LAHC ({args.iterations} iteracji, seed={args.seed}, history={args.history})...")
+    print(
+        f"Uruchamianie LAHC ({args.iterations} iteracji, seed={args.seed}, history={args.history})..."
+    )
     t_start = time.time()
 
     def on_progress(iteration: int, best_cost: int) -> None:
@@ -163,12 +179,15 @@ def main(argv: list[str] | None = None) -> None:
     single_instance_xml = extract_instance_archive(archive_text, instance.id)
     group = SolutionGroup(id=f"LAHC_{instance.id}_seed{args.seed}", solutions=[best])
     output_path.write_text(
-        render_archive_with_solution_groups(single_instance_xml, [group]), encoding="utf-8"
+        render_archive_with_solution_groups(single_instance_xml, [group]),
+        encoding="utf-8",
     )
     print(f"\nRozwiazanie zapisane do: {output_path}")
 
     best_occurrences = resolve_occurrences(instance, best)
-    html_path = output_path.with_suffix(".html").with_stem(f"{output_path.stem.removesuffix('_solution')}_timetable")
+    html_path = output_path.with_suffix(".html").with_stem(
+        f"{output_path.stem.removesuffix('_solution')}_timetable"
+    )
     html_path.write_text(
         render_timetable_page(instance, best_occurrences, infeasibility_1, objective_1),
         encoding="utf-8",

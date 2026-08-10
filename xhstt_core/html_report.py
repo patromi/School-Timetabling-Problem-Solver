@@ -158,7 +158,7 @@ def _render_resource_table(
     return (
         f'<table class="timetable" data-resource-type="{escape(resource_type)}" '
         f'data-resource="{escape(resource_id)}" hidden>'
-        f'<caption>{escape(resource_name)}</caption>'
+        f"<caption>{escape(resource_name)}</caption>"
         f"<thead><tr><th></th>{header_cells}</tr></thead>"
         f"<tbody>{''.join(rows)}</tbody>"
         f"</table>"
@@ -247,7 +247,12 @@ def render_timetable_page(
     )
     tables = "".join(
         _render_resource_table(
-            instance, days, build_resource_grid(instance, occurrences, r.id), rt, r.id, r.name
+            instance,
+            days,
+            build_resource_grid(instance, occurrences, r.id),
+            rt,
+            r.id,
+            r.name,
         )
         for rt in type_order
         for r in sorted(resources_by_type[rt], key=lambda r: r.name)
@@ -282,7 +287,7 @@ def render_timetable_page(
     <dl class="readout">
       <div><dt>zdarzenia</dt><dd>{len(instance.events)}</dd></div>
       <div><dt>status</dt><dd class="{status_class}">{status_text}</dd></div>
-      <div><dt>infeasibility</dt><dd class="{'ok' if feasible else 'bad'}">{infeasibility}</dd></div>
+      <div><dt>infeasibility</dt><dd class="{"ok" if feasible else "bad"}">{infeasibility}</dd></div>
       <div><dt>objective</dt><dd>{objective}</dd></div>
     </dl>
   </header>

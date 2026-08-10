@@ -1,8 +1,12 @@
 from pathlib import Path
 
 import pytest
-
-from xhstt_core.model import Solution, SolutionEvent, SolutionEventResource, SolutionGroup
+from xhstt_core.model import (
+    Solution,
+    SolutionEvent,
+    SolutionEventResource,
+    SolutionGroup,
+)
 from xhstt_core.parser import parse_archive, parse_solution_groups
 from xhstt_core.xml_writer import (
     extract_instance_archive,
@@ -31,7 +35,9 @@ def test_round_trips_a_simple_solution_through_parse_and_render():
     )
     group = SolutionGroup(id="MyGroup", solutions=[solution])
 
-    xml_text = render_archive_with_solution_groups(_load("ArtificialSudoku4x4.xml"), [group])
+    xml_text = render_archive_with_solution_groups(
+        _load("ArtificialSudoku4x4.xml"), [group]
+    )
     parsed_back = parse_solution_groups(xml_text)
 
     assert len(parsed_back) == 1
@@ -59,7 +65,9 @@ def test_round_trips_split_events_and_missing_time():
     )
     group = SolutionGroup(id="G", solutions=[solution])
 
-    xml_text = render_archive_with_solution_groups(_load("ArtificialSudoku4x4.xml"), [group])
+    xml_text = render_archive_with_solution_groups(
+        _load("ArtificialSudoku4x4.xml"), [group]
+    )
     parsed_back = parse_solution_groups(xml_text)[0].solutions[0]
 
     assert len(parsed_back.events) == 2
@@ -82,7 +90,9 @@ def test_replaces_existing_solution_groups_rather_than_duplicating():
     )
     group = SolutionGroup(id="ReplacementGroup", solutions=[solution])
 
-    xml_text = render_archive_with_solution_groups(_load("ArtificialSudoku4x4.xml"), [group])
+    xml_text = render_archive_with_solution_groups(
+        _load("ArtificialSudoku4x4.xml"), [group]
+    )
     parsed_back = parse_solution_groups(xml_text)
 
     assert len(parsed_back) == 1
@@ -166,7 +176,9 @@ def test_render_escapes_special_characters_in_ids():
     )
     group = SolutionGroup(id='Weird&<>"Id', solutions=[solution])
 
-    xml_text = render_archive_with_solution_groups(_load("ArtificialSudoku4x4.xml"), [group])
+    xml_text = render_archive_with_solution_groups(
+        _load("ArtificialSudoku4x4.xml"), [group]
+    )
     parsed_back = parse_solution_groups(xml_text)
 
     assert parsed_back[0].id == 'Weird&<>"Id'

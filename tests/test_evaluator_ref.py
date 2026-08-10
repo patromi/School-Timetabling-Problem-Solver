@@ -1,7 +1,6 @@
 from pathlib import Path
 
 import pytest
-
 from xhstt_core.evaluator_ref import (
     apply_cost_function,
     evaluate_constraint,
@@ -425,9 +424,7 @@ def test_assign_resource_constraint_is_zero_on_a_fully_assigned_reference_soluti
     instance = parse_archive(_load("ArtificialSudoku4x4.xml"))[0]
     solution = parse_solution_groups(_load("ArtificialSudoku4x4.xml"))[0].solutions[0]
     occurrences = resolve_occurrences(instance, solution)
-    constraint = next(
-        c for c in instance.constraints if c.id == "AssignResources_1"
-    )
+    constraint = next(c for c in instance.constraints if c.id == "AssignResources_1")
 
     assert evaluate_constraint(instance, occurrences, constraint) == 0
 
@@ -436,9 +433,7 @@ def test_assign_resource_constraint_counts_unassigned_role_duration():
     instance = parse_archive(_load("ArtificialSudoku4x4.xml"))[0]
     solution = parse_solution_groups(_load("ArtificialSudoku4x4.xml"))[0].solutions[0]
     occurrences = resolve_occurrences(instance, solution)
-    constraint = next(
-        c for c in instance.constraints if c.id == "AssignResources_1"
-    )
+    constraint = next(c for c in instance.constraints if c.id == "AssignResources_1")
 
     event1 = next(o for o in occurrences if o.event_ref == "Event1")
     assert event1.duration == 1
@@ -454,9 +449,7 @@ def test_prefer_resources_constraint_is_zero_on_a_fully_assigned_reference_solut
     instance = parse_archive(_load("ArtificialSudoku4x4.xml"))[0]
     solution = parse_solution_groups(_load("ArtificialSudoku4x4.xml"))[0].solutions[0]
     occurrences = resolve_occurrences(instance, solution)
-    constraint = next(
-        c for c in instance.constraints if c.id == "PreferredResources_6"
-    )
+    constraint = next(c for c in instance.constraints if c.id == "PreferredResources_6")
 
     assert evaluate_constraint(instance, occurrences, constraint) == 0
 
@@ -465,9 +458,7 @@ def test_prefer_resources_constraint_counts_non_preferred_assignment():
     instance = parse_archive(_load("ArtificialSudoku4x4.xml"))[0]
     solution = parse_solution_groups(_load("ArtificialSudoku4x4.xml"))[0].solutions[0]
     occurrences = resolve_occurrences(instance, solution)
-    constraint = next(
-        c for c in instance.constraints if c.id == "PreferredResources_6"
-    )
+    constraint = next(c for c in instance.constraints if c.id == "PreferredResources_6")
 
     # PreferredResources_6 prefers gr_RT1 (R1) for RoomRT1 on gr_EventsRT1
     # events. Assign R2 (a gr_RT2 room) instead -> not preferred.
@@ -1673,7 +1664,9 @@ THREE_PERIODS_TWO_EVENTS_ARCHIVE = """<HighSchoolTimetableArchive>
 </HighSchoolTimetableArchive>"""
 
 
-def _order_events_constraint(min_separation: int, max_separation: int | None) -> Constraint:
+def _order_events_constraint(
+    min_separation: int, max_separation: int | None
+) -> Constraint:
     return Constraint(
         type="OrderEventsConstraint",
         id="OE1",

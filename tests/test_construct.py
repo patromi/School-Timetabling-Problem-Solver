@@ -135,7 +135,9 @@ def test_build_initial_splits_duration_according_to_split_events_constraint():
     # Mirrors BrazilInstance1's real T1-S3 event exactly: Duration=3,
     # MinimumDuration=1, MaximumDuration=2 -- must become multiple
     # sub-events, each within [1, 2], summing back to 3.
-    instance = parse_archive(_split_events_archive(duration=3, min_duration=1, max_duration=2))[0]
+    instance = parse_archive(
+        _split_events_archive(duration=3, min_duration=1, max_duration=2)
+    )[0]
 
     solution = build_initial(instance, random.Random(0))
 
@@ -152,7 +154,9 @@ def test_build_initial_never_places_a_sub_event_past_the_last_time():
     # duration-3 event naively placed 2 slots before the end of the week
     # overflowed past the last defined Time. Every generated sub-event's
     # [start, start+duration-1] span must stay within instance.times.
-    instance = parse_archive(_split_events_archive(duration=3, min_duration=1, max_duration=2))[0]
+    instance = parse_archive(
+        _split_events_archive(duration=3, min_duration=1, max_duration=2)
+    )[0]
     all_time_ids = [t.id for t in instance.times]
 
     for seed in range(20):
@@ -167,7 +171,9 @@ def test_build_initial_never_places_a_sub_event_past_the_last_time():
 def test_build_initial_keeps_a_single_piece_when_duration_already_fits():
     # No splitting needed when the event's duration is already within
     # MaximumDuration -- must not fragment it unnecessarily.
-    instance = parse_archive(_split_events_archive(duration=2, min_duration=1, max_duration=2))[0]
+    instance = parse_archive(
+        _split_events_archive(duration=2, min_duration=1, max_duration=2)
+    )[0]
 
     solution = build_initial(instance, random.Random(0))
 
