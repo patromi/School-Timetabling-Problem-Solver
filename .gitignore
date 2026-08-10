@@ -57,6 +57,9 @@ data/processed/*
 !data/processed/.gitkeep
 data/results/*
 !data/results/.gitkeep
+generated/*
+!generated/.gitkeep
+output/*
 !data/results/summary.csv
 !data/results/summary.md
 
