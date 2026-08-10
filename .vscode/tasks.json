@@ -88,6 +88,17 @@
                 "panel": "shared"
             },
             "problemMatcher": []
+        },
+        {
+            "label": "Pre-commit: Install Git Hooks",
+            "type": "shell",
+            "command": "uv run pre-commit install --hook-type pre-commit --hook-type commit-msg",
+            "group": "none",
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared"
+            },
+            "problemMatcher": []
         }
     ]
 }

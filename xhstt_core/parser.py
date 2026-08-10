@@ -135,7 +135,9 @@ def _parse_events(events_node: ET.Element | None) -> list[Event]:
                 course_ref=course_node.attrib["Reference"]
                 if course_node is not None
                 else None,
-                time_ref=time_node.attrib["Reference"] if time_node is not None else None,
+                time_ref=time_node.attrib["Reference"]
+                if time_node is not None
+                else None,
                 workload=int(workload_text) if workload_text is not None else None,
                 resources=_parse_event_resources(e.find("Resources")),
                 group_refs=_collect_group_refs(event_groups_node)
@@ -263,9 +265,7 @@ def parse_solution_groups(xml_text: str) -> list[SolutionGroup]:
     return [
         SolutionGroup(
             id=group_node.attrib["Id"],
-            solutions=[
-                _parse_solution(s) for s in group_node.findall("Solution")
-            ],
+            solutions=[_parse_solution(s) for s in group_node.findall("Solution")],
         )
         for group_node in container.findall("SolutionGroup")
     ]

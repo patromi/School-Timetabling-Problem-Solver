@@ -1,13 +1,15 @@
 import math
 from collections import Counter
 from dataclasses import dataclass, field
-from functools import lru_cache
+from functools import cache
 
 from xhstt_core.model import AppliesTo, Constraint, Event, Instance, Solution
 
 
-@lru_cache(maxsize=None)
-def _event_group_refs_cached(group_refs: tuple[str, ...], course_ref: str | None) -> frozenset[str]:
+@cache
+def _event_group_refs_cached(
+    group_refs: tuple[str, ...], course_ref: str | None
+) -> frozenset[str]:
     refs = set(group_refs)
     if course_ref is not None:
         refs.add(course_ref)
@@ -28,7 +30,7 @@ def _register_instance(instance: Instance) -> int:
     return key
 
 
-@lru_cache(maxsize=None)
+@cache
 def _event_group_members_cached(instance_key: int, group_ref: str) -> frozenset[str]:
     instance = _INSTANCE_REGISTRY[instance_key]
     return frozenset(e.id for e in instance.events if group_ref in _event_group_refs(e))
@@ -86,7 +88,9 @@ def _assigned_resource(occurrence: "Occurrence", role: str) -> str | None:
     spec guarantees Role uniqueness for genuine assignable slots (the only
     slots those constraints ever target). Returns None if the role isn't
     present at all, or if present but unassigned."""
-    return next((r for role_, r in occurrence.resource_assignments if role_ == role), None)
+    return next(
+        (r for role_, r in occurrence.resource_assignments if role_ == role), None
+    )
 
 
 def _assigned_resource_ids(occurrence: "Occurrence") -> list[str | None]:
@@ -159,15 +163,19 @@ def resolve_occurrences(instance: Instance, solution: Solution) -> list[Occurren
             occurrences.append(
                 Occurrence(
                     event_ref=se.event_ref,
-                    duration=se.duration if se.duration is not None else event_def.duration,
-                    time_ref=se.time_ref if se.time_ref is not None else event_def.time_ref,
+                    duration=se.duration
+                    if se.duration is not None
+                    else event_def.duration,
+                    time_ref=se.time_ref
+                    if se.time_ref is not None
+                    else event_def.time_ref,
                     resource_assignments=assignments,
                 )
             )
     return occurrences
 
 
-@lru_cache(maxsize=None)
+@cache
 def _events_in_applies_to_cached(
     instance_key: int, event_groups: tuple[str, ...], events: tuple[str, ...]
 ) -> frozenset[str]:
@@ -204,7 +212,7 @@ def _evaluate_assign_time_constraint(
     return constraint.weight * apply_cost_function(constraint.cost_function, deviation)
 
 
-@lru_cache(maxsize=None)
+@cache
 def _resources_in_applies_to_cached(
     instance_key: int, resource_groups: tuple[str, ...], resources: tuple[str, ...]
 ) -> frozenset[str]:
@@ -216,7 +224,9 @@ def _resources_in_applies_to_cached(
     return frozenset(ids)
 
 
-def _resources_in_applies_to(instance: Instance, applies_to: AppliesTo) -> frozenset[str]:
+def _resources_in_applies_to(
+    instance: Instance, applies_to: AppliesTo
+) -> frozenset[str]:
     # Cached for the same reason as _events_in_applies_to above.
     key = _register_instance(instance)
     return _resources_in_applies_to_cached(
@@ -224,13 +234,13 @@ def _resources_in_applies_to(instance: Instance, applies_to: AppliesTo) -> froze
     )
 
 
-@lru_cache(maxsize=None)
+@cache
 def _time_ids_ordered_cached(instance_key: int) -> tuple[str, ...]:
     instance = _INSTANCE_REGISTRY[instance_key]
     return tuple(t.id for t in instance.times)
 
 
-@lru_cache(maxsize=None)
+@cache
 def _time_positions_cached(instance_key: int) -> dict[str, int]:
     return {t: i for i, t in enumerate(_time_ids_ordered_cached(instance_key))}
 
@@ -247,7 +257,9 @@ def _time_positions(instance: Instance) -> dict[str, int]:
     return _time_positions_cached(_register_instance(instance))
 
 
-def _occupied_time_ids(instance: Instance, time_ref: str | None, duration: int) -> set[str]:
+def _occupied_time_ids(
+    instance: Instance, time_ref: str | None, duration: int
+) -> set[str]:
     if time_ref is None:
         return set()
     all_ids = _time_ids_ordered(instance)
@@ -423,7 +435,9 @@ def _evaluate_cluster_busy_times_constraint(
     for resource_id in _resources_in_applies_to(instance, constraint.applies_to):
         busy = _full_span_busy_times(instance, occurrences, resource_id)
         active_groups = {g for t in busy for g in _time_group_refs(instance, t)}
-        deviation = _shortfall_or_excess(len(active_groups & target_groups), minimum, maximum)
+        deviation = _shortfall_or_excess(
+            len(active_groups & target_groups), minimum, maximum
+        )
         total += constraint.weight * apply_cost_function(
             constraint.cost_function, deviation
         )
@@ -621,7 +635,9 @@ def _evaluate_distribute_split_events_constraint(
     return total
 
 
-_EVALUATORS["DistributeSplitEventsConstraint"] = _evaluate_distribute_split_events_constraint
+_EVALUATORS["DistributeSplitEventsConstraint"] = (
+    _evaluate_distribute_split_events_constraint
+)
 
 
 def _preferred_time_ids(instance: Instance, constraint: Constraint) -> set[str]:
@@ -710,8 +726,7 @@ def _evaluate_avoid_split_assignments_constraint(
         assigned = {
             _assigned_resource(o, role)
             for o in occurrences
-            if o.event_ref in member_ids
-            and _assigned_resource(o, role) is not None
+            if o.event_ref in member_ids and _assigned_resource(o, role) is not None
         }
         deviation = max(0, len(assigned) - 1)
         total += constraint.weight * apply_cost_function(
@@ -720,7 +735,9 @@ def _evaluate_avoid_split_assignments_constraint(
     return total
 
 
-_EVALUATORS["AvoidSplitAssignmentsConstraint"] = _evaluate_avoid_split_assignments_constraint
+_EVALUATORS["AvoidSplitAssignmentsConstraint"] = (
+    _evaluate_avoid_split_assignments_constraint
+)
 
 
 def _evaluate_link_events_constraint(
@@ -738,7 +755,9 @@ def _evaluate_link_events_constraint(
             times_for_event = set()
             for o in occurrences:
                 if o.event_ref == event_id:
-                    times_for_event |= _occupied_time_ids(instance, o.time_ref, o.duration)
+                    times_for_event |= _occupied_time_ids(
+                        instance, o.time_ref, o.duration
+                    )
             per_event_times.append(times_for_event)
         all_times = set().union(*per_event_times) if per_event_times else set()
         deviation = sum(
@@ -816,7 +835,7 @@ def evaluate_constraint(
     return evaluator(instance, occurrences, constraint)
 
 
-@lru_cache(maxsize=None)
+@cache
 def _day_group_ids_cached(instance_key: int) -> frozenset[str]:
     instance = _INSTANCE_REGISTRY[instance_key]
     return frozenset(g.id for g in instance.time_groups if g.kind == "Day")
@@ -828,7 +847,7 @@ def _day_group_ref(instance: Instance, time_id: str) -> str | None:
     return next((ref for ref in time.group_refs if ref in day_group_ids), None)
 
 
-@lru_cache(maxsize=None)
+@cache
 def _valid_start_time_ids(instance_key: int, duration: int) -> tuple[str, ...]:
     """Start times for which a `duration`-slot span neither overflows past
     the last defined Time (the exact structural error HSEval reports:

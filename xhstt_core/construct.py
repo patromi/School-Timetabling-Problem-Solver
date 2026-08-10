@@ -86,14 +86,18 @@ def build_initial(instance: Instance, rng: random.Random) -> Solution:
 
         if not needs_time:
             events.append(
-                SolutionEvent(event_ref=event.id, time_ref=None, resources=_fresh_resources())
+                SolutionEvent(
+                    event_ref=event.id, time_ref=None, resources=_fresh_resources()
+                )
             )
             continue
 
         min_d, max_d = _split_duration_bounds(instance, event)
         for duration in _split_durations(event.duration, min_d, max_d):
             candidates = valid_start_time_ids(instance, duration)
-            time_ref = rng.choice(candidates) if candidates else rng.choice(instance.times).id
+            time_ref = (
+                rng.choice(candidates) if candidates else rng.choice(instance.times).id
+            )
             events.append(
                 SolutionEvent(
                     event_ref=event.id,

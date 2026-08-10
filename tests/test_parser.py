@@ -98,8 +98,7 @@ def test_parses_events_and_event_groups():
         g.id == "gr_math-C1" and g.kind == "Course" for g in instance.event_groups
     )
     assert any(
-        g.id == "gr_AllEvents" and g.kind == "EventGroup"
-        for g in instance.event_groups
+        g.id == "gr_AllEvents" and g.kind == "EventGroup" for g in instance.event_groups
     )
 
     assert len(instance.events) == 16
@@ -181,7 +180,10 @@ def test_parses_real_world_instance_without_error():
     resource_type_ids = {rt.id for rt in instance.resource_types}
     for event in instance.events:
         for res in event.resources:
-            assert res.resource_type_ref is None or res.resource_type_ref in resource_type_ids
+            assert (
+                res.resource_type_ref is None
+                or res.resource_type_ref in resource_type_ids
+            )
 
 
 def test_event_resource_type_is_optional_when_resource_is_referenced():

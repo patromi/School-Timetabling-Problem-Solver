@@ -55,13 +55,13 @@ venv.bak/
 # We ignore the contents of these directories but track the directories themselves using .gitkeep files.
 data/processed/*
 !data/processed/.gitkeep
-data/raw/*
-!data/raw/.gitkeep
 data/results/*
 !data/results/.gitkeep
 generated/*
 !generated/.gitkeep
 output/*
+!data/results/summary.csv
+!data/results/summary.md
 
 # IDEs and Editors
 .vscode/*
@@ -69,3 +69,6 @@ output/*
 .idea/
 *.swp
 *.swo
+
+# Solver output results
+output/

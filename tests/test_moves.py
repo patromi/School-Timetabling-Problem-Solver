@@ -256,7 +256,9 @@ def test_time_reassign_move_never_overflows_a_day_boundary_or_the_time_array():
     for seed in range(50):
         new_solution = time_reassign_move(instance, solution, random.Random(seed))
         e1 = next(se for se in new_solution.events if se.event_ref == "E1")
-        assert e1.time_ref not in invalid_for_e1, f"seed={seed}: E1 landed on {e1.time_ref}"
+        assert e1.time_ref not in invalid_for_e1, (
+            f"seed={seed}: E1 landed on {e1.time_ref}"
+        )
 
 
 def test_time_swap_move_never_overflows_a_day_boundary_or_the_time_array():
