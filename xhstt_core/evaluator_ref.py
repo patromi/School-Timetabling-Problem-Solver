@@ -267,7 +267,7 @@ def _occupied_time_ids(
     return set(all_ids[start : start + duration])
 
 
-# Set (not None) only during a total_cost() call, to a resource_id ->
+# Set (not None) only during an evaluate_cost_components() call, to a resource_id ->
 # Counter[time_id] map built in ONE pass over occurrences -- see
 # _build_occupancy_index. AvoidClashesConstraint, ClusterBusyTimesConstraint,
 # LimitBusyTimesConstraint, LimitIdleTimesConstraint and
@@ -880,16 +880,16 @@ def valid_start_time_ids(instance: Instance, duration: int) -> tuple[str, ...]:
     return _valid_start_time_ids(_register_instance(instance), duration)
 
 
-_INFEASIBILITY_WEIGHT = 1_000_000
+INFEASIBILITY_WEIGHT = 1_000_000
 
 
-def total_cost(instance: Instance, solution: Solution) -> int:
-    """Lexicographic total: infeasibility (sum of Required=true constraint
-    costs) dominates objective (sum of Required=false costs), matching the
-    Env sketch in the thesis plan (`infeas * 1_000_000 + obj`) -- a single
-    point of infeasibility always outweighs any amount of objective cost,
-    so a solver comparing this scalar naturally prioritizes feasibility
-    first."""
+def evaluate_cost_components(instance: Instance, solution: Solution) -> tuple[int, int]:
+    """Returns (infeasibility, objective) separately -- infeasibility is the
+    sum of Required=true constraint costs, objective the sum of
+    Required=false costs. `total_cost` below is just these two flattened
+    into one scalar; `xhstt_core.cost` builds the (infeasibility, objective)
+    vector representation on top of this instead, for lexicographic
+    comparison of two solutions without conflating the two."""
     global _current_occupancy_index
     occurrences = resolve_occurrences(instance, solution)
     _current_occupancy_index = _build_occupancy_index(instance, occurrences)
@@ -902,6 +902,17 @@ def total_cost(instance: Instance, solution: Solution) -> int:
                 infeasibility += cost
             else:
                 objective += cost
-        return infeasibility * _INFEASIBILITY_WEIGHT + objective
+        return infeasibility, objective
     finally:
         _current_occupancy_index = None
+
+
+def total_cost(instance: Instance, solution: Solution) -> int:
+    """Lexicographic total: infeasibility (sum of Required=true constraint
+    costs) dominates objective (sum of Required=false costs), matching the
+    Env sketch in the thesis plan (`infeas * 1_000_000 + obj`) -- a single
+    point of infeasibility always outweighs any amount of objective cost,
+    so a solver comparing this scalar naturally prioritizes feasibility
+    first."""
+    infeasibility, objective = evaluate_cost_components(instance, solution)
+    return infeasibility * INFEASIBILITY_WEIGHT + objective

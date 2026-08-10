@@ -2,11 +2,9 @@ import random
 import time
 from collections.abc import Callable
 
-from xhstt_core.evaluator_ref import total_cost
+from xhstt_core.cost import evaluate_cost
+from xhstt_core.heuristics import MANUAL_HEURISTICS, Heuristic
 from xhstt_core.model import Instance, Solution
-from xhstt_core.moves import resource_reassign_move, time_reassign_move, time_swap_move
-
-_DEFAULT_MOVES = [time_reassign_move, time_swap_move, resource_reassign_move]
 
 
 def run_lahc(
@@ -15,7 +13,7 @@ def run_lahc(
     rng: random.Random,
     history_length: int = 30,
     max_iterations: int = 1000,
-    moves: list | None = None,
+    heuristics: list[Heuristic] | None = None,
     on_progress: Callable[[int, int], None] | None = None,
     progress_every: int = 1000,
     progress_seconds: float = 2.0,
@@ -33,21 +31,21 @@ def run_lahc(
     iteration count could mean minutes with no feedback at all, so a
     wall-clock heartbeat guarantees the caller hears something regularly
     regardless of instance size."""
-    move_fns = moves if moves is not None else _DEFAULT_MOVES
+    pool = heuristics if heuristics is not None else MANUAL_HEURISTICS
 
     current = initial
-    current_cost = total_cost(instance, current)
+    current_cost = evaluate_cost(instance, current).as_scalar()
     best, best_cost = current, current_cost
     history = [current_cost] * history_length
     last_progress_time = time.monotonic()
 
     for step in range(max_iterations):
-        move_fn = rng.choice(move_fns)
+        heuristic = rng.choice(pool)
         try:
-            candidate = move_fn(instance, current, rng)
+            candidate = heuristic.apply(current, instance, rng)
         except ValueError:
             continue
-        candidate_cost = total_cost(instance, candidate)
+        candidate_cost = evaluate_cost(instance, candidate).as_scalar()
 
         v = step % history_length
         if candidate_cost <= current_cost or candidate_cost <= history[v]:
