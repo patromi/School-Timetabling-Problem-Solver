@@ -455,6 +455,21 @@ EOF
 
 ### Task 3: Benchmark script (Etap 3 DoD)
 
+> **Amendment (post-execution, during Task 3):** the plan originally specified `N_MOVES = 2000`.
+> A clean, single-process calibration run on AU-BG-98 showed `move_best` costs ~3.7s/call and
+> `ruin_and_recreate` costs ~22s/call on this instance (387 events) — with the deterministic
+> `seed=0` sequence, roughly 5 of the first 17 heuristic draws were `ruin_and_recreate`,
+> extrapolating to 3-4+ hours just to generate a 2000-move chain. `N_MOVES` is corrected to
+> `120` below (~10-15 min total) — small enough to finish in one sitting, large enough to average
+> out the per-move-type variance. The full 8-heuristic `MANUAL_HEURISTICS` pool is kept
+> unchanged (user decision): the benchmark reports whatever blended speedup ratio actually comes
+> out, honestly — including heuristics like `large_perturbation` (touches ~30% of all events in
+> one move) for which `delta_cost` is expected to show little to no benefit, since incremental
+> evaluation only pays off when a move's footprint is small relative to the instance. A ratio
+> close to 1.0x is a legitimate, explainable finding (speedup is proportional to move locality),
+> not a sign of a bug — Tasks 1-2 already independently proved `delta_cost`'s numeric correctness
+> against full evaluation across 10,000 chained moves.
+
 **Files:**
 - Create: `scripts/benchmark_delta_evaluation.py`
 
@@ -493,7 +508,7 @@ from xhstt_core.parser import parse_archive
 
 ARCHIVE = Path(__file__).parent.parent / "data" / "xhstt2014" / "XHSTT-2014.xml"
 INSTANCE_ID = "AU-BG-98"
-N_MOVES = 2000
+N_MOVES = 120
 
 
 def _load_instance() -> Instance:
