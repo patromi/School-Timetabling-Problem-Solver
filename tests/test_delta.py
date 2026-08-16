@@ -151,3 +151,30 @@ def test_delta_cost_matches_full_evaluation_on_a_real_instance_after_one_lahc_st
     result = delta_cost(instance, old_solution, old_cost, new_solution)
 
     assert result == evaluate_cost(instance, new_solution)
+
+
+def test_delta_cost_matches_full_evaluation_over_a_chain_of_10000_random_moves() -> (
+    None
+):
+    # The Etap 3 DoD invariant from CLAUDE.md, verbatim: "po dowolnej
+    # sekwencji ruchow koszt liczony przyrostowo == koszt liczony od
+    # zera" -- chained (each move's output feeds the next), not 10000
+    # independent single moves from the same starting point, and covers
+    # all 7 heuristics (single-event and multi-event moves alike) since
+    # each iteration draws uniformly from MANUAL_HEURISTICS.
+    instance = parse_archive(_load("BrazilInstance1.xml"))[0]
+    rng = random.Random(0)
+    solution = build_initial(instance, rng)
+    cost = evaluate_cost(instance, solution)
+
+    applied = 0
+    while applied < 10_000:
+        heuristic = rng.choice(MANUAL_HEURISTICS)
+        try:
+            candidate = heuristic.apply(solution, instance, rng)
+        except ValueError:
+            continue
+        candidate_cost = delta_cost(instance, solution, cost, candidate)
+        assert candidate_cost == evaluate_cost(instance, candidate)
+        solution, cost = candidate, candidate_cost
+        applied += 1
