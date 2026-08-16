@@ -2,7 +2,15 @@
 """Benchmark: full evaluation (evaluate_cost from scratch) vs delta_cost
 (incremental) on a real instance -- Etap 3 DoD ("benchmark pokazujacy
 przyspieszenie"). Diagnostic script for the thesis chapter, not a test: no
-assertions, just timings printed to stdout."""
+assertions, just timings printed to stdout.
+
+Reports two speedup ratios: one with the full MANUAL_HEURISTICS pool
+(blended -- includes large_perturbation/ruin_and_recreate/move_best/
+repair_hard_violation, which touch many events per move, so delta_cost has
+little to skip), and one restricted to LOCAL_HEURISTIC_IDS (single- or
+few-event moves -- the scenario delta_cost is designed for, matching
+CLAUDE.md's Etap 3 wording "przesuniecie jednego zdarzenia"). Both numbers
+are reported honestly, whatever they come out to."""
 
 import random
 import sys
@@ -14,13 +22,14 @@ sys.path.insert(0, str(Path(__file__).parent.parent.resolve()))
 from xhstt_core.construct import build_initial
 from xhstt_core.cost import Cost, evaluate_cost
 from xhstt_core.delta import delta_cost
-from xhstt_core.heuristics import MANUAL_HEURISTICS
+from xhstt_core.heuristics import MANUAL_HEURISTICS, Heuristic
 from xhstt_core.model import Instance, Solution
 from xhstt_core.parser import parse_archive
 
 ARCHIVE = Path(__file__).parent.parent / "data" / "xhstt2014" / "XHSTT-2014.xml"
 INSTANCE_ID = "AU-BG-98"
-N_MOVES = 2000
+N_MOVES = 120
+LOCAL_HEURISTIC_IDS = {"move_random", "swap", "resource_reassign", "kempe_chain"}
 
 
 def _load_instance() -> Instance:
@@ -31,11 +40,13 @@ def _load_instance() -> Instance:
     return instance
 
 
-def _generate_move_chain(instance: Instance, n: int, seed: int) -> list[Solution]:
+def _generate_move_chain(
+    instance: Instance, heuristics: list[Heuristic], n: int, seed: int
+) -> list[Solution]:
     rng = random.Random(seed)
     solutions = [build_initial(instance, rng)]
     while len(solutions) <= n:
-        heuristic = rng.choice(MANUAL_HEURISTICS)
+        heuristic = rng.choice(heuristics)
         try:
             solutions.append(heuristic.apply(solutions[-1], instance, rng))
         except ValueError:
@@ -59,16 +70,12 @@ def _time_delta_evaluation(
     return time.perf_counter() - start
 
 
-def main() -> None:
-    print(f"Wczytywanie {INSTANCE_ID} z {ARCHIVE.name}...")
-    instance = _load_instance()
-    print(
-        f"  Zdarzenia={len(instance.events)}  Czasy={len(instance.times)}  "
-        f"Zasoby={len(instance.resources)}  Ograniczenia={len(instance.constraints)}\n"
-    )
-
-    print(f"Generowanie lancucha {N_MOVES} losowych ruchow...")
-    solutions = _generate_move_chain(instance, N_MOVES, seed=0)
+def _run_benchmark(
+    label: str, instance: Instance, heuristics: list[Heuristic], n: int, seed: int
+) -> None:
+    print(f"\n=== {label} ===")
+    print(f"Generowanie lancucha {n} losowych ruchow...")
+    solutions = _generate_move_chain(instance, heuristics, n, seed)
     costs = [evaluate_cost(instance, s) for s in solutions]
 
     print("Mierzenie pelnej ewaluacji (evaluate_cost od zera kazdorazowo)...")
@@ -78,7 +85,7 @@ def main() -> None:
     delta_time = _time_delta_evaluation(instance, solutions, costs)
 
     print(
-        f"\nPelna ewaluacja:       {full_time:.3f}s  "
+        f"Pelna ewaluacja:       {full_time:.3f}s  "
         f"({len(solutions) / full_time:.0f} it/s)"
     )
     print(
@@ -86,6 +93,32 @@ def main() -> None:
         f"({len(solutions) / delta_time:.0f} it/s)"
     )
     print(f"Przyspieszenie: {full_time / delta_time:.1f}x")
+
+
+def main() -> None:
+    print(f"Wczytywanie {INSTANCE_ID} z {ARCHIVE.name}...")
+    instance = _load_instance()
+    print(
+        f"  Zdarzenia={len(instance.events)}  Czasy={len(instance.times)}  "
+        f"Zasoby={len(instance.resources)}  Ograniczenia={len(instance.constraints)}"
+    )
+
+    local_heuristics = [h for h in MANUAL_HEURISTICS if h.id in LOCAL_HEURISTIC_IDS]
+
+    _run_benchmark(
+        "Pelna pula (8 heurystyk z MANUAL_HEURISTICS)",
+        instance,
+        MANUAL_HEURISTICS,
+        N_MOVES,
+        seed=0,
+    )
+    _run_benchmark(
+        "Tylko ruchy lokalne (move_random, swap, resource_reassign, kempe_chain)",
+        instance,
+        local_heuristics,
+        N_MOVES,
+        seed=0,
+    )
 
 
 if __name__ == "__main__":
