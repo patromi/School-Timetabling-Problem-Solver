@@ -470,6 +470,33 @@ EOF
 > not a sign of a bug — Tasks 1-2 already independently proved `delta_cost`'s numeric correctness
 > against full evaluation across 10,000 chained moves.
 
+> **Second amendment (post-execution, after the first real run):** the blended, full-pool
+> benchmark (N_MOVES=120, seed=0) measured **0.7x — `delta_cost` ~43% SLOWER** than full
+> evaluation on AU-BG-98 (13.463s full vs 18.122s delta over 120 chained moves). This is a real,
+> reproducible result, not noise from a small sample. Root cause: AU-BG-98's 172 constraints
+> appear to include broadly-scoped ones (e.g. one `AvoidClashesConstraint` over a large resource
+> group rather than many narrow per-resource ones) — `_constraint_touches` correctly identifies
+> such a constraint as "touched" by nearly any move, but `delta_cost` then pays its full
+> unrestricted-scope `evaluate_constraint` cost anyway (the "filtered full re-evaluation" design
+> only saves time on constraints that are *entirely* untouched — see
+> `docs/superpowers/specs/2026-08-16-delta-evaluation-design.md`'s rejected Option B/C), **plus**
+> a fixed 2x overhead per call (`resolve_occurrences` and `_build_occupancy_index` are each run
+> twice — once for the old solution, once for the new — versus once in full evaluation). With
+> `large_perturbation`/`ruin_and_recreate` in the mix (each touching many events per move), almost
+> every constraint ends up "touched," so `delta_cost` pays the 2x setup overhead with little to no
+> constraint-skipping to offset it.
+>
+> Per user decision, the script now runs and reports **two** benchmarks instead of one: the
+> existing blended one (kept, honestly, at whatever it measures — currently 0.7x) and a second one
+> restricted to `LOCAL_HEURISTIC_IDS = {"move_random", "swap", "resource_reassign", "kempe_chain"}`
+> — single- or few-event moves, the scenario `delta_cost` is actually designed for (CLAUDE.md's
+> Etap 3 wording is literally "przy przesunięciu jednego zdarzenia"). The code block and Step 2
+> below are updated to reflect this two-benchmark version — `_generate_move_chain` now takes an
+> explicit `heuristics` parameter instead of closing over `MANUAL_HEURISTICS`, and a new
+> `_run_benchmark(label, instance, heuristics, n, seed)` helper runs+prints one full
+> chain-gen/time/report cycle so the two calls in `main()` share it instead of duplicating the
+> body.
+
 **Files:**
 - Create: `scripts/benchmark_delta_evaluation.py`
 
@@ -490,7 +517,15 @@ Create `scripts/benchmark_delta_evaluation.py`:
 """Benchmark: full evaluation (evaluate_cost from scratch) vs delta_cost
 (incremental) on a real instance -- Etap 3 DoD ("benchmark pokazujacy
 przyspieszenie"). Diagnostic script for the thesis chapter, not a test: no
-assertions, just timings printed to stdout."""
+assertions, just timings printed to stdout.
+
+Reports two speedup ratios: one with the full MANUAL_HEURISTICS pool
+(blended -- includes large_perturbation/ruin_and_recreate/move_best/
+repair_hard_violation, which touch many events per move, so delta_cost has
+little to skip), and one restricted to LOCAL_HEURISTIC_IDS (single- or
+few-event moves -- the scenario delta_cost is designed for, matching
+CLAUDE.md's Etap 3 wording "przesuniecie jednego zdarzenia"). Both numbers
+are reported honestly, whatever they come out to."""
 
 import random
 import sys
@@ -502,13 +537,14 @@ sys.path.insert(0, str(Path(__file__).parent.parent.resolve()))
 from xhstt_core.construct import build_initial
 from xhstt_core.cost import Cost, evaluate_cost
 from xhstt_core.delta import delta_cost
-from xhstt_core.heuristics import MANUAL_HEURISTICS
+from xhstt_core.heuristics import MANUAL_HEURISTICS, Heuristic
 from xhstt_core.model import Instance, Solution
 from xhstt_core.parser import parse_archive
 
 ARCHIVE = Path(__file__).parent.parent / "data" / "xhstt2014" / "XHSTT-2014.xml"
 INSTANCE_ID = "AU-BG-98"
 N_MOVES = 120
+LOCAL_HEURISTIC_IDS = {"move_random", "swap", "resource_reassign", "kempe_chain"}
 
 
 def _load_instance() -> Instance:
@@ -519,11 +555,13 @@ def _load_instance() -> Instance:
     return instance
 
 
-def _generate_move_chain(instance: Instance, n: int, seed: int) -> list[Solution]:
+def _generate_move_chain(
+    instance: Instance, heuristics: list[Heuristic], n: int, seed: int
+) -> list[Solution]:
     rng = random.Random(seed)
     solutions = [build_initial(instance, rng)]
     while len(solutions) <= n:
-        heuristic = rng.choice(MANUAL_HEURISTICS)
+        heuristic = rng.choice(heuristics)
         try:
             solutions.append(heuristic.apply(solutions[-1], instance, rng))
         except ValueError:
@@ -547,16 +585,12 @@ def _time_delta_evaluation(
     return time.perf_counter() - start
 
 
-def main() -> None:
-    print(f"Wczytywanie {INSTANCE_ID} z {ARCHIVE.name}...")
-    instance = _load_instance()
-    print(
-        f"  Zdarzenia={len(instance.events)}  Czasy={len(instance.times)}  "
-        f"Zasoby={len(instance.resources)}  Ograniczenia={len(instance.constraints)}\n"
-    )
-
-    print(f"Generowanie lancucha {N_MOVES} losowych ruchow...")
-    solutions = _generate_move_chain(instance, N_MOVES, seed=0)
+def _run_benchmark(
+    label: str, instance: Instance, heuristics: list[Heuristic], n: int, seed: int
+) -> None:
+    print(f"\n=== {label} ===")
+    print(f"Generowanie lancucha {n} losowych ruchow...")
+    solutions = _generate_move_chain(instance, heuristics, n, seed)
     costs = [evaluate_cost(instance, s) for s in solutions]
 
     print("Mierzenie pelnej ewaluacji (evaluate_cost od zera kazdorazowo)...")
@@ -566,7 +600,7 @@ def main() -> None:
     delta_time = _time_delta_evaluation(instance, solutions, costs)
 
     print(
-        f"\nPelna ewaluacja:       {full_time:.3f}s  "
+        f"Pelna ewaluacja:       {full_time:.3f}s  "
         f"({len(solutions) / full_time:.0f} it/s)"
     )
     print(
@@ -576,6 +610,32 @@ def main() -> None:
     print(f"Przyspieszenie: {full_time / delta_time:.1f}x")
 
 
+def main() -> None:
+    print(f"Wczytywanie {INSTANCE_ID} z {ARCHIVE.name}...")
+    instance = _load_instance()
+    print(
+        f"  Zdarzenia={len(instance.events)}  Czasy={len(instance.times)}  "
+        f"Zasoby={len(instance.resources)}  Ograniczenia={len(instance.constraints)}"
+    )
+
+    local_heuristics = [h for h in MANUAL_HEURISTICS if h.id in LOCAL_HEURISTIC_IDS]
+
+    _run_benchmark(
+        "Pelna pula (8 heurystyk z MANUAL_HEURISTICS)",
+        instance,
+        MANUAL_HEURISTICS,
+        N_MOVES,
+        seed=0,
+    )
+    _run_benchmark(
+        "Tylko ruchy lokalne (move_random, swap, resource_reassign, kempe_chain)",
+        instance,
+        local_heuristics,
+        N_MOVES,
+        seed=0,
+    )
+
+
 if __name__ == "__main__":
     main()
 ```
@@ -583,8 +643,19 @@ if __name__ == "__main__":
 - [ ] **Step 2: Run the script and capture the result**
 
 Run: `uv run python scripts/benchmark_delta_evaluation.py`
-Expected: prints instance stats, then both timings and a speedup ratio > 1.0x. Note the printed
-speedup ratio in the task's commit message or PR description — it's the Etap 3 DoD evidence.
+Expected: prints instance stats, then two labeled sections each with both timings and a speedup
+ratio. **Actual measured result (final, reproduced twice):** blended (full 8-heuristic pool)
+0.7x (14.769s full vs 21.050s delta); local-only (`move_random`/`swap`/`resource_reassign`/
+`kempe_chain`) 0.9x (14.710s full vs 17.139s delta) — `delta_cost` is slower in BOTH scenarios on
+AU-BG-98, not just the blended one. The original hypothesis that local-only moves would show a
+clear win did not hold on this instance; the fixed per-call overhead (`resolve_occurrences` and
+`_build_occupancy_index` each run twice — once for the old solution, once for the new — versus
+once in full evaluation) combined with AU-BG-98's apparently broadly-scoped constraints outweighs
+whatever `_constraint_touches` manages to skip, regardless of move locality. This is the honest,
+final Etap 3 benchmark result — not a bug (Tasks 1-2 already proved `delta_cost` numerically
+correct across 10,000 chained moves) but a real limitation of the "filtered full re-evaluation"
+design on this instance's constraint structure. Note both printed speedup ratios in the task's
+commit message — both are Etap 3 DoD evidence, together they show the full, honest picture.
 
 - [ ] **Step 3: Type-check and lint**
 
@@ -600,8 +671,14 @@ git commit -m "$(cat <<'EOF'
 perf: add delta_cost vs full-evaluation benchmark script (Etap 3 DoD)
 
 Runs both cost-evaluation paths over the same chained-move sequence on
-AU-BG-98 and prints the speedup ratio -- diagnostic evidence for the
-thesis chapter, not a pytest test.
+AU-BG-98 and reports two speedup ratios -- blended (full 8-heuristic
+pool) and local-moves-only -- diagnostic evidence for the thesis
+chapter, not a pytest test. Measured: 0.7x blended, 0.9x local-only --
+delta_cost is slower in both scenarios on this instance (see plan's
+Task 3 amendments for root-cause analysis: fixed 2x per-call overhead
+outweighs constraint-skipping given AU-BG-98's broadly-scoped
+constraints). Correctness is unaffected and separately proven (Tasks
+1-2, 10000 chained moves, zero discrepancies).
 EOF
 )"
 ```
