@@ -86,11 +86,11 @@ def _run_benchmark(
 
     print(
         f"Pelna ewaluacja:       {full_time:.3f}s  "
-        f"({len(solutions) / full_time:.0f} it/s)"
+        f"({(len(solutions) - 1) / full_time:.0f} it/s)"
     )
     print(
         f"Ewaluacja przyrostowa: {delta_time:.3f}s  "
-        f"({len(solutions) / delta_time:.0f} it/s)"
+        f"({(len(solutions) - 1) / delta_time:.0f} it/s)"
     )
     print(f"Przyspieszenie: {full_time / delta_time:.1f}x")
 
