@@ -27,7 +27,7 @@ W zakresie:
 - Nowy moduł `xhstt_core/delta.py` z publiczną funkcją `delta_cost(instance, old_solution,
   old_cost, new_solution) -> Cost`.
 - Generyczny interfejs oparty o diff dwóch rozwiązań (nie o typ ruchu) — pokrywa automatycznie
-  wszystkie 7 heurystyk z `MANUAL_HEURISTICS` (`move_random`, `move_best`, `swap`,
+  wszystkie 8 heurystyk z `MANUAL_HEURISTICS` (`move_random`, `move_best`, `swap`,
   `repair_hard_violation`, `kempe_chain`, `ruin_and_recreate`, `large_perturbation`,
   `resource_reassign`), bo żadna z nich nie zmienia `event_ref` ani długości `solution.events` —
   tylko `time_ref`/`resources` wybranych pozycji.
@@ -193,7 +193,7 @@ diagnostyczny do rozdziału pracy, nie test) i bez nowej zależności (`pytest-b
   `heuristics.py` — decyzja użytkownika, spójna z tym, jak poprzednie etapy dzielono w tym
   repo (buduj nietknięte, podepnij osobno).
 - **Kształt API**: generyczny `diff(old_solution, new_solution)` zamiast API dedykowanego dla
-  pojedynczego przesunięcia zdarzenia — decyzja użytkownika; pokrywa wszystkie 7 heurystyk bez
+  pojedynczego przesunięcia zdarzenia — decyzja użytkownika; pokrywa wszystkie 8 heurystyk bez
   zmian w `moves.py`/`heuristics.py`.
 - **Algorytm**: "filtrowana pełna reewaluacja" (opcja A z brainstormingu) zamiast prawdziwej
   delty per punkt aplikacji (opcja B) czy cache'u per punkt z inwalidacją (opcja C) — priorytet

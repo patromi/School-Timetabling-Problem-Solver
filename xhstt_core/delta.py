@@ -56,7 +56,11 @@ def delta_cost(
     count at every position (every heuristic in
     xhstt_core.heuristics.MANUAL_HEURISTICS satisfies this) -- raises
     ValueError if the resolved occurrence counts differ, which means that
-    assumption was violated."""
+    assumption was violated.
+
+    Note: unlike a fresh evaluate_cost call, delta_cost never touches --
+    and so can't raise on -- a constraint type evaluate_constraint doesn't
+    implement, if that constraint isn't touched by this move."""
     old_occurrences = resolve_occurrences(instance, old_solution)
     new_occurrences = resolve_occurrences(instance, new_solution)
     if len(old_occurrences) != len(new_occurrences):
@@ -74,7 +78,9 @@ def delta_cost(
     if not changed:
         return old_cost
 
-    touched_events = frozenset(old_occurrences[k].event_ref for k in changed)
+    touched_events = frozenset(
+        o.event_ref for k in changed for o in (old_occurrences[k], new_occurrences[k])
+    )
     touched_resources = frozenset(
         r
         for k in changed

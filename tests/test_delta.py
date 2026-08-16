@@ -6,7 +6,7 @@ import xhstt_core.delta as delta
 from xhstt_core.construct import build_initial
 from xhstt_core.cost import Cost, evaluate_cost
 from xhstt_core.delta import delta_cost
-from xhstt_core.evaluator_ref import evaluate_constraint
+from xhstt_core.evaluator_ref import Occurrence, evaluate_constraint
 from xhstt_core.heuristics import MANUAL_HEURISTICS
 from xhstt_core.model import (
     AppliesTo,
@@ -66,18 +66,21 @@ def _all_at_p1(n: int) -> Solution:
 
 
 def test_delta_cost_returns_old_cost_unchanged_when_nothing_changed(
-    monkeypatch,  # noqa: ANN001
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     instance = _independent_prefer_times_instance(3)
     solution = _all_at_p1(3)
     cost = evaluate_cost(instance, solution)
     calls: list[int] = []
     real = evaluate_constraint
-    monkeypatch.setattr(
-        delta,
-        "evaluate_constraint",
-        lambda *a, **kw: (calls.append(1), real(*a, **kw))[1],
-    )
+
+    def _counting_evaluate_constraint(
+        instance: Instance, occurrences: list[Occurrence], constraint: Constraint
+    ) -> int:
+        calls.append(1)
+        return real(instance, occurrences, constraint)
+
+    monkeypatch.setattr(delta, "evaluate_constraint", _counting_evaluate_constraint)
 
     result = delta_cost(instance, solution, cost, solution)
 
@@ -86,7 +89,7 @@ def test_delta_cost_returns_old_cost_unchanged_when_nothing_changed(
 
 
 def test_delta_cost_matches_full_evaluation_and_skips_unrelated_constraints(
-    monkeypatch,  # noqa: ANN001
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     n = 5
     instance = _independent_prefer_times_instance(n)
@@ -98,11 +101,14 @@ def test_delta_cost_matches_full_evaluation_and_skips_unrelated_constraints(
 
     calls: list[int] = []
     real = evaluate_constraint
-    monkeypatch.setattr(
-        delta,
-        "evaluate_constraint",
-        lambda *a, **kw: (calls.append(1), real(*a, **kw))[1],
-    )
+
+    def _counting_evaluate_constraint(
+        instance: Instance, occurrences: list[Occurrence], constraint: Constraint
+    ) -> int:
+        calls.append(1)
+        return real(instance, occurrences, constraint)
+
+    monkeypatch.setattr(delta, "evaluate_constraint", _counting_evaluate_constraint)
 
     result = delta_cost(instance, old_solution, old_cost, new_solution)
 
@@ -153,6 +159,7 @@ def test_delta_cost_matches_full_evaluation_on_a_real_instance_after_one_lahc_st
     assert result == evaluate_cost(instance, new_solution)
 
 
+@pytest.mark.slow
 def test_delta_cost_matches_full_evaluation_over_a_chain_of_10000_random_moves() -> (
     None
 ):
@@ -160,7 +167,7 @@ def test_delta_cost_matches_full_evaluation_over_a_chain_of_10000_random_moves()
     # sekwencji ruchow koszt liczony przyrostowo == koszt liczony od
     # zera" -- chained (each move's output feeds the next), not 10000
     # independent single moves from the same starting point, and covers
-    # all 7 heuristics (single-event and multi-event moves alike) since
+    # all 8 heuristics (single-event and multi-event moves alike) since
     # each iteration draws uniformly from MANUAL_HEURISTICS.
     instance = parse_archive(_load("BrazilInstance1.xml"))[0]
     rng = random.Random(0)

@@ -38,6 +38,12 @@ the LAHC hot path is an explicitly separate, later step (user decision from brai
   this same feature was already committed directly to `main` earlier in this session; no new
   branch needed (repo's `check_branch_name.py` pre-commit hook exempts `main`).
 
+> **Amendment (post-execution):** work actually happened on branch `issue#23-delta-evaluation`,
+> not `main` as stated above — an isolated git worktree was created for this plan during the
+> `superpowers:subagent-driven-development` setup step, and the branch was named to match the
+> repo's own `issue#<number>[-description]` convention (see `scripts/check_branch_name.py`)
+> instead of relying on `main`'s pre-commit exemption. Better isolation, no downside.
+
 ---
 
 ### Task 1: `xhstt_core/delta.py` core implementation + unit tests
