@@ -700,3 +700,22 @@ still call full `evaluate_cost` per candidate today). That wiring is a separate 
 brainstorm + plan, same pattern as
 `docs/superpowers/specs/2026-08-01-wire-heuristic-pool-into-lahc-design.md` was for the heuristic
 pool.
+
+### Follow-up experiment: lazy occupancy-index building (post-PR)
+
+Tried the first of the final review's two cheap-optimization recommendations: build
+`old_index`/`new_index` (`_build_occupancy_index`) only if at least one touched constraint's type
+is actually one of the 5 (of 16) that ever reads `evaluator_ref._current_occupancy_index`
+(`AvoidClashesConstraint`, `ClusterBusyTimesConstraint`, `AvoidUnavailableTimesConstraint`,
+`LimitIdleTimesConstraint`, `LimitBusyTimesConstraint` — confirmed by grep). Change is
+correctness-neutral (the index is purely a perf cache; every reader has a slower-but-equivalent
+fallback for `None`) — all 4 fast `test_delta.py` tests still pass, mypy/ruff clean.
+
+Single-run benchmark result on AU-BG-98: blended 0.7x → 0.8x, local-only 0.9x → 0.8x. **Net effect
+is inconclusive** — full evaluation (untouched by this change) also sped up ~24% between the two
+runs, indicating measurement noise on this machine is at least that large, which swamps whatever
+small real effect the lazy index has. Not worth a multi-run statistical benchmark right now (user
+decision) — recorded here as a documented, safe, marginal experiment rather than pursued further.
+The other two recommendations from the final review (threading the occupancy index across solver
+iterations instead of rebuilding it per call, and true per-point-of-application deltas) remain
+unexplored and would need the Etap 5/6 solver-loop wiring to be meaningful to test anyway.

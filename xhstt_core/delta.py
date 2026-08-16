@@ -18,6 +18,22 @@ from xhstt_core.evaluator_ref import (
 )
 from xhstt_core.model import Constraint, Instance, Solution
 
+# The only constraint types whose _evaluate_*_constraint function ever reads
+# evaluator_ref._current_occupancy_index (directly, or via
+# _full_span_busy_times) -- confirmed by grepping evaluator_ref.py. Building
+# the occupancy index is itself an O(occurrences) pass done twice (old/new)
+# per delta_cost call; skipping it when no touched constraint would even
+# look at it avoids that cost entirely.
+_OCCUPANCY_INDEX_CONSTRAINT_TYPES = frozenset(
+    {
+        "AvoidClashesConstraint",
+        "ClusterBusyTimesConstraint",
+        "AvoidUnavailableTimesConstraint",
+        "LimitIdleTimesConstraint",
+        "LimitBusyTimesConstraint",
+    }
+)
+
 
 def _constraint_touches(
     instance: Instance,
@@ -89,16 +105,19 @@ def delta_cost(
         if r is not None
     )
 
-    old_index = _build_occupancy_index(instance, old_occurrences)
-    new_index = _build_occupancy_index(instance, new_occurrences)
+    touched_constraints = [
+        constraint
+        for constraint in instance.constraints
+        if _constraint_touches(instance, constraint, touched_events, touched_resources)
+    ]
+
+    old_index = new_index = None
+    if any(c.type in _OCCUPANCY_INDEX_CONSTRAINT_TYPES for c in touched_constraints):
+        old_index = _build_occupancy_index(instance, old_occurrences)
+        new_index = _build_occupancy_index(instance, new_occurrences)
 
     infeasibility, objective = old_cost.infeasibility, old_cost.objective
-    for constraint in instance.constraints:
-        if not _constraint_touches(
-            instance, constraint, touched_events, touched_resources
-        ):
-            continue
-
+    for constraint in touched_constraints:
         evaluator_ref._current_occupancy_index = old_index
         try:
             old_contribution = evaluate_constraint(
