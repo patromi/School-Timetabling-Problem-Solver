@@ -2,7 +2,6 @@ import random
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 
-from xhstt_core.cost import evaluate_cost
 from xhstt_core.evaluator_ref import (
     _assigned_resource_ids,
     _events_in_applies_to,
@@ -11,6 +10,7 @@ from xhstt_core.evaluator_ref import (
     resolve_occurrences,
     valid_start_time_ids,
 )
+from xhstt_core.incremental import IncrementalEvaluator
 from xhstt_core.model import Instance, Solution
 from xhstt_core.moves import (
     kempe_chain_move,
@@ -26,12 +26,20 @@ class Heuristic:
     """One entry in the manual heuristic pool -- wraps a plain apply()
     function with the identity/metadata the future RL selector (Etap 6)
     needs (id for its per-heuristic stats, protected so it's never pruned).
+
+    `incremental_safe` declares that the operator only ever re-times or
+    re-resources existing solution events, never changes how many there are
+    or which instance event each one belongs to -- the precondition the
+    incremental evaluator needs. It defaults to False so that anything
+    registered later (notably LLM-generated heuristics, Etap 7) is scored by
+    full evaluation unless it has been shown to hold.
     """
 
     id: str
     name: str
     protected: bool
     apply: Callable[[Solution, Instance, random.Random], Solution]
+    incremental_safe: bool = False
 
 
 def move_random(solution: Solution, instance: Instance, rng: random.Random) -> Solution:
@@ -43,14 +51,23 @@ def move_random(solution: Solution, instance: Instance, rng: random.Random) -> S
 
 
 def _best_time_for_event(
-    instance: Instance, solution: Solution, index: int
+    instance: Instance,
+    solution: Solution,
+    index: int,
+    evaluator: IncrementalEvaluator | None = None,
 ) -> Solution:
     """Returns the solution obtained by moving solution.events[index] to
     whichever valid start time (INCLUDING its current one) yields the
-    lowest cost (evaluate_cost(...).as_scalar(), numerically identical to
-    evaluator_ref.total_cost). Including the current time means the result
-    is never worse than the input -- move_best and repair_hard_violation
-    both depend on this to guarantee they never regress the solution."""
+    lowest cost (numerically identical to evaluator_ref.total_cost).
+    Including the current time means the result is never worse than the
+    input -- move_best and repair_hard_violation both depend on this to
+    guarantee they never regress the solution.
+
+    Candidate times are scored incrementally: one full evaluation to seed
+    the state, then one delta per candidate, instead of one full evaluation
+    per candidate. `evaluator` lets a caller that already holds state for
+    `solution` (ruin_and_recreate, repair_hard_violation) skip even that
+    seed; it must be positioned on `solution`."""
     event = solution.events[index]
     # construct.build_initial only ever leaves duration=None paired with
     # time_ref=None (a resources-only SolutionEvent that never needed a
@@ -65,13 +82,16 @@ def _best_time_for_event(
     if not candidates:
         raise ValueError(f"event {event.event_ref!r} has no valid start time")
 
+    scorer = (
+        evaluator if evaluator is not None else IncrementalEvaluator(instance, solution)
+    )
     best_solution: Solution | None = None
     best_cost: int | None = None
     for time_ref in candidates:
         new_events = list(solution.events)
         new_events[index] = replace(event, time_ref=time_ref)
         candidate_solution = replace(solution, events=new_events)
-        cost = evaluate_cost(instance, candidate_solution).as_scalar()
+        cost = scorer.probe(candidate_solution).as_scalar()
         if best_cost is None or cost < best_cost:
             best_cost = cost
             best_solution = candidate_solution
@@ -179,12 +199,22 @@ def ruin_and_recreate(
 
     recreate_order = list(ruined_indices)
     rng.shuffle(recreate_order)
+    # One state, advanced as each ruined event is placed -- the recreate
+    # phase is the single most expensive operator in the pool (k events x
+    # every valid time), and it used to pay a full evaluation for each of
+    # those candidates.
+    evaluator = IncrementalEvaluator(instance, current)
     for i in recreate_order:
-        current = _best_time_for_event(instance, current, i)
+        current = _best_time_for_event(instance, current, i, evaluator)
+        evaluator.commit(current)
     return current
 
 
-def _movable_violating_indices(instance: Instance, solution: Solution) -> list[int]:
+def _movable_violating_indices(
+    instance: Instance,
+    solution: Solution,
+    evaluator: IncrementalEvaluator | None = None,
+) -> list[int]:
     """Indices into solution.events whose event participates in at least
     one violated Required constraint (via either an event-scoped or a
     resource-scoped AppliesTo -- e.g. AvoidClashesConstraint applies to
@@ -193,13 +223,23 @@ def _movable_violating_indices(instance: Instance, solution: Solution) -> list[i
     fully preassigned event never appears in solution.events at all, and
     a resources-only entry -- see construct.build_initial -- has
     time_ref=None; both are excluded here) and a non-empty set of valid
-    alternative start times."""
-    occurrences = resolve_occurrences(instance, solution)
+    alternative start times.
+
+    An `evaluator` positioned on `solution` supplies the per-constraint
+    costs it already tracks, so no separate evaluation pass is needed. The
+    resulting set of candidate events is the same either way."""
+    if evaluator is not None:
+        occurrences = evaluator.occurrences
+        constraint_costs = evaluator.constraint_costs()
+    else:
+        occurrences = resolve_occurrences(instance, solution)
+        constraint_costs = tuple(
+            evaluate_constraint(instance, occurrences, c) for c in instance.constraints
+        )
+
     violated_event_ids: set[str] = set()
-    for constraint in instance.constraints:
-        if not constraint.required:
-            continue
-        if evaluate_constraint(instance, occurrences, constraint) <= 0:
+    for constraint, cost in zip(instance.constraints, constraint_costs, strict=True):
+        if not constraint.required or cost <= 0:
             continue
         violated_event_ids |= _events_in_applies_to(instance, constraint.applies_to)
         violated_resource_ids = _resources_in_applies_to(
@@ -229,11 +269,12 @@ def repair_hard_violation(
     constraint at random and moves it to its best available time (see
     _best_time_for_event) -- never a purely random move, so the operator
     actually tends to repair rather than just perturb."""
-    candidates = _movable_violating_indices(instance, solution)
+    evaluator = IncrementalEvaluator(instance, solution)
+    candidates = _movable_violating_indices(instance, solution, evaluator)
     if not candidates:
         raise ValueError("no movable event participates in a hard constraint violation")
     index = rng.choice(candidates)
-    return _best_time_for_event(instance, solution, index)
+    return _best_time_for_event(instance, solution, index, evaluator)
 
 
 MANUAL_HEURISTICS: list[Heuristic] = [
@@ -242,47 +283,55 @@ MANUAL_HEURISTICS: list[Heuristic] = [
         name="Random time reassignment",
         protected=True,
         apply=move_random,
+        incremental_safe=True,
     ),
     Heuristic(
         id="move_best",
         name="Best-slot time reassignment",
         protected=True,
         apply=move_best,
+        incremental_safe=True,
     ),
     Heuristic(
         id="swap",
         name="Swap two events' times",
         protected=True,
         apply=swap,
+        incremental_safe=True,
     ),
     Heuristic(
         id="repair_hard_violation",
         name="Repair a hard constraint violation",
         protected=True,
         apply=repair_hard_violation,
+        incremental_safe=True,
     ),
     Heuristic(
         id="resource_reassign",
         name="Reassign an event resource to a same-type alternative",
         protected=True,
         apply=resource_reassign,
+        incremental_safe=True,
     ),
     Heuristic(
         id="kempe_chain",
         name="Kempe chain interchange between two times",
         protected=True,
         apply=kempe_chain,
+        incremental_safe=True,
     ),
     Heuristic(
         id="ruin_and_recreate",
         name="Ruin a small portion of the solution and greedily rebuild it",
         protected=True,
         apply=ruin_and_recreate,
+        incremental_safe=True,
     ),
     Heuristic(
         id="large_perturbation",
         name="Large random perturbation across many events",
         protected=True,
         apply=large_perturbation,
+        incremental_safe=True,
     ),
 ]

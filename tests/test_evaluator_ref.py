@@ -1,9 +1,14 @@
 from pathlib import Path
 
 import pytest
+from xhstt_core import evaluator_ref
 from xhstt_core.evaluator_ref import (
+    _build_occupancy_index,
     apply_cost_function,
     evaluate_constraint,
+    evaluate_constraint_costs,
+    evaluate_cost_components,
+    occupancy_index_scope,
     resolve_occurrences,
     total_cost,
 )
@@ -43,6 +48,47 @@ DURATION_3_EVENT_ARCHIVE = """<HighSchoolTimetableArchive>
           <Required>true</Required>
           <Weight>1</Weight>
           <CostFunction>Linear</CostFunction>
+          <AppliesTo>
+            <EventGroups><EventGroup Reference="gr_All"/></EventGroups>
+          </AppliesTo>
+        </AssignTimeConstraint>
+      </Constraints>
+    </Instance>
+  </Instances>
+</HighSchoolTimetableArchive>"""
+
+TWO_EVENT_QUADRATIC_ASSIGN_TIME_ARCHIVE = """<HighSchoolTimetableArchive>
+  <Instances>
+    <Instance Id="I1">
+      <MetaData><Name>Test</Name></MetaData>
+      <Times><TimeGroups></TimeGroups></Times>
+      <Resources>
+        <ResourceTypes></ResourceTypes>
+        <ResourceGroups></ResourceGroups>
+      </Resources>
+      <Events>
+        <EventGroups>
+          <EventGroup Id="gr_All"><Name>All</Name></EventGroup>
+        </EventGroups>
+        <Event Id="E1">
+          <Name>E1</Name>
+          <Duration>2</Duration>
+          <Resources></Resources>
+          <EventGroups><EventGroup Reference="gr_All"/></EventGroups>
+        </Event>
+        <Event Id="E2">
+          <Name>E2</Name>
+          <Duration>2</Duration>
+          <Resources></Resources>
+          <EventGroups><EventGroup Reference="gr_All"/></EventGroups>
+        </Event>
+      </Events>
+      <Constraints>
+        <AssignTimeConstraint Id="AT1">
+          <Name>AssignTimes</Name>
+          <Required>true</Required>
+          <Weight>1</Weight>
+          <CostFunction>Quadratic</CostFunction>
           <AppliesTo>
             <EventGroups><EventGroup Reference="gr_All"/></EventGroups>
           </AppliesTo>
@@ -291,6 +337,52 @@ def test_assign_time_constraint_deviation_is_duration_weighted():
     constraint = instance.constraints[0]
 
     assert evaluate_constraint(instance, occurrences, constraint) == 3
+
+
+def test_assign_time_constraint_applies_cost_function_per_event_not_per_scope():
+    # Spec, verbatim: "Each event listed in the AppliesTo section that does
+    # not contain a time preassignment is one point of application", and
+    # "the deviation at one point of application (one instance event) is the
+    # total duration of those solution events derived from the instance
+    # event that are not assigned a time". So with two duration-2 events
+    # both unassigned, Quadratic must give 2^2 + 2^2 = 8 -- NOT (2+2)^2 = 16,
+    # which is what summing the whole scope into one deviation would give.
+    instance = parse_archive(TWO_EVENT_QUADRATIC_ASSIGN_TIME_ARCHIVE)[0]
+    solution = Solution(
+        instance_ref=instance.id,
+        events=[
+            SolutionEvent(event_ref="E1", time_ref=None),
+            SolutionEvent(event_ref="E2", time_ref=None),
+        ],
+    )
+    occurrences = resolve_occurrences(instance, solution)
+
+    assert evaluate_constraint(instance, occurrences, instance.constraints[0]) == 8
+
+
+def test_occupancy_index_scope_restores_the_previous_index_when_nested():
+    # A nested full evaluation inside an incremental scope must not leave the
+    # outer scope's index cleared -- the old set-then-None-in-finally pattern
+    # did exactly that.
+    instance = parse_archive(_load("ArtificialSudoku4x4.xml"))[0]
+    solution = parse_solution_groups(_load("ArtificialSudoku4x4.xml"))[0].solutions[0]
+    outer = _build_occupancy_index(instance, resolve_occurrences(instance, solution))
+
+    with occupancy_index_scope(outer):
+        total_cost(instance, solution)
+        assert evaluator_ref._current_occupancy_index is outer
+
+    assert evaluator_ref._current_occupancy_index is None
+
+
+def test_evaluate_constraint_costs_is_a_per_constraint_breakdown_of_the_total():
+    instance = parse_archive(_load("BrazilInstance1.xml"))[0]
+    solution = parse_solution_groups(_load("BrazilInstance1.xml"))[0].solutions[0]
+
+    costs = evaluate_constraint_costs(instance, solution)
+
+    assert len(costs) == len(instance.constraints)
+    assert sum(costs) == sum(evaluate_cost_components(instance, solution))
 
 
 def test_avoid_clashes_constraint_is_zero_on_a_feasible_reference_solution():
