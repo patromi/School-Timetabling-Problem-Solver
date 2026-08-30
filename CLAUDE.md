@@ -111,6 +111,7 @@ uv run python run_solver.py BR-SA-00 --iterations 50000 --seed 1 --history 30
 uv run snakemake --cores all               # run the (currently stubbed) Snakemake workflow
 
 uv run python -m pytest                              # full test suite, with coverage
+uv run python -m pytest -m "not slow"          # skip long-running DoD tests (~9 min 10k-move invariant test)
 uv run python -m pytest tests/test_evaluator_ref.py  # single test file
 uv run python -m pytest tests/test_evaluator_ref.py::test_name -v   # single test
 

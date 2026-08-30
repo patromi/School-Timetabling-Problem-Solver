@@ -72,3 +72,7 @@ output/*
 
 # Solver output results
 output/
+
+# Git worktrees (superpowers subagent-driven-development workspaces)
+.worktrees/
+.superpowers/
