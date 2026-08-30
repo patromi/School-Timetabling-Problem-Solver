@@ -719,3 +719,56 @@ decision) — recorded here as a documented, safe, marginal experiment rather th
 The other two recommendations from the final review (threading the occupancy index across solver
 iterations instead of rebuilding it per call, and true per-point-of-application deltas) remain
 unexplored and would need the Etap 5/6 solver-loop wiring to be meaningful to test anyway.
+
+### Post-PR root-cause refinement: why the negative result is structural, not noise
+
+The "Second amendment" above attributes the 0.7x/0.9x result to "AU-BG-98's constraints are
+broadly scoped, so almost every move touches almost every constraint." That framing turned out to
+be imprecise — instrumenting `delta_cost` directly on AU-BG-98 shows only ~11% of constraints
+(18.6 of 172, averaged over 40 `move_random`/`swap`/`resource_reassign`/`kempe_chain` moves) are
+ever marked "touched." The touch-detection filter itself is working exactly as designed, on a
+per-constraint-count basis. The real mechanism is sharper than "most constraints touched":
+
+- **Per-constraint evaluation cost on this instance is extremely skewed.** Timing all 172
+  `evaluate_constraint` calls individually on one `AU-BG-98` solution: the top 15 constraints
+  (~9% of the pool) account for **78% of total evaluation time** (113ms of 145ms for one full
+  pass); the other 157 average 0.2ms each — effectively free regardless of whether they're
+  skipped.
+- **Those 15 expensive constraints are exactly the ones with instance-spanning `AppliesTo`
+  scopes** — e.g. `SpreadEventsConstraint` over 387 event groups (literally every event in the
+  instance), `AvoidSplitAssignmentsConstraint` over 234, `PreferTimesConstraint` over 357 events,
+  `AvoidClashesConstraint` over the full resource pool. This isn't an AU-BG-98 quirk: expressing
+  "no clashes for the whole school" or "spread this course's sessions evenly" as XHSTT
+  constraints naturally produces a handful of huge-scope constraints rather than many narrow
+  ones — a pattern likely common across real XHSTT instances, not unique to this one.
+- **A single-event move almost always belongs to at least one of these mega-scope constraints**,
+  since their scope already covers most of the instance. So even though only ~11% of constraints
+  get touched *by count*, that 11% is disproportionately drawn from the 9% that already account
+  for 78% of the cost — the fraction of *evaluation time* skipped is far smaller than the
+  fraction of *constraints* skipped. The measured 11%-touched figure is consistent with an
+  evaluation-time ceiling for constraint-skipping alone well under the ~20-30% that would be
+  needed to offset the overhead below.
+- **On top of that ceiling, `delta_cost` pays every touched constraint's cost twice** (once via
+  `evaluate_constraint(..., old_occurrences, ...)`, once via `evaluate_constraint(...,
+  new_occurrences, ...)`, to diff old vs. new contribution) plus `resolve_occurrences` twice —
+  versus full evaluation's one pass over all constraints and one `resolve_occurrences` call. Back
+  of the envelope from the same instrumentation run: 18.6 touched constraints × 2 calls ×
+  2.82ms/call (average cost of a *touched*, i.e. disproportionately expensive, constraint)
+  ≈ 105ms, plus ~2.4ms of doubled `resolve_occurrences` ≈ 107ms per delta call, against 98ms for
+  one full `evaluate_cost` call — reproducing the measured ~0.9x local-only ratio almost exactly.
+
+**Conclusion:** the negative benchmark isn't measurement noise or a fixable implementation
+mistake — it's the direct consequence of pairing a "filter-then-fully-reevaluate" design (cheap
+to prove correct, reuses `evaluate_constraint` unchanged) with instances where the constraints
+that *would* be touched by almost any move are also the ones that dominate total cost. Skipping
+untouched constraints can only ever save the cheap, narrow-scope minority; the 2x
+evaluate-old-and-new tax is paid on exactly the expensive majority that's hardest to skip. Closing
+this gap for real would require true per-point-of-application deltas (e.g. re-scoring only the one
+resource/event whose occupancy changed inside `AvoidClashesConstraint`, not its whole scope) —
+already considered and deliberately deferred in the design spec (see "Poza zakresem" in
+`docs/superpowers/specs/2026-08-16-delta-evaluation-design.md`) because it would require rewriting
+13 of 16 `_evaluate_*_constraint` functions with independent incremental logic, at real risk of
+drifting from the full evaluator's output — unacceptable against CLAUDE.md's priority #1
+(correctness) without much stronger tooling to keep the two paths provably in sync. Recorded here
+as the honest explanation for the thesis chapter and as the concrete target for a future
+optimization pass, not pursued in this PR.
