@@ -89,6 +89,15 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument(
         "--list", action="store_true", help="Wypisz dostepne instancje i zakoncz."
     )
+    parser.add_argument(
+        "--evaluation",
+        choices=["incremental", "full", "verify"],
+        default="incremental",
+        help=(
+            "Sposob liczenia kosztu kandydatow: przyrostowo (domyslnie), "
+            "pelna ewaluacja, albo obie z porownaniem (diagnostyka)."
+        ),
+    )
     return parser.parse_args(argv)
 
 
@@ -135,7 +144,8 @@ def main(argv: list[str] | None = None) -> None:
     )
 
     print(
-        f"Uruchamianie LAHC ({args.iterations} iteracji, seed={args.seed}, history={args.history})..."
+        f"Uruchamianie LAHC ({args.iterations} iteracji, seed={args.seed}, "
+        f"history={args.history}, ewaluacja={args.evaluation})..."
     )
     t_start = time.time()
 
@@ -162,6 +172,7 @@ def main(argv: list[str] | None = None) -> None:
         on_progress=on_progress,
         progress_every=max(1, args.iterations // 20),
         progress_seconds=2.0,
+        evaluation=args.evaluation,
     )
     elapsed = time.time() - t_start
     infeasibility_1, objective_1 = cost_breakdown(instance, best)

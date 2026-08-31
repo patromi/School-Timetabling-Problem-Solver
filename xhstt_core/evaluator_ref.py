@@ -1,9 +1,18 @@
 import math
 from collections import Counter
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from functools import cache
 
-from xhstt_core.model import AppliesTo, Constraint, Event, Instance, Solution
+from xhstt_core.model import (
+    AppliesTo,
+    Constraint,
+    Event,
+    Instance,
+    Solution,
+    SolutionEvent,
+)
 
 
 @cache
@@ -82,7 +91,7 @@ class Occurrence:
     resource_assignments: list[tuple[str, str | None]] = field(default_factory=list)
 
 
-def _assigned_resource(occurrence: "Occurrence", role: str) -> str | None:
+def _assigned_resource(occurrence: "Occurrence", role: str | None) -> str | None:
     """Looks up the (single) resource assigned to a given role -- correct
     for the constraint types that reference a specific Role, since the
     spec guarantees Role uniqueness for genuine assignable slots (the only
@@ -119,6 +128,34 @@ def apply_cost_function(name: str, deviation: int) -> int:
     raise ValueError(f"unknown XHSTT cost function: {name!r}")
 
 
+def resolve_occurrence(event_def: Event, solution_event: SolutionEvent) -> Occurrence:
+    """Merges one SolutionEvent with its Event definition's preassignments.
+    Extracted so an incremental evaluator can re-resolve a single changed
+    entry without duplicating (and drifting from) the merge rules."""
+    assignments = [(er.role, er.resource_ref) for er in event_def.resources]
+    for sr in solution_event.resources:
+        # A solution override fills in the first still-unassigned
+        # slot with a matching role (the "assignable slot" the
+        # spec's Role-uniqueness guarantee refers to); if none is
+        # found, add it as a new entry.
+        for i, (role, ref) in enumerate(assignments):
+            if role == sr.role and ref is None:
+                assignments[i] = (role, sr.resource_ref)
+                break
+        else:
+            assignments.append((sr.role, sr.resource_ref))
+    return Occurrence(
+        event_ref=solution_event.event_ref,
+        duration=solution_event.duration
+        if solution_event.duration is not None
+        else event_def.duration,
+        time_ref=solution_event.time_ref
+        if solution_event.time_ref is not None
+        else event_def.time_ref,
+        resource_assignments=assignments,
+    )
+
+
 def resolve_occurrences(instance: Instance, solution: Solution) -> list[Occurrence]:
     """Merges each Event's fixed resource/time preassignments (declared in
     the Instance) with what the Solution provides for roles/times left
@@ -128,14 +165,12 @@ def resolve_occurrences(instance: Instance, solution: Solution) -> list[Occurren
     listed explicitly) still "happens" once, at its full duration, and
     must be visible to the evaluator -- so it gets one synthesized
     occurrence rather than zero."""
-    events_by_id = {e.id: e for e in instance.events}
     solution_events_by_ref: dict[str, list] = {}
     for se in solution.events:
         solution_events_by_ref.setdefault(se.event_ref, []).append(se)
 
     occurrences = []
     for event_def in instance.events:
-        fixed_assignments = [(er.role, er.resource_ref) for er in event_def.resources]
         matching = solution_events_by_ref.get(event_def.id)
         if not matching:
             occurrences.append(
@@ -143,35 +178,14 @@ def resolve_occurrences(instance: Instance, solution: Solution) -> list[Occurren
                     event_ref=event_def.id,
                     duration=event_def.duration,
                     time_ref=event_def.time_ref,
-                    resource_assignments=list(fixed_assignments),
+                    resource_assignments=[
+                        (er.role, er.resource_ref) for er in event_def.resources
+                    ],
                 )
             )
             continue
         for se in matching:
-            assignments = list(fixed_assignments)
-            for sr in se.resources:
-                # A solution override fills in the first still-unassigned
-                # slot with a matching role (the "assignable slot" the
-                # spec's Role-uniqueness guarantee refers to); if none is
-                # found, add it as a new entry.
-                for i, (role, ref) in enumerate(assignments):
-                    if role == sr.role and ref is None:
-                        assignments[i] = (role, sr.resource_ref)
-                        break
-                else:
-                    assignments.append((sr.role, sr.resource_ref))
-            occurrences.append(
-                Occurrence(
-                    event_ref=se.event_ref,
-                    duration=se.duration
-                    if se.duration is not None
-                    else event_def.duration,
-                    time_ref=se.time_ref
-                    if se.time_ref is not None
-                    else event_def.time_ref,
-                    resource_assignments=assignments,
-                )
-            )
+            occurrences.append(resolve_occurrence(event_def, se))
     return occurrences
 
 
@@ -201,15 +215,25 @@ def _events_in_applies_to(instance: Instance, applies_to: AppliesTo) -> frozense
 def _evaluate_assign_time_constraint(
     instance: Instance, occurrences: list[Occurrence], constraint: Constraint
 ) -> int:
-    # Deviation is the summed *duration* of unassigned sub-events, not a
-    # flat count of 1 per event (Kristiansen et al. 2015, §3.2.3).
+    # Point of application: one instance event (spec, verbatim: "Each event
+    # listed in the AppliesTo section that does not contain a time
+    # preassignment is one point of application"), so the cost function is
+    # applied once PER EVENT -- aggregating first and applying it once would
+    # agree under Linear but not under Quadratic/Step. Deviation is the
+    # summed *duration* of that event's unassigned sub-events, not a flat
+    # count of 1 per event (Kristiansen et al. 2015, §3.2.3). An event with
+    # deviation 0 (including a time-preassigned one, which the spec skips
+    # outright) costs 0 under all three cost functions, so it need not be
+    # enumerated separately.
     event_ids = _events_in_applies_to(instance, constraint.applies_to)
-    deviation = sum(
-        o.duration
-        for o in occurrences
-        if o.event_ref in event_ids and o.time_ref is None
+    unassigned_duration: Counter[str] = Counter()
+    for o in occurrences:
+        if o.event_ref in event_ids and o.time_ref is None:
+            unassigned_duration[o.event_ref] += o.duration
+    return sum(
+        constraint.weight * apply_cost_function(constraint.cost_function, deviation)
+        for deviation in unassigned_duration.values()
     )
-    return constraint.weight * apply_cost_function(constraint.cost_function, deviation)
 
 
 @cache
@@ -278,6 +302,24 @@ def _occupied_time_ids(
 # single cost after the earlier group-membership caching fix. Module-level
 # and not thread-safe by design -- this solver is single-threaded.
 _current_occupancy_index: dict[str, "Counter[str]"] | None = None
+
+
+@contextmanager
+def occupancy_index_scope(
+    index: dict[str, "Counter[str]"] | None,
+) -> Iterator[None]:
+    """Installs `index` as the active occupancy index for the duration of the
+    block, restoring whatever was active before rather than clearing to None
+    -- so a nested evaluation (e.g. a full evaluate_cost called from inside
+    an incremental scope) can't silently strip the outer scope's index on
+    the way out."""
+    global _current_occupancy_index
+    previous = _current_occupancy_index
+    _current_occupancy_index = index
+    try:
+        yield
+    finally:
+        _current_occupancy_index = previous
 
 
 def _build_occupancy_index(
@@ -883,6 +925,20 @@ def valid_start_time_ids(instance: Instance, duration: int) -> tuple[str, ...]:
 INFEASIBILITY_WEIGHT = 1_000_000
 
 
+def evaluate_constraint_costs(
+    instance: Instance, solution: Solution
+) -> tuple[int, ...]:
+    """Per-constraint cost vector, in instance.constraints order. Same
+    numbers evaluate_cost_components sums up, kept separate so a test can
+    tell an incremental evaluator's per-constraint bookkeeping apart from
+    the aggregate -- two cancelling errors are invisible in the total."""
+    occurrences = resolve_occurrences(instance, solution)
+    with occupancy_index_scope(_build_occupancy_index(instance, occurrences)):
+        return tuple(
+            evaluate_constraint(instance, occurrences, c) for c in instance.constraints
+        )
+
+
 def evaluate_cost_components(instance: Instance, solution: Solution) -> tuple[int, int]:
     """Returns (infeasibility, objective) separately -- infeasibility is the
     sum of Required=true constraint costs, objective the sum of
@@ -890,10 +946,8 @@ def evaluate_cost_components(instance: Instance, solution: Solution) -> tuple[in
     into one scalar; `xhstt_core.cost` builds the (infeasibility, objective)
     vector representation on top of this instead, for lexicographic
     comparison of two solutions without conflating the two."""
-    global _current_occupancy_index
     occurrences = resolve_occurrences(instance, solution)
-    _current_occupancy_index = _build_occupancy_index(instance, occurrences)
-    try:
+    with occupancy_index_scope(_build_occupancy_index(instance, occurrences)):
         infeasibility = 0
         objective = 0
         for c in instance.constraints:
@@ -903,8 +957,6 @@ def evaluate_cost_components(instance: Instance, solution: Solution) -> tuple[in
             else:
                 objective += cost
         return infeasibility, objective
-    finally:
-        _current_occupancy_index = None
 
 
 def total_cost(instance: Instance, solution: Solution) -> int:
