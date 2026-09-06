@@ -185,10 +185,12 @@ def _parse_applies_to(node: ET.Element | None) -> AppliesTo:
     )
 
 
-def _parse_constraint_param(node: ET.Element):
+def _parse_constraint_param(
+    node: ET.Element,
+) -> str | list[dict[str, str | None]] | None:
     if len(node) == 0:
         return node.text
-    entries = []
+    entries: list[dict[str, str | None]] = []
     for sub in node:
         if "Reference" not in sub.attrib:
             continue
