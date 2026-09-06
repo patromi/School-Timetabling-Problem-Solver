@@ -2,13 +2,13 @@ import random
 from pathlib import Path
 
 import pytest
-import xhstt_core.delta as delta
-from xhstt_core.construct import build_initial
-from xhstt_core.cost import Cost, evaluate_cost
-from xhstt_core.delta import delta_cost
-from xhstt_core.evaluator_ref import Occurrence, evaluate_constraint
-from xhstt_core.heuristics import MANUAL_HEURISTICS
-from xhstt_core.model import (
+import src.delta as delta
+from src.construct import build_initial
+from src.cost import Cost, evaluate_cost
+from src.delta import delta_cost
+from src.evaluator_ref import Occurrence, evaluate_constraint
+from src.heuristics import MANUAL_HEURISTICS
+from src.model import (
     AppliesTo,
     Constraint,
     Event,
@@ -18,7 +18,7 @@ from xhstt_core.model import (
     SolutionEvent,
     Time,
 )
-from xhstt_core.parser import parse_archive
+from src.parser import parse_archive
 
 FIXTURES = Path(__file__).parent / "fixtures"
 

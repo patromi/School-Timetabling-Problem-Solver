@@ -11,9 +11,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent.resolve()))
 import csv
 from typing import Any
 
-from xhstt_core.parser import parse_archive, parse_solution_groups
-from xhstt_core.evaluator_ref import resolve_occurrences, evaluate_constraint
-from xhstt_core.model import Instance, Solution
+from src.evaluator_ref import evaluate_constraint, resolve_occurrences
+from src.model import Instance, Solution
+from src.parser import parse_archive, parse_solution_groups
+
 
 def cost_breakdown(instance: Instance, solution: Solution) -> tuple[int, int]:
     occurrences = resolve_occurrences(instance, solution)
@@ -29,13 +30,28 @@ def cost_breakdown(instance: Instance, solution: Solution) -> tuple[int, int]:
     )
     return infeasibility, objective
 
+
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Generate school timetabling run summaries.")
-    parser.add_argument("--instances", nargs="+", required=True, help="List of instance XML files.")
-    parser.add_argument("--solutions", nargs="+", required=True, help="List of solution XML files.")
-    parser.add_argument("--csv-output", type=Path, required=True, help="Output path for CSV summary.")
-    parser.add_argument("--md-output", type=Path, required=True, help="Output path for Markdown summary.")
+    parser = argparse.ArgumentParser(
+        description="Generate school timetabling run summaries."
+    )
+    parser.add_argument(
+        "--instances", nargs="+", required=True, help="List of instance XML files."
+    )
+    parser.add_argument(
+        "--solutions", nargs="+", required=True, help="List of solution XML files."
+    )
+    parser.add_argument(
+        "--csv-output", type=Path, required=True, help="Output path for CSV summary."
+    )
+    parser.add_argument(
+        "--md-output",
+        type=Path,
+        required=True,
+        help="Output path for Markdown summary.",
+    )
     return parser.parse_args()
+
 
 def main() -> None:
     args = parse_args()
@@ -71,22 +87,26 @@ def main() -> None:
                 for solution in group.solutions:
                     inst_id = solution.instance_ref
                     if inst_id not in instances_by_id:
-                        print(f"Warning: Instance {inst_id} matching solution in {sol_path} not found in instances.")
+                        print(
+                            f"Warning: Instance {inst_id} matching solution in {sol_path} not found in instances."
+                        )
                         continue
 
                     instance = instances_by_id[inst_id]
                     infeasibility, objective = cost_breakdown(instance, solution)
-                    feasible = (infeasibility == 0)
+                    feasible = infeasibility == 0
 
-                    results.append({
-                        "Instance": inst_id,
-                        "Name": instance.name,
-                        "Status": "FEASIBLE" if feasible else "INFEASIBLE",
-                        "Infeasibility": infeasibility,
-                        "Objective": objective,
-                        "SolutionGroup": group.id,
-                        "File": p.name
-                    })
+                    results.append(
+                        {
+                            "Instance": inst_id,
+                            "Name": instance.name,
+                            "Status": "FEASIBLE" if feasible else "INFEASIBLE",
+                            "Infeasibility": infeasibility,
+                            "Objective": objective,
+                            "SolutionGroup": group.id,
+                            "File": p.name,
+                        }
+                    )
         except Exception as e:
             print(f"Error processing solution file {sol_path}: {e}")
 
@@ -96,7 +116,18 @@ def main() -> None:
     # Write CSV
     args.csv_output.parent.mkdir(parents=True, exist_ok=True)
     with open(args.csv_output, mode="w", encoding="utf-8", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=["Instance", "Name", "Status", "Infeasibility", "Objective", "SolutionGroup", "File"])
+        writer = csv.DictWriter(
+            f,
+            fieldnames=[
+                "Instance",
+                "Name",
+                "Status",
+                "Infeasibility",
+                "Objective",
+                "SolutionGroup",
+                "File",
+            ],
+        )
         writer.writeheader()
         writer.writerows(results)
     print(f"Saved CSV summary to {args.csv_output}")
@@ -105,11 +136,16 @@ def main() -> None:
     args.md_output.parent.mkdir(parents=True, exist_ok=True)
     with open(args.md_output, mode="w", encoding="utf-8") as f:
         f.write("# Timetabling Run Summary\n\n")
-        f.write("| Instance | Name | Status | Infeasibility | Objective | Solution Group | File |\n")
+        f.write(
+            "| Instance | Name | Status | Infeasibility | Objective | Solution Group | File |\n"
+        )
         f.write("| --- | --- | --- | --- | --- | --- | --- |\n")
         for r in results:
-            f.write(f"| {r['Instance']} | {r['Name']} | **{r['Status']}** | {r['Infeasibility']:,} | {r['Objective']:,} | {r['SolutionGroup']} | `{r['File']}` |\n")
+            f.write(
+                f"| {r['Instance']} | {r['Name']} | **{r['Status']}** | {r['Infeasibility']:,} | {r['Objective']:,} | {r['SolutionGroup']} | `{r['File']}` |\n"
+            )
     print(f"Saved Markdown summary to {args.md_output}")
+
 
 if __name__ == "__main__":
     main()

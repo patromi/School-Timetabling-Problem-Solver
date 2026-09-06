@@ -1,14 +1,14 @@
 from pathlib import Path
 
 import pytest
-from xhstt_core.model import (
+from src.model import (
     Solution,
     SolutionEvent,
     SolutionEventResource,
     SolutionGroup,
 )
-from xhstt_core.parser import parse_archive, parse_solution_groups
-from xhstt_core.xml_writer import (
+from src.parser import parse_archive, parse_solution_groups
+from src.xml_writer import (
     extract_instance_archive,
     render_archive_with_solution_groups,
     render_solution_group,

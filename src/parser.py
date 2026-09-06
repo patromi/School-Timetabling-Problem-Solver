@@ -1,6 +1,6 @@
 import xml.etree.ElementTree as ET
 
-from xhstt_core.model import (
+from src.model import (
     AppliesTo,
     Constraint,
     Event,
