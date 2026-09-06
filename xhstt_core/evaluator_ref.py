@@ -128,7 +128,6 @@ def resolve_occurrences(instance: Instance, solution: Solution) -> list[Occurren
     listed explicitly) still "happens" once, at its full duration, and
     must be visible to the evaluator -- so it gets one synthesized
     occurrence rather than zero."""
-    events_by_id = {e.id: e for e in instance.events}
     solution_events_by_ref: dict[str, list] = {}
     for se in solution.events:
         solution_events_by_ref.setdefault(se.event_ref, []).append(se)

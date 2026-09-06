@@ -1,10 +1,16 @@
 import random
 
 from xhstt_core.evaluator_ref import _events_in_applies_to, valid_start_time_ids
-from xhstt_core.model import Instance, Solution, SolutionEvent, SolutionEventResource
+from xhstt_core.model import (
+    Event,
+    Instance,
+    Solution,
+    SolutionEvent,
+    SolutionEventResource,
+)
 
 
-def _split_duration_bounds(instance: Instance, event) -> tuple[int, int]:
+def _split_duration_bounds(instance: Instance, event: Event) -> tuple[int, int]:
     """Finds MinimumDuration/MaximumDuration from a SplitEventsConstraint
     applying to this event, if any. Without one, the event isn't meant to
     be split -- (1, event.duration) yields a single piece covering the
@@ -75,10 +81,15 @@ def build_initial(instance: Instance, rng: random.Random) -> Solution:
             for er in unassigned_roles
         }
 
-        def _fresh_resources() -> list[SolutionEventResource]:
+        def _fresh_resources(
+            role_choices: dict[str, str] = role_choices,
+        ) -> list[SolutionEventResource]:
             # A new list of new SolutionEventResource instances each call,
             # so sub-events sharing the same role->resource choice don't
             # share mutable objects a later in-place edit could corrupt.
+            # role_choices is a default arg (not a closure over the loop
+            # variable) so its value is bound at definition time -- see
+            # ruff B023.
             return [
                 SolutionEventResource(role=role, resource_ref=ref)
                 for role, ref in role_choices.items()

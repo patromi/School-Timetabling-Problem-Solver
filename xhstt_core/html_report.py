@@ -196,11 +196,15 @@ def _render_eval_group(
     return f"""<div class="eval-group" data-kind="{kind}">
   <div class="eval-group-head">
     <h3>{escape(title)}</h3>
-    <p class="eval-stat">{violated}/{len(ordered)} naruszonych &middot; suma = {total}</p>
-    <button class="eval-toggle" type="button" data-kind="{kind}" data-total="{len(ordered)}" data-violated="{violated}" data-expanded="false">Pokaż wszystkie ({len(ordered)})</button>
+    <p class="eval-stat">{violated}/{len(ordered)} naruszonych &middot;
+      suma = {total}</p>
+    <button class="eval-toggle" type="button" data-kind="{kind}"
+      data-total="{len(ordered)}" data-violated="{violated}"
+      data-expanded="false">Pokaż wszystkie ({len(ordered)})</button>
   </div>
   <table class="eval-table">
-    <thead><tr><th>Nazwa</th><th>Typ</th><th>Waga</th><th>Funkcja kosztu</th><th>Koszt</th></tr></thead>
+    <thead><tr><th>Nazwa</th><th>Typ</th><th>Waga</th>
+      <th>Funkcja kosztu</th><th>Koszt</th></tr></thead>
     <tbody>{rows}</tbody>
   </table>
 </div>"""
@@ -287,7 +291,8 @@ def render_timetable_page(
     <dl class="readout">
       <div><dt>zdarzenia</dt><dd>{len(instance.events)}</dd></div>
       <div><dt>status</dt><dd class="{status_class}">{status_text}</dd></div>
-      <div><dt>infeasibility</dt><dd class="{"ok" if feasible else "bad"}">{infeasibility}</dd></div>
+      <div><dt>infeasibility</dt>
+        <dd class="{"ok" if feasible else "bad"}">{infeasibility}</dd></div>
       <div><dt>objective</dt><dd>{objective}</dd></div>
     </dl>
   </header>
@@ -588,7 +593,10 @@ table.eval-table thead th {
 }
 table.eval-table td.mono { font-family: 'IBM Plex Mono', monospace; }
 table.eval-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
-tr.row--bad td:first-child { border-left: 3px solid var(--bad); padding-left: calc(0.6rem - 3px); }
+tr.row--bad td:first-child {
+  border-left: 3px solid var(--bad);
+  padding-left: calc(0.6rem - 3px);
+}
 tr.row--ok td:first-child {
   border-left: 3px solid var(--ok);
   padding-left: calc(0.6rem - 3px);
@@ -603,18 +611,29 @@ _PAGE_JS = """
   var tables = Array.prototype.slice.call(document.querySelectorAll('table.timetable'));
 
   function showType(type) {
-    typeTabs.forEach(function (t) { t.classList.toggle('active', t.dataset.type === type); });
+    typeTabs.forEach(function (t) {
+      t.classList.toggle('active', t.dataset.type === type);
+    });
     chips.forEach(function (c) { c.hidden = c.dataset.type !== type; });
-    var firstVisible = chips.filter(function (c) { return c.dataset.type === type; })[0];
-    if (firstVisible) showResource(firstVisible.dataset.type, firstVisible.dataset.resource);
+    var firstVisible = chips.filter(function (c) {
+      return c.dataset.type === type;
+    })[0];
+    if (firstVisible) {
+      showResource(firstVisible.dataset.type, firstVisible.dataset.resource);
+    }
   }
 
   function showResource(type, resource) {
     chips.forEach(function (c) {
-      c.classList.toggle('active', c.dataset.type === type && c.dataset.resource === resource);
+      c.classList.toggle(
+        'active',
+        c.dataset.type === type && c.dataset.resource === resource
+      );
     });
     tables.forEach(function (tbl) {
-      tbl.hidden = !(tbl.dataset.resourceType === type && tbl.dataset.resource === resource);
+      tbl.hidden = !(
+        tbl.dataset.resourceType === type && tbl.dataset.resource === resource
+      );
     });
   }
 
@@ -622,12 +641,16 @@ _PAGE_JS = """
     t.addEventListener('click', function () { showType(t.dataset.type); });
   });
   chips.forEach(function (c) {
-    c.addEventListener('click', function () { showResource(c.dataset.type, c.dataset.resource); });
+    c.addEventListener('click', function () {
+      showResource(c.dataset.type, c.dataset.resource);
+    });
   });
 
   if (typeTabs.length) showType(typeTabs[0].dataset.type);
 
-  var evalToggles = Array.prototype.slice.call(document.querySelectorAll('.eval-toggle'));
+  var evalToggles = Array.prototype.slice.call(
+    document.querySelectorAll('.eval-toggle')
+  );
   evalToggles.forEach(function (btn) {
     btn.addEventListener('click', function () {
       var kind = btn.dataset.kind;
