@@ -2,21 +2,21 @@ import random
 from pathlib import Path
 
 import pytest
-from xhstt_core.construct import build_initial
-from xhstt_core.evaluator_ref import (
+from src.construct import build_initial
+from src.evaluator_ref import (
     evaluate_constraint,
     resolve_occurrences,
     total_cost,
 )
-from xhstt_core.heuristics import (
+from src.heuristics import (
     MANUAL_HEURISTICS,
     Heuristic,
     move_best,
     repair_hard_violation,
     ruin_and_recreate,
 )
-from xhstt_core.model import Instance, Solution, SolutionEvent
-from xhstt_core.parser import parse_archive
+from src.model import Instance, Solution, SolutionEvent
+from src.parser import parse_archive
 
 FIXTURES = Path(__file__).parent / "fixtures"
 

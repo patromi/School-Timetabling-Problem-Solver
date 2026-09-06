@@ -1,11 +1,11 @@
 import random
 from pathlib import Path
 
-from xhstt_core.construct import build_initial
-from xhstt_core.evaluator_ref import total_cost
-from xhstt_core.heuristics import MANUAL_HEURISTICS
-from xhstt_core.lahc import run_lahc
-from xhstt_core.parser import parse_archive
+from src.construct import build_initial
+from src.evaluator_ref import total_cost
+from src.heuristics import MANUAL_HEURISTICS
+from src.lahc import run_lahc
+from src.parser import parse_archive
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -82,7 +82,7 @@ def test_lahc_reaches_full_feasibility_on_sudoku4x4_within_a_modest_budget():
     # constraints is Required=true -- a working local search should drive
     # infeasibility to 0 given a reasonably generous iteration budget.
     # (Empirically tuned for the current default heuristic pool
-    # (xhstt_core.heuristics.MANUAL_HEURISTICS): even with move_best/
+    # (src.heuristics.MANUAL_HEURISTICS): even with move_best/
     # repair_hard_violation's cost-aware placement, the pool has no notion
     # of the RT1..RT4 room subtyping PreferResourcesConstraint needs, so it
     # still wastes proposals on wrong-subtype rooms and needs a generous
@@ -121,7 +121,7 @@ def test_lahc_accepts_an_explicit_heuristic_pool_override():
 
 def test_lahc_defaults_to_manual_heuristics_when_no_pool_is_given():
     # Pins down that omitting `heuristics=` genuinely uses
-    # xhstt_core.heuristics.MANUAL_HEURISTICS (not a stale local copy) --
+    # src.heuristics.MANUAL_HEURISTICS (not a stale local copy) --
     # regression guard for the default-pool wiring itself.
     instance = parse_archive(_load("ArtificialSudoku4x4.xml"))[0]
     initial = build_initial(instance, random.Random(0))

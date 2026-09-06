@@ -1,14 +1,14 @@
 """Incremental cost evaluation (Etap 3). delta_cost recomputes only the
 constraints whose AppliesTo scope overlaps events/resources that actually
 changed between old_solution and new_solution, instead of re-running every
-constraint from scratch like xhstt_core.cost.evaluate_cost does. See
+constraint from scratch like src.cost.evaluate_cost does. See
 docs/superpowers/specs/2026-08-16-delta-evaluation-design.md for the design
 rationale and the correctness argument for why skipping untouched
 constraints is sound, not just fast."""
 
-from xhstt_core import evaluator_ref
-from xhstt_core.cost import Cost
-from xhstt_core.evaluator_ref import (
+from src import evaluator_ref
+from src.cost import Cost
+from src.evaluator_ref import (
     _assigned_resource_ids,
     _build_occupancy_index,
     _events_in_applies_to,
@@ -16,7 +16,7 @@ from xhstt_core.evaluator_ref import (
     evaluate_constraint,
     resolve_occurrences,
 )
-from xhstt_core.model import Constraint, Instance, Solution
+from src.model import Constraint, Instance, Solution
 
 # The only constraint types whose _evaluate_*_constraint function ever reads
 # evaluator_ref._current_occupancy_index (directly, or via
@@ -70,7 +70,7 @@ def delta_cost(
     _constraint_touches). Assumes new_solution was produced from
     old_solution by a move that preserves event_ref and SolutionEvent
     count at every position (every heuristic in
-    xhstt_core.heuristics.MANUAL_HEURISTICS satisfies this) -- raises
+    src.heuristics.MANUAL_HEURISTICS satisfies this) -- raises
     ValueError if the resolved occurrence counts differ, which means that
     assumption was violated.
 
@@ -83,7 +83,7 @@ def delta_cost(
         raise ValueError(
             "old_solution and new_solution resolve to a different number of "
             "occurrences -- delta_cost only supports moves that preserve "
-            "event/split structure (see xhstt_core.heuristics.MANUAL_HEURISTICS)"
+            "event/split structure (see src.heuristics.MANUAL_HEURISTICS)"
         )
 
     changed = [

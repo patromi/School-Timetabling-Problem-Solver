@@ -1,7 +1,7 @@
 import random
 
-from xhstt_core.evaluator_ref import _events_in_applies_to, valid_start_time_ids
-from xhstt_core.model import (
+from src.evaluator_ref import _events_in_applies_to, valid_start_time_ids
+from src.model import (
     Event,
     Instance,
     Solution,

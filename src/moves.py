@@ -2,8 +2,8 @@ import itertools
 import random
 from dataclasses import replace
 
-from xhstt_core.evaluator_ref import valid_start_time_ids
-from xhstt_core.model import (
+from src.evaluator_ref import valid_start_time_ids
+from src.model import (
     Event,
     Instance,
     Solution,

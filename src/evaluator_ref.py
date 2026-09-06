@@ -3,7 +3,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from functools import cache
 
-from xhstt_core.model import AppliesTo, Constraint, Event, Instance, Solution
+from src.model import AppliesTo, Constraint, Event, Instance, Solution
 
 
 @cache
@@ -886,7 +886,7 @@ def evaluate_cost_components(instance: Instance, solution: Solution) -> tuple[in
     """Returns (infeasibility, objective) separately -- infeasibility is the
     sum of Required=true constraint costs, objective the sum of
     Required=false costs. `total_cost` below is just these two flattened
-    into one scalar; `xhstt_core.cost` builds the (infeasibility, objective)
+    into one scalar; `src.cost` builds the (infeasibility, objective)
     vector representation on top of this instead, for lexicographic
     comparison of two solutions without conflating the two."""
     global _current_occupancy_index

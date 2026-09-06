@@ -2,8 +2,8 @@ from dataclasses import dataclass, field
 from html import escape
 from pathlib import Path
 
-from xhstt_core.evaluator_ref import Occurrence, evaluate_constraint
-from xhstt_core.model import Instance, Time
+from src.evaluator_ref import Occurrence, evaluate_constraint
+from src.model import Instance, Time
 
 _ASSETS_DIR = Path(__file__).parent / "assets"
 _ROLE_LABELS = {"Teacher": "Naucz.", "Room": "Sala", "Class": "Klasa"}

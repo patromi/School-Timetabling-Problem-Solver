@@ -6,7 +6,7 @@ zaimplementowany pipeline `construct` + LAHC (patrz `CLAUDE.md` → "Bieżący
 stan implementacji" po wyjaśnienie, że to *nie* jest jeszcze docelowa
 architektura z selektorem RL/LLM).
 
-Punkt wejścia: `run_solver.py`. Cała logika domenowa leży w `xhstt_core/`.
+Punkt wejścia: `run_solver.py`. Cała logika domenowa leży w `src/`.
 
 ## Diagram
 
@@ -27,7 +27,7 @@ flowchart TD
 
 `run_solver.py:load_instances` czyta cały plik XML (domyślnie
 `data/xhstt2014/XHSTT-2014.xml`, 25 instancji w jednym archiwum) i woła
-`xhstt_core/parser.py:parse_archive`, które zwraca `list[Instance]`.
+`src/parser.py:parse_archive`, które zwraca `list[Instance]`.
 
 Parser (czysty `xml.etree.ElementTree`, bez zewnętrznych zależności) mapuje
 strukturę XHSTT 1:1 na dataclassy z `model.py`:

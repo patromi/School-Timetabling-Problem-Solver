@@ -1,12 +1,12 @@
-from xhstt_core.evaluator_ref import resolve_occurrences
-from xhstt_core.html_report import (
+from src.evaluator_ref import resolve_occurrences
+from src.html_report import (
     build_constraint_scores,
     build_days,
     build_resource_grid,
     render_timetable_page,
 )
-from xhstt_core.model import Solution, SolutionEvent, SolutionEventResource
-from xhstt_core.parser import parse_archive
+from src.model import Solution, SolutionEvent, SolutionEventResource
+from src.parser import parse_archive
 
 ARCHIVE = """<HighSchoolTimetableArchive>
   <Instances>

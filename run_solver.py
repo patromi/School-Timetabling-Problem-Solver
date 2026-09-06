@@ -12,13 +12,13 @@ import sys
 import time
 from pathlib import Path
 
-from xhstt_core.construct import build_initial
-from xhstt_core.evaluator_ref import evaluate_constraint, resolve_occurrences
-from xhstt_core.html_report import render_timetable_page
-from xhstt_core.lahc import run_lahc
-from xhstt_core.model import Instance, Solution, SolutionGroup
-from xhstt_core.parser import parse_archive
-from xhstt_core.xml_writer import (
+from src.construct import build_initial
+from src.evaluator_ref import evaluate_constraint, resolve_occurrences
+from src.html_report import render_timetable_page
+from src.lahc import run_lahc
+from src.model import Instance, Solution, SolutionGroup
+from src.parser import parse_archive
+from src.xml_writer import (
     extract_instance_archive,
     render_archive_with_solution_groups,
 )

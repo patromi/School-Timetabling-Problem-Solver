@@ -1,14 +1,14 @@
 from pathlib import Path
 
-from xhstt_core.cost import (
+from src.cost import (
     AdaGenSchedule,
     Cost,
     evaluate_cost,
     min_working_days_cost,
     resources_of_type,
 )
-from xhstt_core.evaluator_ref import total_cost
-from xhstt_core.model import (
+from src.evaluator_ref import total_cost
+from src.model import (
     AppliesTo,
     Constraint,
     Event,
@@ -21,7 +21,7 @@ from xhstt_core.model import (
     SolutionEvent,
     Time,
 )
-from xhstt_core.parser import parse_archive, parse_solution_groups
+from src.parser import parse_archive, parse_solution_groups
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
