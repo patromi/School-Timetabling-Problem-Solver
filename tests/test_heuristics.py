@@ -62,12 +62,20 @@ def test_heuristic_preserves_events_and_does_not_mutate_input(
     )
 
     assert _snapshot(solution) == before, f"{heuristic.id} mutated its input solution"
+    assert new_solution is not solution, f"{heuristic.id} returned the exact same Solution object (no deep copy/immutability)"
+    assert new_solution.events is not solution.events, f"{heuristic.id} did not copy the events list/tuple"
     assert isinstance(new_solution, Solution), (
         f"{heuristic.id} did not return a Solution"
     )
     assert sorted(se.event_ref for se in new_solution.events) == sorted(
         se.event_ref for se in solution.events
     ), f"{heuristic.id} lost or duplicated an event"
+
+    for old_se, new_se in zip(
+        sorted(solution.events, key=lambda e: e.event_ref),
+        sorted(new_solution.events, key=lambda e: e.event_ref)
+    ):
+        assert old_se.duration == new_se.duration, f"{heuristic.id} changed duration of event {old_se.event_ref}"
 
 
 def test_move_best_never_increases_total_cost() -> None:
@@ -332,3 +340,36 @@ def test_ruin_and_recreate_touches_at_most_the_ruin_budget() -> None:
         assert len(diffs) <= 6, (
             f"seed={seed}: touched {len(diffs)} events, expected at most 6"
         )
+
+from xhstt_core.cost import evaluate_cost
+from xhstt_core.incremental import IncrementalEvaluator, StructuralChangeError
+
+@pytest.mark.parametrize("heuristic", [h for h in MANUAL_HEURISTICS if h.incremental_safe], ids=lambda h: h.id)
+def test_heuristic_incremental_safety(heuristic: Heuristic) -> None:
+    instance, solution = _sudoku_solution()
+    
+    changed = False
+    for seed in range(50):
+        try:
+            new_solution = heuristic.apply(solution, instance, random.Random(seed))
+        except ValueError:
+            continue
+            
+        if _snapshot(new_solution) != _snapshot(solution):
+            changed = True
+            
+            evaluator = IncrementalEvaluator(instance, solution)
+            try:
+                transaction = evaluator.evaluate(new_solution)
+            except StructuralChangeError:
+                pytest.fail(f"{heuristic.id} is marked incremental_safe but caused StructuralChangeError")
+                
+            incremental_cost = transaction.cost.as_scalar()
+            full_cost = evaluate_cost(instance, new_solution).as_scalar()
+            
+            assert incremental_cost == full_cost, (
+                f"{heuristic.id} failed incremental safety check! "
+                f"Incremental cost: {incremental_cost}, Full cost: {full_cost}"
+            )
+            
+    assert changed, f"{heuristic.id} did not make any structural change to the solution across 50 seeds"
