@@ -141,7 +141,6 @@ def _resources_in_applies_to_cached(
 def _resources_in_applies_to(
     instance: Instance, applies_to: AppliesTo
 ) -> frozenset[str]:
-    # Cached for the same reason as _events_in_applies_to above.
     key = _register_instance(instance)
     return _resources_in_applies_to_cached(
         key, tuple(applies_to.resource_groups), tuple(applies_to.resources)

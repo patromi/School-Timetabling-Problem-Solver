@@ -11,9 +11,8 @@ from src.model import (
     SolutionEventResource,
 )
 
-# time_swap_move retries a bounded number of random pairs looking for one
-# where swapping keeps BOTH events within a valid (non-overflowing,
-# same-day) time span, rather than enumerating all O(n^2) pairs.
+# time_swap_move retries up to _MAX_SWAP_ATTEMPTS random pairs looking for one where
+# swapping keeps BOTH events in a valid span, rather than enumerating all O(n²) pairs.
 _MAX_SWAP_ATTEMPTS = 20
 
 
@@ -156,10 +155,6 @@ def _kempe_resource_ids(event_def: Event, se: SolutionEvent) -> frozenset[str]:
 def _kempe_candidate_nodes(
     instance: Instance, solution: Solution, t1: str, t2: str
 ) -> dict[int, frozenset[str]]:
-    # Solution-event indices currently at t1 or t2, restricted to ones whose
-    # duration fits (non-overflowing, same-day) at BOTH times -- same guard
-    # as time_swap_move -- mapped to the resource ids that make them clash
-    # with another event at the same time.
     events_by_id = {e.id: e for e in instance.events}
     resource_ids: dict[int, frozenset[str]] = {}
     for i, se in enumerate(solution.events):
@@ -175,10 +170,8 @@ def _kempe_candidate_nodes(
 def _kempe_component(
     resource_ids: dict[int, frozenset[str]], rng: random.Random
 ) -> set[int]:
-    # Conflict graph: an edge connects two candidate nodes that share a
-    # resource. Picks a random node with at least one edge and returns its
-    # whole connected component (BFS/DFS) -- the set of events that flip
-    # t1<->t2 together in one Kempe chain move.
+    # Conflict graph: nodes share an edge iff they share a resource. Returns the
+    # connected component (BFS) of a random node -- the events that flip t1<->t2 together.
     adjacency: dict[int, list[int]] = {i: [] for i in resource_ids}
     for a, b in itertools.combinations(resource_ids, 2):
         if resource_ids[a] & resource_ids[b]:
