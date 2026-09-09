@@ -26,13 +26,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent.resolve()))
 
-from xhstt_core.construct import build_initial
-from xhstt_core.cost import evaluate_cost
-from xhstt_core.heuristics import MANUAL_HEURISTICS
-from xhstt_core.incremental import IncrementalEvaluator
-from xhstt_core.lahc import run_lahc
-from xhstt_core.model import Instance, Solution
-from xhstt_core.parser import parse_archive
+from src.construct import build_initial
+from src.cost import evaluate_cost
+from src.heuristics import MANUAL_HEURISTICS
+from src.incremental import IncrementalEvaluator
+from src.lahc import run_lahc
+from src.model import Instance, Solution
+from src.parser import parse_archive
 
 ARCHIVE = Path(__file__).parent.parent / "data" / "xhstt2014" / "XHSTT-2014.xml"
 INSTANCE_ID = "AU-BG-98"

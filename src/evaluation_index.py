@@ -10,14 +10,14 @@ provably unchanged and must not be recomputed.
 
 This module answers that question with data that depends only on the
 Instance, so it is built once per instance and never touched again during a
-solve. Nothing here evaluates a constraint; see `xhstt_core.incremental`.
+solve. Nothing here evaluates a constraint; see `src.incremental`.
 """
 
 from collections.abc import Iterator
 from dataclasses import dataclass
 from functools import cache
 
-from xhstt_core.evaluator_ref import (
+from src.evaluator_ref import (
     _event_group_members,
     _events_in_applies_to,
     _preferred_resource_ids,
@@ -27,7 +27,7 @@ from xhstt_core.evaluator_ref import (
     _resources_in_applies_to,
     _time_ids_ordered,
 )
-from xhstt_core.model import Constraint, Event, Instance
+from src.model import Constraint, Event, Instance
 
 EVENT = "event"
 RESOURCE = "resource"
@@ -235,7 +235,7 @@ def _instance_index_cached(instance_key: int) -> InstanceIndex:
 
 
 def _instance_from_key(instance_key: int) -> Instance:
-    from xhstt_core.evaluator_ref import _INSTANCE_REGISTRY
+    from src.evaluator_ref import _INSTANCE_REGISTRY
 
     return _INSTANCE_REGISTRY[instance_key]
 

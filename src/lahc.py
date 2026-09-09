@@ -2,14 +2,14 @@ import random
 import time
 from collections.abc import Callable
 
-from xhstt_core.cost import evaluate_cost
-from xhstt_core.heuristics import MANUAL_HEURISTICS, Heuristic
-from xhstt_core.incremental import (
+from src.cost import evaluate_cost
+from src.heuristics import MANUAL_HEURISTICS, Heuristic
+from src.incremental import (
     IncrementalEvaluator,
     StructuralChangeError,
     Transaction,
 )
-from xhstt_core.model import Instance, Solution
+from src.model import Instance, Solution
 
 FULL = "full"
 INCREMENTAL = "incremental"

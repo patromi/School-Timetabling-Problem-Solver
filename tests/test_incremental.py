@@ -2,13 +2,13 @@ import random
 from pathlib import Path
 
 import pytest
-from xhstt_core.construct import build_initial
-from xhstt_core.cost import evaluate_cost
-from xhstt_core.evaluator_ref import evaluate_constraint_costs
-from xhstt_core.heuristics import MANUAL_HEURISTICS
-from xhstt_core.incremental import IncrementalEvaluator, StructuralChangeError
-from xhstt_core.model import Instance, Solution, SolutionEvent
-from xhstt_core.parser import parse_archive
+from src.construct import build_initial
+from src.cost import evaluate_cost
+from src.evaluator_ref import evaluate_constraint_costs
+from src.heuristics import MANUAL_HEURISTICS
+from src.incremental import IncrementalEvaluator, StructuralChangeError
+from src.model import Instance, Solution, SolutionEvent
+from src.parser import parse_archive
 
 FIXTURES = Path(__file__).parent / "fixtures"
 

@@ -29,14 +29,14 @@ therefore never contribute to `Cost`/`total_cost`:
 from collections.abc import Iterable
 from dataclasses import dataclass
 
-from xhstt_core.evaluator_ref import (
+from src.evaluator_ref import (
     INFEASIBILITY_WEIGHT,
     Occurrence,
     apply_cost_function,
     evaluate_cost_components,
     resolve_occurrences,
 )
-from xhstt_core.model import Instance, Solution
+from src.model import Instance, Solution
 
 
 @dataclass(frozen=True, order=True)

@@ -2,7 +2,7 @@ import random
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 
-from xhstt_core.evaluator_ref import (
+from src.evaluator_ref import (
     _assigned_resource_ids,
     _events_in_applies_to,
     _resources_in_applies_to,
@@ -10,9 +10,9 @@ from xhstt_core.evaluator_ref import (
     resolve_occurrences,
     valid_start_time_ids,
 )
-from xhstt_core.incremental import IncrementalEvaluator
-from xhstt_core.model import Instance, Solution
-from xhstt_core.moves import (
+from src.incremental import IncrementalEvaluator
+from src.model import Instance, Solution
+from src.moves import (
     kempe_chain_move,
     large_perturbation_move,
     resource_reassign_move,

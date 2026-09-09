@@ -93,11 +93,14 @@ Pracuj etapami. Przed rozpoczęciem etapu przedstaw krótki plan plików i inter
 ## Bieżący stan implementacji (repo)
 
 Obecnie zaimplementowany pipeline to construct + Late Acceptance Hill Climbing (LAHC), czyli **etap
-przejściowy sprzed powyższej specyfikacji** — nie ma jeszcze selektora RL, generatora LLM, delta evaluation
-ani formalnego kontraktu heurystyk `apply(solution, instance, rng)`; akceptacja kandydatów działa wg reguły
-LAHC (Burke & Bykov), nie symulowanego wyżarzania z Etapu 5 powyżej. Sekcje poniżej opisują *ten* istniejący
-kod, żeby móc się w nim poruszać — traktuj powyższą specyfikację etapów jako docelową mapę drogową do realizacji,
-nie jako opis obecnego stanu.
+przejściowy sprzed powyższej specyfikacji** — nie ma jeszcze selektora RL (Etap 6) ani generatora LLM
+(Etap 7); akceptacja kandydatów działa wg reguły LAHC (Burke & Bykov), nie symulowanego wyżarzania z
+Etapu 5 powyżej. Kontrakt heurystyk `apply(solution, instance, rng)` z Etapu 4 **jest już
+zaimplementowany** (`src/heuristics.py`, `MANUAL_HEURISTICS`, 8 operatorów) i podłączony do pętli LAHC.
+Delta evaluation (Etap 3) istnieje w `src/delta.py` i jest przetestowana (invariant 10 000 ruchów), ale
+`lahc.py` nadal używa pełnej ewaluacji — podłączenie `delta_cost` to osobna decyzja projektowa.
+Sekcje poniżej opisują *ten* istniejący kod, żeby móc się w nim poruszać — traktuj powyższą specyfikację
+etapów jako docelową mapę drogową do realizacji, nie jako opis obecnego stanu.
 
 ## Commands
 
@@ -108,7 +111,7 @@ uv sync                                    # install/sync dependencies
 uv run python run_solver.py --list         # list instances in the default XHSTT archive
 uv run python run_solver.py AU-BG-98       # solve one instance (writes output/<id>_solution.xml + _timetable.html)
 uv run python run_solver.py BR-SA-00 --iterations 50000 --seed 1 --history 30
-uv run snakemake --cores all               # run the (currently stubbed) Snakemake workflow
+uv run snakemake --cores all               # auto-detects data/raw/*.xml, runs the solver on each, writes data/results/summary.{csv,md}
 
 uv run python -m pytest                              # full test suite, with coverage
 uv run python -m pytest -m "not slow"          # skip long-running DoD tests (~9 min 10k-move invariant test)
@@ -125,25 +128,18 @@ Pre-commit hooks (`.pre-commit-config.yaml`) run ruff (fix + format), mypy, and 
 (`scripts/check_branch_name.py`) on every commit. **Branches must be named `issue#<number>[-description]`**
 (e.g. `issue#45-add-solver`); `main`/`master`/`develop`/`release` are exempt.
 
-Note: `pyproject.toml`'s pytest `addopts` has `--cov=solver` and `mypy`/`ruff` VS Code tasks point at `src/`
-— but almost all real logic and nearly all tests live in `xhstt_core/`, not `src/solver/`. Coverage output
-for `xhstt_core` won't show up under the default `--cov` flag; pass `--cov=xhstt_core` explicitly if you need
-real coverage numbers.
-
 Note: use `uv run python -m pytest`, not bare `uv run pytest` — `pyproject.toml` has no `[build-system]`
 table, so `uv run pytest`'s console-script entry point never gets the repo root on `sys.path`, and importing
-`xhstt_core` (which lives at the repo root, not under `src/`) fails with `ModuleNotFoundError`. `python -m
+`src` (the package directory at the repo root) fails with `ModuleNotFoundError`. `python -m
 pytest` adds the current directory to `sys.path`, which fixes it. Same reasoning applies to `mypy`: plain
-`uv run mypy xhstt_core/<file>.py` follows imports into the rest of `xhstt_core` and surfaces ~18 pre-existing
+`uv run mypy src/<file>.py` follows imports into the rest of `src` and surfaces ~37 pre-existing
 `mypy --strict` errors unrelated to whatever you're checking — pass `--follow-imports=silent` to scope the
 report to just the file you're checking.
 
 ## Architecture
 
-**`xhstt_core/` is the actual solver engine** (importable from the repo root, not under `src/`).
-**`src/solver/main.py` is an unrelated placeholder/stub** (a `TimetableSolver` class that doesn't parse XHSTT
-or call into `xhstt_core` at all) — don't confuse it with the real pipeline. The real CLI entry point is
-`run_solver.py` at the repo root.
+**`src/` is the actual solver engine** — a flat package directory at the repo root (not a `src/<pkg>/`
+layout; `import src.model` etc.). The real CLI entry point is `run_solver.py` at the repo root.
 
 Pipeline (see `run_solver.py`):
 
@@ -156,7 +152,7 @@ xml_writer.render_archive_with_solution_groups(...)  -> XHSTT XML  (for submissi
 html_report.render_timetable_page(...)  -> human-readable HTML timetable + per-constraint cost breakdown
 ```
 
-Module responsibilities inside `xhstt_core/`:
+Module responsibilities inside `src/`:
 - `model.py` — plain dataclasses for the XHSTT object model (`Instance`, `Event`, `Constraint`, `Solution`, ...).
   `Constraint` keeps type-specific parameters in a generic `params: dict` rather than per-type fields, since
   XHSTT defines 16 constraint types and explicitly allows extension.
@@ -179,12 +175,11 @@ Module responsibilities inside `xhstt_core/`:
 
 Other top-level paths:
 - `data/xhstt2014/XHSTT-2014.xml` — the real 25-instance XHSTT archive used as `run_solver.py`'s default input.
-- `data/raw` / `data/processed` / `data/results` — target directories for the `Snakefile`, whose rules are
-  currently placeholder `echo` shells, not wired to the real parser/solver.
-- `parser/sample_data/agh-fal17.xml` — a large real-world XHSTT sample instance for testing against real data
-  (unrelated to `xhstt_core/parser.py`, which is the actual parser module).
-- `archive/itc2019_parser/` — legacy parser for the older ITC-2019 format; superseded by `xhstt_core`'s XHSTT
-  parser and kept only for reference.
+- `data/raw/` — individual instance XML files auto-detected by the `Snakefile` (`glob_wildcards`); `data/processed/`
+  and `data/results/` are its output directories (`data/results/summary.csv`/`summary.md` are committed as a
+  checked-in example of that output).
+- `archive/itc2019_parser/` — legacy parser for the older ITC-2019 format; superseded by `src/parser.py`
+  and kept only for reference.
 
 ## Conventions
 

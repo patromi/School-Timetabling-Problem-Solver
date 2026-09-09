@@ -1,8 +1,8 @@
 from pathlib import Path
 
 import pytest
-from xhstt_core import evaluator_ref
-from xhstt_core.evaluator_ref import (
+from src import evaluator_ref
+from src.evaluator_ref import (
     _build_occupancy_index,
     apply_cost_function,
     evaluate_constraint,
@@ -12,7 +12,7 @@ from xhstt_core.evaluator_ref import (
     resolve_occurrences,
     total_cost,
 )
-from xhstt_core.model import (
+from src.model import (
     AppliesTo,
     Constraint,
     EventPair,
@@ -20,7 +20,7 @@ from xhstt_core.model import (
     SolutionEvent,
     SolutionEventResource,
 )
-from xhstt_core.parser import parse_archive, parse_solution_groups
+from src.parser import parse_archive, parse_solution_groups
 
 DURATION_3_EVENT_ARCHIVE = """<HighSchoolTimetableArchive>
   <Instances>

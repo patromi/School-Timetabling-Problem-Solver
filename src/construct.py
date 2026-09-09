@@ -1,10 +1,16 @@
 import random
 
-from xhstt_core.evaluator_ref import _events_in_applies_to, valid_start_time_ids
-from xhstt_core.model import Instance, Solution, SolutionEvent, SolutionEventResource
+from src.evaluator_ref import _events_in_applies_to, valid_start_time_ids
+from src.model import (
+    Event,
+    Instance,
+    Solution,
+    SolutionEvent,
+    SolutionEventResource,
+)
 
 
-def _split_duration_bounds(instance: Instance, event) -> tuple[int, int]:
+def _split_duration_bounds(instance: Instance, event: Event) -> tuple[int, int]:
     """Finds MinimumDuration/MaximumDuration from a SplitEventsConstraint
     applying to this event, if any. Without one, the event isn't meant to
     be split -- (1, event.duration) yields a single piece covering the
@@ -33,8 +39,6 @@ def _split_durations(total: int, min_duration: int, max_duration: int) -> list[i
         pieces.append(max_duration)
         remaining -= max_duration
     if remaining < min_duration and pieces:
-        # Top up the too-small remainder by borrowing from the last full
-        # piece, so every piece respects MinimumDuration.
         deficit = min_duration - remaining
         pieces[-1] -= deficit
         remaining += deficit
@@ -66,19 +70,18 @@ def build_initial(instance: Instance, rng: random.Random) -> Solution:
         if not needs_time and not unassigned_roles:
             continue
 
-        # One resource choice per unassigned role, reused across every
-        # split piece of this event -- keeps a course's teacher/room
-        # stable by default, a better starting point for
-        # AvoidSplitAssignmentsConstraint than re-rolling per piece.
+        # One choice per role, reused across splits -- keeps teacher/room stable,
+        # a better start for AvoidSplitAssignmentsConstraint than re-rolling per piece.
         role_choices = {
             er.role: rng.choice(resources_by_type[er.resource_type_ref])
             for er in unassigned_roles
         }
 
-        def _fresh_resources() -> list[SolutionEventResource]:
-            # A new list of new SolutionEventResource instances each call,
-            # so sub-events sharing the same role->resource choice don't
-            # share mutable objects a later in-place edit could corrupt.
+        def _fresh_resources(
+            # Default arg (not closure): binds role_choices at definition time (ruff B023).
+            # New list each call so split pieces don't share mutable SolutionEventResource objects.
+            role_choices: dict[str, str] = role_choices,
+        ) -> list[SolutionEventResource]:
             return [
                 SolutionEventResource(role=role, resource_ref=ref)
                 for role, ref in role_choices.items()

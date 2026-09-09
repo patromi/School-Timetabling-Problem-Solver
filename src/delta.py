@@ -1,7 +1,7 @@
 """One-shot incremental cost evaluation.
 
 Stateless entry point kept for callers that just want "the cost of this one
-candidate, given that one"; it wraps `xhstt_core.incremental`, which is the
+candidate, given that one"; it wraps `src.incremental`, which is the
 actual engine and the one the solver uses.
 
 This used to be a self-contained "filtered full re-evaluation" -- decide
@@ -19,9 +19,9 @@ one-off comparisons only; anything scoring a sequence of candidates should
 hold an `IncrementalEvaluator` instead.
 """
 
-from xhstt_core.cost import Cost
-from xhstt_core.incremental import IncrementalEvaluator, StructuralChangeError
-from xhstt_core.model import Instance, Solution
+from src.cost import Cost
+from src.incremental import IncrementalEvaluator, StructuralChangeError
+from src.model import Instance, Solution
 
 
 def delta_cost(
@@ -35,7 +35,7 @@ def delta_cost(
 
     Assumes new_solution was produced from old_solution by a move that
     preserves the event at every position and the number of solution events
-    (every heuristic in xhstt_core.heuristics.MANUAL_HEURISTICS does), and
+    (every heuristic in src.heuristics.MANUAL_HEURISTICS does), and
     raises ValueError if it wasn't.
 
     `old_cost` is accepted for backwards compatibility and deliberately
@@ -50,6 +50,6 @@ def delta_cost(
         raise ValueError(
             "old_solution and new_solution resolve to a different number of "
             "occurrences -- delta_cost only supports moves that preserve "
-            "event/split structure (see xhstt_core.heuristics.MANUAL_HEURISTICS)"
+            "event/split structure (see src.heuristics.MANUAL_HEURISTICS)"
         ) from error
     return transaction.cost

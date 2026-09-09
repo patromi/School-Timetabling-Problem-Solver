@@ -6,7 +6,7 @@ zaimplementowany pipeline `construct` + LAHC (patrz `CLAUDE.md` → "Bieżący
 stan implementacji" po wyjaśnienie, że to *nie* jest jeszcze docelowa
 architektura z selektorem RL/LLM).
 
-Punkt wejścia: `run_solver.py`. Cała logika domenowa leży w `xhstt_core/`.
+Punkt wejścia: `run_solver.py`. Cała logika domenowa leży w `src/`.
 
 ## Diagram
 
@@ -27,7 +27,7 @@ flowchart TD
 
 `run_solver.py:load_instances` czyta cały plik XML (domyślnie
 `data/xhstt2014/XHSTT-2014.xml`, 25 instancji w jednym archiwum) i woła
-`xhstt_core/parser.py:parse_archive`, które zwraca `list[Instance]`.
+`src/parser.py:parse_archive`, które zwraca `list[Instance]`.
 
 Parser (czysty `xml.etree.ElementTree`, bez zewnętrznych zależności) mapuje
 strukturę XHSTT 1:1 na dataclassy z `model.py`:
@@ -114,12 +114,27 @@ implementuje Late Acceptance Hill Climbing (Burke & Bykov):
    `best = current`. Bufor `history` (długość `history_length`) startuje
    wypełniony `current_cost`.
 2. W każdej iteracji:
-   - losowo wybierany jest jeden ruch (`move_fn`) z puli
-     `[time_reassign_move, time_swap_move, resource_reassign_move]`
-     (`moves.py`),
-   - ruch stosowany jest do `current` → `candidate` (jeśli ruch nie da się
-     wykonać, np. brak alternatywnego zasobu w małej instancji, rzuca
-     `ValueError` i iteracja jest pomijana),
+   - losowo wybierany jest jeden operator z puli `MANUAL_HEURISTICS`
+     (`src/heuristics.py`, 8 operatorów, każdy o kontrakcie
+     `apply(solution, instance, rng) -> Solution`):
+     - `move_random` — losowe przesunięcie jednego zdarzenia na inny poprawny
+       czas startu,
+     - `move_best` — przesunięcie losowego zdarzenia na czas minimalizujący
+       `total_cost` (przegląd wszystkich poprawnych slotów),
+     - `swap` — zamiana czasów dwóch losowych zdarzeń (tylko gdy poprawna
+       dla obu stron),
+     - `repair_hard_violation` — przesunięcie losowego zdarzenia uczestniczącego
+       w naruszeniu ograniczenia `Required` na jego najlepszy czas,
+     - `resource_reassign` — podmiana zasobu zdarzenia na inny tego samego
+       typu,
+     - `kempe_chain` — Kempe chain interchange między dwoma slotami czasowymi,
+     - `ruin_and_recreate` — zniszczenie małej losowej porcji rozwiązania i
+       zachłanna odbudowa zdarzenie po zdarzeniu,
+     - `large_perturbation` — duże losowe przesunięcie wielu zdarzeń jednocześnie
+       (silna perturbacja do wychodzenia z minimum lokalnego),
+   - operator stosowany jest do `current` → `candidate`; jeśli nie może być
+     zastosowany (np. brak zdarzeń z ruchowalnym czasem, brak zasobu
+     alternatywnego), rzuca `ValueError` — iteracja pomijana,
    - liczony jest `candidate_cost = total_cost(candidate)`,
    - **reguła akceptacji LAHC**: kandydat jest akceptowany, jeśli jest nie
      gorszy niż bieżący koszt **LUB** nie gorszy niż koszt sprzed
@@ -149,8 +164,8 @@ Ruchy z `moves.py` (każdy zwraca **nowy** `Solution`, budowany przez
 
 Po zakończeniu LAHC (`run_solver.py`):
 
-1. `cost_breakdown(best)` ponownie liczy `infeasibility`/`objective` do
-   wypisania różnicy względem stanu startowego.
+1. `evaluate_cost_components(best)` ponownie liczy `infeasibility`/`objective`
+   do wypisania różnicy względem stanu startowego.
 2. `xml_writer.extract_instance_archive` wycina z oryginalnego archiwum
    XML tylko rozwiązywaną instancję (żeby nie ciągnąć pozostałych 24 przy
    wysyłce do HSEval).
@@ -169,8 +184,22 @@ Po zakończeniu LAHC (`run_solver.py`):
 
 ## Czego w tym flow nie ma (jeszcze)
 
-Zgodnie z sekcją "Bieżący stan implementacji" w `CLAUDE.md`: brak delta
-evaluation (każdy ruch liczy koszt od zera), brak formalnego kontraktu
-heurystyk `apply(solution, instance, rng)`, brak selektora RL (ruch wybiera
-`rng.choice` z listy na sztywno, nie UCB), brak generatora LLM i sandboxa.
-To jest mapa drogowa z `CLAUDE.md`, nie opis obecnego kodu.
+**Zaimplementowane, ale jeszcze nie w pełni podłączone:**
+
+- Kontrakt heurystyk `apply(solution, instance, rng)` **już istnieje**
+  (`src/heuristics.py`, `MANUAL_HEURISTICS`, 8 operatorów) i jest podłączony
+  do `lahc.py` — opis w sekcji "Bieżący stan implementacji" `CLAUDE.md`
+  jest w tej kwestii nieaktualny.
+- Ewaluacja przyrostowa (`src/delta.py:delta_cost`) **już istnieje**,
+  przetestowana (invariant 10 000 ruchów) i zbenchmarkowana, ale `lahc.py`
+  nadal woła `evaluate_cost` (pełna ewaluacja) przy każdej iteracji —
+  podłączenie `delta_cost` do pętli LAHC to osobna decyzja projektowa poza
+  zakresem bieżącego refaktoringu.
+
+**Jeszcze brak:**
+
+- Selektor RL (UCB) — wybór heurystyki to `rng.choice(pool)`, nie
+  `argmax Q + c*sqrt(ln N / n)` z Etapu 6 `CLAUDE.md`.
+- Generator LLM, sandbox i pipeline walidacji nowych heurystyk (Etap 7).
+- Symulowane wyżarzanie jako reguła akceptacji (docelowo Etap 5) — aktualnie
+  reguła LAHC (Burke & Bykov).

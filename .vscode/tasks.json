@@ -15,7 +15,7 @@
         {
             "label": "Solver: Run (Default)",
             "type": "shell",
-            "command": "uv run python src/solver/main.py",
+            "command": "uv run python run_solver.py",
             "group": "none",
             "presentation": {
                 "reveal": "always",
@@ -37,7 +37,7 @@
         {
             "label": "Test: Run Pytest",
             "type": "shell",
-            "command": "uv run pytest",
+            "command": "uv run python -m pytest",
             "group": "test",
             "presentation": {
                 "reveal": "always",

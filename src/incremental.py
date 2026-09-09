@@ -1,6 +1,6 @@
 """Incremental (delta) cost evaluation with a persistent, transactional state.
 
-`xhstt_core.delta.delta_cost` is a *filtered full re-evaluation*: it decides
+`src.delta.delta_cost` is a *filtered full re-evaluation*: it decides
 which constraints a move can possibly have affected, then re-runs each of
 them over its entire scope -- twice, once for the old solution and once for
 the new. On real instances that loses to plain full evaluation, because the
@@ -38,15 +38,15 @@ from dataclasses import dataclass, field
 from math import ceil
 from typing import Any
 
-from xhstt_core.cost import Cost
-from xhstt_core.evaluation_index import (
+from src.cost import Cost
+from src.evaluation_index import (
     ConstraintPoints,
     InstanceIndex,
     PointId,
     PointKey,
     instance_index,
 )
-from xhstt_core.evaluator_ref import (
+from src.evaluator_ref import (
     Occurrence,
     _assigned_resource,
     _event_group_members,
@@ -56,7 +56,7 @@ from xhstt_core.evaluator_ref import (
     resolve_occurrence,
     resolve_occurrences,
 )
-from xhstt_core.model import Instance, Solution
+from src.model import Instance, Solution
 
 _UNBOUNDED = 10**9
 
