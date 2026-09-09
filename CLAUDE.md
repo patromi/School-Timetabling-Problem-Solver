@@ -93,11 +93,14 @@ Pracuj etapami. Przed rozpoczęciem etapu przedstaw krótki plan plików i inter
 ## Bieżący stan implementacji (repo)
 
 Obecnie zaimplementowany pipeline to construct + Late Acceptance Hill Climbing (LAHC), czyli **etap
-przejściowy sprzed powyższej specyfikacji** — nie ma jeszcze selektora RL, generatora LLM, delta evaluation
-ani formalnego kontraktu heurystyk `apply(solution, instance, rng)`; akceptacja kandydatów działa wg reguły
-LAHC (Burke & Bykov), nie symulowanego wyżarzania z Etapu 5 powyżej. Sekcje poniżej opisują *ten* istniejący
-kod, żeby móc się w nim poruszać — traktuj powyższą specyfikację etapów jako docelową mapę drogową do realizacji,
-nie jako opis obecnego stanu.
+przejściowy sprzed powyższej specyfikacji** — nie ma jeszcze selektora RL (Etap 6) ani generatora LLM
+(Etap 7); akceptacja kandydatów działa wg reguły LAHC (Burke & Bykov), nie symulowanego wyżarzania z
+Etapu 5 powyżej. Kontrakt heurystyk `apply(solution, instance, rng)` z Etapu 4 **jest już
+zaimplementowany** (`src/heuristics.py`, `MANUAL_HEURISTICS`, 8 operatorów) i podłączony do pętli LAHC.
+Delta evaluation (Etap 3) istnieje w `src/delta.py` i jest przetestowana (invariant 10 000 ruchów), ale
+`lahc.py` nadal używa pełnej ewaluacji — podłączenie `delta_cost` to osobna decyzja projektowa.
+Sekcje poniżej opisują *ten* istniejący kod, żeby móc się w nim poruszać — traktuj powyższą specyfikację
+etapów jako docelową mapę drogową do realizacji, nie jako opis obecnego stanu.
 
 ## Commands
 
