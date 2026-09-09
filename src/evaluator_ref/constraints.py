@@ -508,14 +508,11 @@ def _first_and_last_occupied_indices(
 def _evaluate_order_events_constraint(
     instance: Instance, occurrences: list[Occurrence], constraint: Constraint
 ) -> int:
-    # Point of application: one event pair. Verified against the
-    # authoritative spec (fetched directly via curl over plain HTTP, since
-    # HTTPS/WebFetch to jeffreykingston.id.au is refused from this
-    # environment). Deviation = shortfall/excess of the gap between (end of
-    # first event's latest sub-event) and (start of second event's
-    # earliest sub-event) against MinSeparation/MaxSeparation; 0 if either
-    # event has zero solution events or any solution event with an
-    # unassigned time.
+    # Point of application: one event pair. Deviation = shortfall/excess of
+    # the gap between the end of the first event's latest sub-event and the
+    # start of the second event's earliest sub-event, against
+    # MinSeparation/MaxSeparation; 0 if either event has zero solution
+    # events or any solution event with an unassigned time.
     total = 0
     for pair in constraint.applies_to.event_pairs:
         _, first_last = _first_and_last_occupied_indices(

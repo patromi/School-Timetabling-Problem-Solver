@@ -1,4 +1,8 @@
-# LLM-Driven-Reinforcement-Learning-Hyper-Heuristic-for-the-School-Timetabling-Problem
+# LLM-Driven RL Hyper-Heuristic for School Timetabling
+
+System rozwiązujący problem układania planów lekcji (XHSTT benchmark) oparty na selekcyjnej hiper-heurystyce sterowanej przez uczenie ze wzmocnieniem (RL). LLM generuje nowe heurystyki niskiego poziomu rozszerzające pulę operatorów w czasie działania solvera.
+
+Projekt inżynierski (praca dyplomowa).
 
 ## Development
 
@@ -95,30 +99,57 @@ W repozytorium skonfigurowane są pre-commit hooki, które automatycznie sprawdz
 ### Struktura projektu
 
 ```
-run_solver.py          — punkt wejścia CLI (solver LAHC na jednej instancji z archiwum XHSTT)
-src/                   — cała logika domenowa (flat package, import src.model itd.)
-  model.py             — dataclassy XHSTT: Instance, Event, Constraint, Solution, ...
-  parser.py            — parser XML archiwum XHSTT → list[Instance]
-  construct.py         — zachłanny konstruktor rozwiązania początkowego
-  evaluator_ref/       — ewaluator kosztu (referencyjny, pełna ewaluacja)
-    _cache.py          — cache statycznych danych per instancja (grupy, czasy, valid starts)
-    occurrences.py     — Occurrence, resolve_occurrences, occupancy index
-    constraints.py     — _evaluate_*_constraint dla ~16 typów XHSTT + dispatch
-    __init__.py        — fasada: evaluate_cost_components, total_cost, re-eksporty
-  cost.py              — Cost(infeasibility, objective) z porównaniem leksykograficznym
-  delta.py             — przyrostowa ewaluacja kosztu (Etap 3; gotowa, niezapodłączona do LAHC)
-  moves.py             — ruchy lokalnego przeszukiwania (time_reassign, swap, kempe_chain, ...)
-  heuristics.py        — MANUAL_HEURISTICS: 8 operatorów o kontrakcie apply(solution, instance, rng)
-  lahc.py              — pętla LAHC (Late Acceptance Hill Climbing, Burke & Bykov)
-  xml_writer.py        — eksport Solution → XML XHSTT (do HSEval)
-  html_report.py       — raport HTML: siatka timetable + ocena ograniczeń
-data/xhstt2014/        — archiwum XHSTT-2014 (25 instancji, Git LFS)
-data/raw/              — pojedyncze pliki instancji wykrywane przez Snakefile
-data/results/          — wyniki Snakemake (summary.csv / summary.md, commitowane jako przykład)
-tests/                 — testy pytest + tests/fixtures/ (małe instancje XML)
-scripts/               — skrypty pomocnicze (generate_summary.py, benchmarki, hooki pre-commit)
-docs/superpowers/      — specyfikacje i plany implementacyjne poszczególnych etapów
-archive/               — stary parser ITC-2019, zachowany wyłącznie jako odniesienie historyczne
+run_solver.py              — punkt wejścia CLI (LAHC na jednej instancji)
+Snakefile                  — potok: solver na data/raw/*.xml → data/results/summary.{csv,md}
+pyproject.toml             — konfiguracja projektu: pytest, mypy, ruff, zależności (uv)
+
+src/                       — pakiet domenowy (flat layout; import src.model itd.)
+  model.py                 — dataclassy XHSTT: Instance, Event, Constraint, Solution, …
+  parser.py                — parser XML archiwum XHSTT → list[Instance]
+  construct.py             — zachłanny konstruktor rozwiązania początkowego
+  evaluator_ref/           — ewaluator kosztu (referencyjny, pełna ewaluacja)
+    _cache.py              — @cache dla statycznych danych per instancja (grupy, czasy, valid starts)
+    occurrences.py         — Occurrence, resolve_occurrences, occupancy_index
+    constraints.py         — _evaluate_*_constraint dla typów XHSTT + dispatch
+    __init__.py            — fasada: evaluate_cost_components, total_cost, re-eksporty
+  cost.py                  — Cost(infeasibility, objective) z porównaniem leksykograficznym
+  delta.py                 — delta_cost: przyrostowe przeliczanie kosztu (gotowe, niezapodłączone do LAHC)
+  moves.py                 — ruchy lokalnego przeszukiwania używane przez LAHC
+  heuristics.py            — MANUAL_HEURISTICS: 8 operatorów, kontrakt apply(solution, instance, rng)
+  lahc.py                  — pętla LAHC (Late Acceptance Hill Climbing, Burke & Bykov)
+  xml_writer.py            — eksport Solution → XML XHSTT (format dla HSEval)
+  html_report.py           — raport HTML: siatka timetable + breakdown kosztów per ograniczenie
+  assets/                  — zasoby statyczne html_report (fonts.css)
+
+data/
+  xhstt2014/               — archiwum XHSTT-2014 (25 instancji, Git LFS)
+  raw/                     — pojedyncze pliki instancji XML wykrywane przez Snakefile
+  results/                 — wyniki Snakemake: summary.csv, summary.md
+
+tests/
+  fixtures/                — małe instancje XML: BrazilInstance1, ArtificialSudoku4x4
+  test_construct.py        — testy konstruktora rozwiązania początkowego
+  test_cost.py             — testy modelu kosztu (Cost, porównanie leksykograficzne)
+  test_delta.py            — test delta: 10 000 ruchów, asercja delta == pełna ewaluacja (@slow)
+  test_evaluator_ref.py    — testy ewaluatora kosztu (zgodność z HSEval)
+  test_heuristics.py       — testy heurystyk (strukturalna poprawność, brak mutacji wejścia)
+  test_html_report.py      — testy generowania raportu HTML
+  test_lahc.py             — testy pętli LAHC (powtarzalność z seeda)
+  test_moves.py            — testy ruchów lokalnego przeszukiwania
+  test_parser.py           — testy parsera XHSTT
+  test_xml_writer.py       — testy eksportu do XML
+
+scripts/
+  generate_summary.py      — generuje summary.csv/md z wynikami solvera (wywoływany przez Snakefile)
+  benchmark_delta_evaluation.py — benchmark delta vs. pełna ewaluacja
+  check_branch_name.py     — hook pre-commit: walidacja nazwy brancha (issue#N-opis)
+  check_commit_msg.py      — hook commit-msg: walidacja Conventional Commits
+
+docs/
+  flow-ukladania-planu.md  — opis pipeline'u parsowanie→solver→eksport (dla pracy dyplomowej)
+  superpowers/             — specyfikacje i plany implementacyjne poszczególnych etapów
+
+archive/                   — stary parser ITC-2019, zachowany wyłącznie jako odniesienie historyczne
 ```
 
 ### Zarządzanie danymi (Git LFS)

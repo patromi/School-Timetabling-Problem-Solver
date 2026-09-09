@@ -1,10 +1,3 @@
-"""Fasada pakietu evaluator_ref.
-
-Wszystkie publiczne i "prywatne-ale-importowane-gdzie-indziej" nazwy
-re-eksportowane tutaj, żeby żaden import w pozostałym kodzie
-(`from src.evaluator_ref import X`) nie musiał się zmieniać.
-"""
-
 from src.evaluator_ref._cache import (
     INFEASIBILITY_WEIGHT,
     apply_cost_function,

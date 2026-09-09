@@ -51,10 +51,6 @@ def _event_group_members_cached(instance_key: int, group_ref: str) -> frozenset[
 
 
 def _event_group_members(instance: Instance, group_ref: str) -> frozenset[str]:
-    # Cached for the same reason as _event_group_refs: several evaluators
-    # (SpreadEvents, AvoidSplitAssignments, LinkEvents) re-scan *every*
-    # instance event to resolve one event group's membership, once per
-    # constraint per cost evaluation -- static data, recomputed anyway.
     key = _register_instance(instance)
     return _event_group_members_cached(key, group_ref)
 
