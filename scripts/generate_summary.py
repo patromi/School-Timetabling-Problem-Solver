@@ -11,24 +11,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent.resolve()))
 import csv
 from typing import Any
 
-from src.evaluator_ref import evaluate_constraint, resolve_occurrences
-from src.model import Instance, Solution
+from src.evaluator_ref import evaluate_cost_components
+from src.model import Instance
 from src.parser import parse_archive, parse_solution_groups
-
-
-def cost_breakdown(instance: Instance, solution: Solution) -> tuple[int, int]:
-    occurrences = resolve_occurrences(instance, solution)
-    infeasibility = sum(
-        evaluate_constraint(instance, occurrences, c)
-        for c in instance.constraints
-        if c.required
-    )
-    objective = sum(
-        evaluate_constraint(instance, occurrences, c)
-        for c in instance.constraints
-        if not c.required
-    )
-    return infeasibility, objective
 
 
 def parse_args() -> argparse.Namespace:
@@ -93,7 +78,7 @@ def main() -> None:
                         continue
 
                     instance = instances_by_id[inst_id]
-                    infeasibility, objective = cost_breakdown(instance, solution)
+                    infeasibility, objective = evaluate_cost_components(instance, solution)
                     feasible = infeasibility == 0
 
                     results.append(
