@@ -3,11 +3,11 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
-from xhstt_core.construct import build_initial
-from xhstt_core.evaluator_ref import total_cost
-from xhstt_core.heuristics import MANUAL_HEURISTICS
-from xhstt_core.lahc import run_lahc
-from xhstt_core.parser import parse_archive
+from src.construct import build_initial
+from src.evaluator_ref import total_cost
+from src.heuristics import MANUAL_HEURISTICS
+from src.lahc import run_lahc
+from src.parser import parse_archive
 
 FIXTURES = Path(__file__).parent / "fixtures"
 

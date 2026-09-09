@@ -1,9 +1,9 @@
 import random
 from pathlib import Path
 
-from xhstt_core.construct import build_initial
-from xhstt_core.evaluator_ref import resolve_occurrences
-from xhstt_core.parser import parse_archive
+from src.construct import build_initial
+from src.evaluator_ref import resolve_occurrences
+from src.parser import parse_archive
 
 FIXTURES = Path(__file__).parent / "fixtures"
 

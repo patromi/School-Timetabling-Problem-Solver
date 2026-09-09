@@ -1,7 +1,7 @@
 from collections import Counter
 from pathlib import Path
 
-from xhstt_core.parser import parse_archive, parse_solution_groups
+from src.parser import parse_archive, parse_solution_groups
 
 FIXTURES = Path(__file__).parent / "fixtures"
 

@@ -2,16 +2,16 @@ import random
 from pathlib import Path
 
 import pytest
-from xhstt_core.construct import build_initial
-from xhstt_core.model import Solution, SolutionEvent
-from xhstt_core.moves import (
+from src.construct import build_initial
+from src.model import Solution, SolutionEvent
+from src.moves import (
     kempe_chain_move,
     large_perturbation_move,
     resource_reassign_move,
     time_reassign_move,
     time_swap_move,
 )
-from xhstt_core.parser import parse_archive
+from src.parser import parse_archive
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -524,7 +524,9 @@ def test_large_perturbation_move_raises_when_no_movable_event_exists() -> None:
         large_perturbation_move(instance, solution, random.Random(0))
 
 
-def test_large_perturbation_move_never_overflows_a_day_boundary_or_the_time_array() -> None:
+def test_large_perturbation_move_never_overflows_a_day_boundary_or_the_time_array() -> (
+    None
+):
     instance = parse_archive(_two_day_multi_period_archive())[0]
     solution = Solution(
         instance_ref=instance.id,
@@ -541,4 +543,6 @@ def test_large_perturbation_move_never_overflows_a_day_boundary_or_the_time_arra
     for seed in range(50):
         new_solution = large_perturbation_move(instance, solution, random.Random(seed))
         e1 = next(se for se in new_solution.events if se.event_ref == "E1")
-        assert e1.time_ref not in invalid_for_e1, f"seed={seed}: E1 landed on {e1.time_ref}"
+        assert e1.time_ref not in invalid_for_e1, (
+            f"seed={seed}: E1 landed on {e1.time_ref}"
+        )
