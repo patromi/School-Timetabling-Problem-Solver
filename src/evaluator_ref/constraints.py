@@ -25,15 +25,23 @@ from src.model import Constraint, Event, Instance
 def _evaluate_assign_time_constraint(
     instance: Instance, occurrences: list[Occurrence], constraint: Constraint
 ) -> int:
-    # Deviation is the summed *duration* of unassigned sub-events, not a
-    # flat count of 1 per event (Kristiansen et al. 2015, §3.2.3).
+    # Point of application: one instance event (spec, verbatim: "Each event
+    # listed in the AppliesTo section that does not contain a time
+    # preassignment is one point of application"), so the cost function is
+    # applied once PER EVENT -- aggregating first and applying it once would
+    # agree under Linear but not under Quadratic/Step. Deviation is the
+    # summed *duration* of that event's unassigned sub-events (Kristiansen
+    # et al. 2015, §3.2.3). An event with deviation 0 costs 0 under all
+    # three cost functions and is skipped.
     event_ids = _events_in_applies_to(instance, constraint.applies_to)
-    deviation = sum(
-        o.duration
-        for o in occurrences
-        if o.event_ref in event_ids and o.time_ref is None
+    unassigned_duration: Counter[str] = Counter()
+    for o in occurrences:
+        if o.event_ref in event_ids and o.time_ref is None:
+            unassigned_duration[o.event_ref] += o.duration
+    return sum(
+        constraint.weight * apply_cost_function(constraint.cost_function, deviation)
+        for deviation in unassigned_duration.values()
     )
-    return constraint.weight * apply_cost_function(constraint.cost_function, deviation)
 
 
 def _evaluate_avoid_clashes_constraint(
