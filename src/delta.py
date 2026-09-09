@@ -6,7 +6,6 @@ docs/superpowers/specs/2026-08-16-delta-evaluation-design.md for the design
 rationale and the correctness argument for why skipping untouched
 constraints is sound, not just fast."""
 
-from src import evaluator_ref
 from src.cost import Cost
 from src.evaluator_ref import (
     _assigned_resource_ids,
@@ -14,6 +13,7 @@ from src.evaluator_ref import (
     _events_in_applies_to,
     _resources_in_applies_to,
     evaluate_constraint,
+    occupancy_index,
     resolve_occurrences,
 )
 from src.model import Constraint, Instance, Solution
@@ -118,21 +118,14 @@ def delta_cost(
 
     infeasibility, objective = old_cost.infeasibility, old_cost.objective
     for constraint in touched_constraints:
-        evaluator_ref._current_occupancy_index = old_index
-        try:
+        with occupancy_index(old_index):
             old_contribution = evaluate_constraint(
                 instance, old_occurrences, constraint
             )
-        finally:
-            evaluator_ref._current_occupancy_index = None
-
-        evaluator_ref._current_occupancy_index = new_index
-        try:
+        with occupancy_index(new_index):
             new_contribution = evaluate_constraint(
                 instance, new_occurrences, constraint
             )
-        finally:
-            evaluator_ref._current_occupancy_index = None
 
         change = new_contribution - old_contribution
         if change == 0:
