@@ -1,6 +1,8 @@
 import random
+from dataclasses import replace
 from pathlib import Path
 
+import pytest
 from src.construct import build_initial
 from src.evaluator_ref import total_cost
 from src.heuristics import MANUAL_HEURISTICS
@@ -82,7 +84,7 @@ def test_lahc_reaches_full_feasibility_on_sudoku4x4_within_a_modest_budget():
     # constraints is Required=true -- a working local search should drive
     # infeasibility to 0 given a reasonably generous iteration budget.
     # (Empirically tuned for the current default heuristic pool
-    # (src.heuristics.MANUAL_HEURISTICS): even with move_best/
+    # (xhstt_core.heuristics.MANUAL_HEURISTICS): even with move_best/
     # repair_hard_violation's cost-aware placement, the pool has no notion
     # of the RT1..RT4 room subtyping PreferResourcesConstraint needs, so it
     # still wastes proposals on wrong-subtype rooms and needs a generous
@@ -121,7 +123,7 @@ def test_lahc_accepts_an_explicit_heuristic_pool_override():
 
 def test_lahc_defaults_to_manual_heuristics_when_no_pool_is_given():
     # Pins down that omitting `heuristics=` genuinely uses
-    # src.heuristics.MANUAL_HEURISTICS (not a stale local copy) --
+    # xhstt_core.heuristics.MANUAL_HEURISTICS (not a stale local copy) --
     # regression guard for the default-pool wiring itself.
     instance = parse_archive(_load("ArtificialSudoku4x4.xml"))[0]
     initial = build_initial(instance, random.Random(0))
@@ -139,3 +141,63 @@ def test_lahc_defaults_to_manual_heuristics_when_no_pool_is_given():
 
     assert best_default.events == best_explicit.events
     assert cost_default == cost_explicit
+
+
+@pytest.mark.parametrize("fixture", ["ArtificialSudoku4x4.xml", "BrazilInstance1.xml"])
+def test_incremental_and_full_evaluation_explore_an_identical_trajectory(fixture):
+    # The strongest end-to-end guard on the delta path: same seed, same
+    # pool, same acceptance decisions -> byte-identical result. Any drift in
+    # a single candidate's cost changes an accept/reject decision and
+    # diverges the two runs from that point on.
+    instance = parse_archive(_load(fixture))[0]
+    initial = build_initial(instance, random.Random(0))
+
+    best_full, cost_full = run_lahc(
+        instance, initial, random.Random(7), max_iterations=300, evaluation="full"
+    )
+    best_incremental, cost_incremental = run_lahc(
+        instance,
+        initial,
+        random.Random(7),
+        max_iterations=300,
+        evaluation="incremental",
+    )
+
+    assert cost_incremental == cost_full
+    assert best_incremental.events == best_full.events
+    assert total_cost(instance, best_incremental) == cost_incremental
+
+
+def test_verify_mode_checks_every_candidate_against_the_reference_evaluator():
+    instance = parse_archive(_load("BrazilInstance1.xml"))[0]
+    initial = build_initial(instance, random.Random(0))
+
+    best, cost = run_lahc(
+        instance, initial, random.Random(8), max_iterations=60, evaluation="verify"
+    )
+
+    assert total_cost(instance, best) == cost
+
+
+def test_lahc_rejects_an_unknown_evaluation_mode():
+    instance = parse_archive(_load("ArtificialSudoku4x4.xml"))[0]
+    initial = build_initial(instance, random.Random(0))
+
+    with pytest.raises(ValueError, match="unknown evaluation mode"):
+        run_lahc(instance, initial, random.Random(0), evaluation="delta")
+
+
+def test_a_heuristic_not_marked_incremental_safe_is_costed_by_full_evaluation():
+    # LLM-generated operators (Etap 7) register with the default
+    # incremental_safe=False; the solver must still track their cost
+    # exactly, including the state rebuild after an accepted one.
+    instance = parse_archive(_load("ArtificialSudoku4x4.xml"))[0]
+    initial = build_initial(instance, random.Random(0))
+    move_random = next(h for h in MANUAL_HEURISTICS if h.id == "move_random")
+    untrusted = replace(move_random, id="untrusted", incremental_safe=False)
+
+    best, cost = run_lahc(
+        instance, initial, random.Random(9), max_iterations=200, heuristics=[untrusted]
+    )
+
+    assert total_cost(instance, best) == cost

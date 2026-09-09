@@ -11,7 +11,7 @@ from src.evaluator_ref._cache import (
     _time_ids_ordered,
     _time_positions,
 )
-from src.model import AppliesTo, Instance, Solution
+from src.model import AppliesTo, Event, Instance, Solution, SolutionEvent
 
 
 @dataclass
@@ -33,7 +33,7 @@ class Occurrence:
     resource_assignments: list[tuple[str, str | None]] = field(default_factory=list)
 
 
-def _assigned_resource(occurrence: Occurrence, role: str) -> str | None:
+def _assigned_resource(occurrence: Occurrence, role: str | None) -> str | None:
     """Looks up the (single) resource assigned to a given role -- correct
     for the constraint types that reference a specific Role, since the
     spec guarantees Role uniqueness for genuine assignable slots (the only
@@ -46,6 +46,34 @@ def _assigned_resource(occurrence: Occurrence, role: str) -> str | None:
 
 def _assigned_resource_ids(occurrence: Occurrence) -> list[str | None]:
     return [r for _, r in occurrence.resource_assignments]
+
+
+def resolve_occurrence(event_def: Event, solution_event: SolutionEvent) -> Occurrence:
+    """Merges one SolutionEvent with its Event definition's preassignments.
+    Extracted so an incremental evaluator can re-resolve a single changed
+    entry without duplicating (and drifting from) the merge rules."""
+    assignments = [(er.role, er.resource_ref) for er in event_def.resources]
+    for sr in solution_event.resources:
+        # A solution override fills in the first still-unassigned
+        # slot with a matching role (the "assignable slot" the
+        # spec's Role-uniqueness guarantee refers to); if none is
+        # found, add it as a new entry.
+        for i, (role, ref) in enumerate(assignments):
+            if role == sr.role and ref is None:
+                assignments[i] = (role, sr.resource_ref)
+                break
+        else:
+            assignments.append((sr.role, sr.resource_ref))
+    return Occurrence(
+        event_ref=solution_event.event_ref,
+        duration=solution_event.duration
+        if solution_event.duration is not None
+        else event_def.duration,
+        time_ref=solution_event.time_ref
+        if solution_event.time_ref is not None
+        else event_def.time_ref,
+        resource_assignments=assignments,
+    )
 
 
 def resolve_occurrences(instance: Instance, solution: Solution) -> list[Occurrence]:
@@ -184,6 +212,9 @@ def occupancy_index(index: dict[str, Counter[str]] | None) -> Iterator[None]:
         yield
     finally:
         _current_occupancy_index = previous
+
+
+occupancy_index_scope = occupancy_index
 
 
 def _get_current_occupancy_index() -> dict[str, Counter[str]] | None:

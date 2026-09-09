@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Benchmark: full evaluation (evaluate_cost from scratch) vs delta_cost
+"""(DEPRECATED!) Benchmark: full evaluation (evaluate_cost from scratch) vs delta_cost
 (incremental) on a real instance -- Etap 3 DoD ("benchmark pokazujacy
 przyspieszenie"). Diagnostic script for the thesis chapter, not a test: no
 assertions, just timings printed to stdout.
