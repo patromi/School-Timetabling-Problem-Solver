@@ -1,200 +1,25 @@
 import math
 from collections import Counter
-from dataclasses import dataclass, field
-from functools import cache
+from collections.abc import Callable
 
-from src.model import AppliesTo, Constraint, Event, Instance, Solution
-
-
-@cache
-def _event_group_refs_cached(
-    group_refs: tuple[str, ...], course_ref: str | None
-) -> frozenset[str]:
-    refs = set(group_refs)
-    if course_ref is not None:
-        refs.add(course_ref)
-    return frozenset(refs)
-
-
-_INSTANCE_REGISTRY: dict[int, Instance] = {}
-
-
-def _register_instance(instance: Instance) -> int:
-    # Keyed by id(instance): safe because the registry keeps a strong
-    # reference to every Instance it has ever seen, so that id() can never
-    # be reused for a *different* live Instance for the rest of the
-    # process (this project always solves one, occasionally a handful, of
-    # Instance objects per run -- unbounded growth here is a non-issue).
-    key = id(instance)
-    _INSTANCE_REGISTRY[key] = instance
-    return key
-
-
-@cache
-def _event_group_members_cached(instance_key: int, group_ref: str) -> frozenset[str]:
-    instance = _INSTANCE_REGISTRY[instance_key]
-    return frozenset(e.id for e in instance.events if group_ref in _event_group_refs(e))
-
-
-def _event_group_members(instance: Instance, group_ref: str) -> frozenset[str]:
-    # Cached for the same reason as _event_group_refs: several evaluators
-    # (SpreadEvents, AvoidSplitAssignments, LinkEvents) re-scan *every*
-    # instance event to resolve one event group's membership, once per
-    # constraint per cost evaluation -- static data, recomputed anyway.
-    key = _register_instance(instance)
-    return _event_group_members_cached(key, group_ref)
-
-
-def _event_group_refs(event: Event) -> frozenset[str]:
-    # Spec: "Course is an alternative form for EventGroup" -- an event's
-    # Course reference counts as membership in that event group too,
-    # exactly like an explicit <EventGroups><EventGroup Reference=.../>
-    # entry. Confirmed as a real gap via direct HSEval comparison on
-    # BrazilInstance1 (events whose only group membership route was via
-    # <Course> were invisible to AppliesTo.EventGroups matching).
-    #
-    # Cached: an event's group membership is static instance data -- it
-    # never changes during a solve, but this function was being called
-    # ~350,000 times per LAHC iteration on a mid-size real instance
-    # (AU-BG-98, profiled), because every constraint evaluation re-derives
-    # it for every event from scratch. Caching on the *value* of
-    # (group_refs, course_ref) rather than object identity avoids any
-    # id()-reuse/GC hazard.
-    return _event_group_refs_cached(tuple(event.group_refs), event.course_ref)
-
-
-@dataclass
-class Occurrence:
-    """One concrete meeting of an Event — one per SolutionEvent entry, since
-    a split event occurs multiple times under the same event_ref.
-
-    resource_assignments is a LIST of (role, resource_ref) pairs, not a
-    dict -- Role is only required to be unique within an event when it
-    identifies an assignable slot; the spec explicitly allows omitting
-    Role for preassigned resources, and real instances (e.g. a staff
-    meeting listing dozens of attendees) commonly have many preassigned
-    resources sharing the same (often empty) role. A role-keyed dict would
-    silently collapse all but one of them."""
-
-    event_ref: str
-    duration: int
-    time_ref: str | None
-    resource_assignments: list[tuple[str, str | None]] = field(default_factory=list)
-
-
-def _assigned_resource(occurrence: "Occurrence", role: str) -> str | None:
-    """Looks up the (single) resource assigned to a given role -- correct
-    for the constraint types that reference a specific Role, since the
-    spec guarantees Role uniqueness for genuine assignable slots (the only
-    slots those constraints ever target). Returns None if the role isn't
-    present at all, or if present but unassigned."""
-    return next(
-        (r for role_, r in occurrence.resource_assignments if role_ == role), None
-    )
-
-
-def _assigned_resource_ids(occurrence: "Occurrence") -> list[str | None]:
-    return [r for _, r in occurrence.resource_assignments]
-
-
-def _shortfall_or_excess(value: int, minimum: int, maximum: int) -> int:
-    if value < minimum:
-        return minimum - value
-    if value > maximum:
-        return value - maximum
-    return 0
-
-
-def _referenced_ids(entries: list[dict] | None) -> set[str]:
-    return {e["reference"] for e in (entries or [])}
-
-
-def apply_cost_function(name: str, deviation: int) -> int:
-    if name == "Linear":
-        return deviation
-    if name == "Quadratic":
-        return deviation * deviation
-    if name == "Step":
-        return 1 if deviation != 0 else 0
-    raise ValueError(f"unknown XHSTT cost function: {name!r}")
-
-
-def resolve_occurrences(instance: Instance, solution: Solution) -> list[Occurrence]:
-    """Merges each Event's fixed resource/time preassignments (declared in
-    the Instance) with what the Solution provides for roles/times left
-    unassigned. An instance event that never appears in the Solution's
-    Events at all (confirmed real pattern: a fully preassigned event, e.g.
-    a staff meeting with fixed time and all resources fixed, is never
-    listed explicitly) still "happens" once, at its full duration, and
-    must be visible to the evaluator -- so it gets one synthesized
-    occurrence rather than zero."""
-    solution_events_by_ref: dict[str, list] = {}
-    for se in solution.events:
-        solution_events_by_ref.setdefault(se.event_ref, []).append(se)
-
-    occurrences = []
-    for event_def in instance.events:
-        fixed_assignments = [(er.role, er.resource_ref) for er in event_def.resources]
-        matching = solution_events_by_ref.get(event_def.id)
-        if not matching:
-            occurrences.append(
-                Occurrence(
-                    event_ref=event_def.id,
-                    duration=event_def.duration,
-                    time_ref=event_def.time_ref,
-                    resource_assignments=list(fixed_assignments),
-                )
-            )
-            continue
-        for se in matching:
-            assignments = list(fixed_assignments)
-            for sr in se.resources:
-                # A solution override fills in the first still-unassigned
-                # slot with a matching role (the "assignable slot" the
-                # spec's Role-uniqueness guarantee refers to); if none is
-                # found, add it as a new entry.
-                for i, (role, ref) in enumerate(assignments):
-                    if role == sr.role and ref is None:
-                        assignments[i] = (role, sr.resource_ref)
-                        break
-                else:
-                    assignments.append((sr.role, sr.resource_ref))
-            occurrences.append(
-                Occurrence(
-                    event_ref=se.event_ref,
-                    duration=se.duration
-                    if se.duration is not None
-                    else event_def.duration,
-                    time_ref=se.time_ref
-                    if se.time_ref is not None
-                    else event_def.time_ref,
-                    resource_assignments=assignments,
-                )
-            )
-    return occurrences
-
-
-@cache
-def _events_in_applies_to_cached(
-    instance_key: int, event_groups: tuple[str, ...], events: tuple[str, ...]
-) -> frozenset[str]:
-    instance = _INSTANCE_REGISTRY[instance_key]
-    ids = set(events)
-    if event_groups:
-        groups = set(event_groups)
-        ids.update(e.id for e in instance.events if groups & _event_group_refs(e))
-    return frozenset(ids)
-
-
-def _events_in_applies_to(instance: Instance, applies_to: AppliesTo) -> frozenset[str]:
-    # Cached like _event_group_refs: which events a constraint's AppliesTo
-    # resolves to is static for the whole solve (depends only on instance
-    # data), but was being recomputed -- a full scan of instance.events --
-    # on every single cost evaluation of every constraint that uses it.
-    key = _register_instance(instance)
-    return _events_in_applies_to_cached(
-        key, tuple(applies_to.event_groups), tuple(applies_to.events)
-    )
+from src.evaluator_ref._cache import (
+    _event_group_members,
+    _referenced_ids,
+    _shortfall_or_excess,
+    _time_positions,
+    apply_cost_function,
+)
+from src.evaluator_ref.occurrences import (
+    Occurrence,
+    _assigned_resource,
+    _assigned_resource_ids,
+    _events_in_applies_to,
+    _full_span_busy_times,
+    _get_current_occupancy_index,
+    _occupied_time_ids,
+    _resources_in_applies_to,
+)
+from src.model import Constraint, Event, Instance
 
 
 def _evaluate_assign_time_constraint(
@@ -211,116 +36,6 @@ def _evaluate_assign_time_constraint(
     return constraint.weight * apply_cost_function(constraint.cost_function, deviation)
 
 
-@cache
-def _resources_in_applies_to_cached(
-    instance_key: int, resource_groups: tuple[str, ...], resources: tuple[str, ...]
-) -> frozenset[str]:
-    instance = _INSTANCE_REGISTRY[instance_key]
-    ids = set(resources)
-    if resource_groups:
-        groups = set(resource_groups)
-        ids.update(r.id for r in instance.resources if groups & set(r.group_refs))
-    return frozenset(ids)
-
-
-def _resources_in_applies_to(
-    instance: Instance, applies_to: AppliesTo
-) -> frozenset[str]:
-    # Cached for the same reason as _events_in_applies_to above.
-    key = _register_instance(instance)
-    return _resources_in_applies_to_cached(
-        key, tuple(applies_to.resource_groups), tuple(applies_to.resources)
-    )
-
-
-@cache
-def _time_ids_ordered_cached(instance_key: int) -> tuple[str, ...]:
-    instance = _INSTANCE_REGISTRY[instance_key]
-    return tuple(t.id for t in instance.times)
-
-
-@cache
-def _time_positions_cached(instance_key: int) -> dict[str, int]:
-    return {t: i for i, t in enumerate(_time_ids_ordered_cached(instance_key))}
-
-
-def _time_ids_ordered(instance: Instance) -> tuple[str, ...]:
-    return _time_ids_ordered_cached(_register_instance(instance))
-
-
-def _time_positions(instance: Instance) -> dict[str, int]:
-    # instance.times' order (and thus each time's position) is static --
-    # both the ordered id list and the position-lookup dict were being
-    # rebuilt from scratch (with a linear .index() search into the bargain)
-    # on every single call from multiple hot paths.
-    return _time_positions_cached(_register_instance(instance))
-
-
-def _occupied_time_ids(
-    instance: Instance, time_ref: str | None, duration: int
-) -> set[str]:
-    if time_ref is None:
-        return set()
-    all_ids = _time_ids_ordered(instance)
-    start = _time_positions(instance)[time_ref]
-    return set(all_ids[start : start + duration])
-
-
-# Set (not None) only during an evaluate_cost_components() call, to a resource_id ->
-# Counter[time_id] map built in ONE pass over occurrences -- see
-# _build_occupancy_index. AvoidClashesConstraint, ClusterBusyTimesConstraint,
-# LimitBusyTimesConstraint, LimitIdleTimesConstraint and
-# AvoidUnavailableTimesConstraint all previously re-derived a resource's
-# occupied times independently (once per resource, per constraint,
-# rescanning every occurrence each time); profiling a real ~400-event
-# instance (AU-BG-98) showed this redundant rescanning was the largest
-# single cost after the earlier group-membership caching fix. Module-level
-# and not thread-safe by design -- this solver is single-threaded.
-_current_occupancy_index: dict[str, "Counter[str]"] | None = None
-
-
-def _build_occupancy_index(
-    instance: Instance, occurrences: list[Occurrence]
-) -> dict[str, "Counter[str]"]:
-    index: dict[str, Counter] = {}
-    for o in occurrences:
-        if o.time_ref is None:
-            continue
-        span = None
-        for _, ref in o.resource_assignments:
-            if ref is None:
-                continue
-            if span is None:
-                span = _occupied_time_ids(instance, o.time_ref, o.duration)
-            counter = index.setdefault(ref, Counter())
-            for t in span:
-                counter[t] += 1
-    return index
-
-
-def _full_span_busy_times(
-    instance: Instance, occurrences: list[Occurrence], resource_id: str
-) -> set[str]:
-    """All time ids a resource is occupied at, expanding each occurrence's
-    full duration span rather than just its start time -- confirmed
-    required by spec (explicit for AvoidClashesConstraint: "All times when
-    the solution resources' solution events are running are included, not
-    just their starting times") and, via direct comparison against a real
-    HSEval report for BrazilInstance1.xml, required for "busy" in general
-    (LimitIdleTimesConstraint, ClusterBusyTimesConstraint,
-    LimitBusyTimesConstraint, AvoidUnavailableTimesConstraint all define
-    "busy" the same way, off the same general definition)."""
-    if _current_occupancy_index is not None:
-        counter = _current_occupancy_index.get(resource_id)
-        return set(counter.keys()) if counter else set()
-    busy = set()
-    for o in occurrences:
-        if o.time_ref is None or resource_id not in _assigned_resource_ids(o):
-            continue
-        busy |= _occupied_time_ids(instance, o.time_ref, o.duration)
-    return busy
-
-
 def _evaluate_avoid_clashes_constraint(
     instance: Instance, occurrences: list[Occurrence], constraint: Constraint
 ) -> int:
@@ -329,9 +44,11 @@ def _evaluate_avoid_clashes_constraint(
     # every time slot each occurrence's duration spans, not just its
     # start), of (count - 1).
     total = 0
+    current_index = _get_current_occupancy_index()
     for resource_id in _resources_in_applies_to(instance, constraint.applies_to):
-        if _current_occupancy_index is not None:
-            counter = _current_occupancy_index.get(resource_id, Counter())
+        counter: Counter[str]
+        if current_index is not None:
+            counter = current_index.get(resource_id, Counter())
         else:
             counter = Counter()
             for o in occurrences:
@@ -523,7 +240,8 @@ def _evaluate_limit_busy_times_constraint(
     return total
 
 
-_EVALUATORS = {
+_EvaluatorFn = Callable[["Instance", "list[Occurrence]", "Constraint"], int]
+_EVALUATORS: dict[str, _EvaluatorFn] = {
     "AssignTimeConstraint": _evaluate_assign_time_constraint,
     "AvoidClashesConstraint": _evaluate_avoid_clashes_constraint,
     "AssignResourceConstraint": _evaluate_assign_resource_constraint,
@@ -832,86 +550,3 @@ def evaluate_constraint(
             f"exact HSEval deviation formula before implementing"
         ) from None
     return evaluator(instance, occurrences, constraint)
-
-
-@cache
-def _day_group_ids_cached(instance_key: int) -> frozenset[str]:
-    instance = _INSTANCE_REGISTRY[instance_key]
-    return frozenset(g.id for g in instance.time_groups if g.kind == "Day")
-
-
-def _day_group_ref(instance: Instance, time_id: str) -> str | None:
-    day_group_ids = _day_group_ids_cached(_register_instance(instance))
-    time = next(t for t in instance.times if t.id == time_id)
-    return next((ref for ref in time.group_refs if ref in day_group_ids), None)
-
-
-@cache
-def _valid_start_time_ids(instance_key: int, duration: int) -> tuple[str, ...]:
-    """Start times for which a `duration`-slot span neither overflows past
-    the last defined Time (the exact structural error HSEval reports:
-    "<Time> not assignable to <Event>") nor crosses into a different Day
-    group, when the times involved belong to one. Shared (cached) by both
-    construct.py's initial solution builder and moves.py's time-changing
-    moves -- moves.py had the exact same overflow bug construct.py was
-    fixed for (real HSEval rejection: "'Fr_5' not assignable to Event
-    'T10-S1'", surfaced after a longer LAHC run on a real multi-day-period
-    instance), because it picked *any* instance time with no regard for
-    whether the event's duration would still fit there."""
-    instance = _INSTANCE_REGISTRY[instance_key]
-    all_times = instance.times
-    n = len(all_times)
-    valid = []
-    for i, t in enumerate(all_times):
-        if i + duration > n:
-            continue
-        day_ref = _day_group_ref(instance, t.id)
-        if day_ref is not None and any(
-            _day_group_ref(instance, all_times[j].id) != day_ref
-            for j in range(i, i + duration)
-        ):
-            continue
-        valid.append(t.id)
-    return tuple(valid)
-
-
-def valid_start_time_ids(instance: Instance, duration: int) -> tuple[str, ...]:
-    return _valid_start_time_ids(_register_instance(instance), duration)
-
-
-INFEASIBILITY_WEIGHT = 1_000_000
-
-
-def evaluate_cost_components(instance: Instance, solution: Solution) -> tuple[int, int]:
-    """Returns (infeasibility, objective) separately -- infeasibility is the
-    sum of Required=true constraint costs, objective the sum of
-    Required=false costs. `total_cost` below is just these two flattened
-    into one scalar; `src.cost` builds the (infeasibility, objective)
-    vector representation on top of this instead, for lexicographic
-    comparison of two solutions without conflating the two."""
-    global _current_occupancy_index
-    occurrences = resolve_occurrences(instance, solution)
-    _current_occupancy_index = _build_occupancy_index(instance, occurrences)
-    try:
-        infeasibility = 0
-        objective = 0
-        for c in instance.constraints:
-            cost = evaluate_constraint(instance, occurrences, c)
-            if c.required:
-                infeasibility += cost
-            else:
-                objective += cost
-        return infeasibility, objective
-    finally:
-        _current_occupancy_index = None
-
-
-def total_cost(instance: Instance, solution: Solution) -> int:
-    """Lexicographic total: infeasibility (sum of Required=true constraint
-    costs) dominates objective (sum of Required=false costs), matching the
-    Env sketch in the thesis plan (`infeas * 1_000_000 + obj`) -- a single
-    point of infeasibility always outweighs any amount of objective cost,
-    so a solver comparing this scalar naturally prioritizes feasibility
-    first."""
-    infeasibility, objective = evaluate_cost_components(instance, solution)
-    return infeasibility * INFEASIBILITY_WEIGHT + objective
