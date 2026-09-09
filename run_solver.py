@@ -13,10 +13,10 @@ import time
 from pathlib import Path
 
 from src.construct import build_initial
-from src.evaluator_ref import evaluate_constraint, resolve_occurrences
+from src.evaluator_ref import evaluate_cost_components, resolve_occurrences
 from src.html_report import render_timetable_page
 from src.lahc import run_lahc
-from src.model import Instance, Solution, SolutionGroup
+from src.model import Instance, SolutionGroup
 from src.parser import parse_archive
 from src.xml_writer import (
     extract_instance_archive,
@@ -51,20 +51,6 @@ def format_instance_table(instances: list[Instance]) -> str:
         )
     return "\n".join(lines)
 
-
-def cost_breakdown(instance: Instance, solution: Solution) -> tuple[int, int]:
-    occurrences = resolve_occurrences(instance, solution)
-    infeasibility = sum(
-        evaluate_constraint(instance, occurrences, c)
-        for c in instance.constraints
-        if c.required
-    )
-    objective = sum(
-        evaluate_constraint(instance, occurrences, c)
-        for c in instance.constraints
-        if not c.required
-    )
-    return infeasibility, objective
 
 
 def _parse_args(argv: list[str] | None) -> argparse.Namespace:
@@ -128,7 +114,7 @@ def main(argv: list[str] | None = None) -> None:
     print("Budowanie rozwiazania poczatkowego...")
     t0 = time.time()
     initial = build_initial(instance, rng)
-    infeasibility_0, objective_0 = cost_breakdown(instance, initial)
+    infeasibility_0, objective_0 = evaluate_cost_components(instance, initial)
     print(
         f"  gotowe w {time.time() - t0:.2f}s -> "
         f"infeasibility={infeasibility_0}  objective={objective_0}\n"
@@ -164,7 +150,7 @@ def main(argv: list[str] | None = None) -> None:
         progress_seconds=2.0,
     )
     elapsed = time.time() - t_start
-    infeasibility_1, objective_1 = cost_breakdown(instance, best)
+    infeasibility_1, objective_1 = evaluate_cost_components(instance, best)
 
     print(f"\nZakonczono w {elapsed:.1f}s ({args.iterations / elapsed:.0f} it/s)")
     print(f"  Przed:  infeasibility={infeasibility_0:>6}  objective={objective_0:>6}")
