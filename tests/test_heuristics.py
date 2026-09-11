@@ -341,8 +341,8 @@ def test_ruin_and_recreate_touches_at_most_the_ruin_budget() -> None:
             f"seed={seed}: touched {len(diffs)} events, expected at most 6"
         )
 
-from xhstt_core.cost import evaluate_cost
-from xhstt_core.incremental import IncrementalEvaluator, StructuralChangeError
+from src.cost import evaluate_cost
+from src.incremental import IncrementalEvaluator, StructuralChangeError
 
 @pytest.mark.parametrize("heuristic", [h for h in MANUAL_HEURISTICS if h.incremental_safe], ids=lambda h: h.id)
 def test_heuristic_incremental_safety(heuristic: Heuristic) -> None:
