@@ -25,7 +25,7 @@ def _score_candidate(
     candidate: Solution,
     evaluation: str,
     check: bool,
-) -> tuple[Cost, Transaction | None]:
+) -> tuple[int, Transaction | None]:
     """Cost of `candidate` plus the transaction that has to be finished for
     it, or None when it was costed by full evaluation instead."""
     transaction: Transaction | None = None
@@ -35,14 +35,14 @@ def _score_candidate(
         except StructuralChangeError:
             transaction = None
     if transaction is None:
-        return evaluate_cost(instance, candidate), None
+        return evaluate_cost(instance, candidate).as_scalar(), None
 
-    cost = transaction.cost
+    cost = transaction.cost.as_scalar()
     if evaluation == VERIFY and check:
-        expected = evaluate_cost(instance, candidate)
+        expected = evaluate_cost(instance, candidate).as_scalar()
         if cost != expected:
             raise AssertionError(
-                f"incremental cost {cost.as_scalar()} != full cost {expected.as_scalar()} "
+                f"incremental cost {cost} != full cost {expected} "
                 f"after heuristic {heuristic.id!r}"
             )
     return cost, transaction
@@ -110,7 +110,7 @@ def run_lahc(
     current = initial
     current_cost = (
         evaluator.cost if evaluator is not None else evaluate_cost(instance, current)
-    )
+    ).as_scalar()
     best, best_cost = current, current_cost
     history = [current_cost] * history_length
     last_progress_time = time.monotonic()
@@ -163,7 +163,7 @@ def run_lahc(
             if (
                 step + 1
             ) % progress_every == 0 or now - last_progress_time >= progress_seconds:
-                on_progress(step + 1, best_cost.as_scalar())
+                on_progress(step + 1, best_cost)
                 last_progress_time = now
 
-    return best, best_cost.as_scalar()
+    return best, best_cost
