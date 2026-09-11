@@ -16,6 +16,8 @@ INCREMENTAL = "incremental"
 VERIFY = "verify"
 
 
+from src.cost import Cost
+
 def _score_candidate(
     instance: Instance,
     evaluator: IncrementalEvaluator | None,
@@ -23,7 +25,7 @@ def _score_candidate(
     candidate: Solution,
     evaluation: str,
     check: bool,
-) -> tuple[int, Transaction | None]:
+) -> tuple[Cost, Transaction | None]:
     """Cost of `candidate` plus the transaction that has to be finished for
     it, or None when it was costed by full evaluation instead."""
     transaction: Transaction | None = None
@@ -33,14 +35,14 @@ def _score_candidate(
         except StructuralChangeError:
             transaction = None
     if transaction is None:
-        return evaluate_cost(instance, candidate).as_scalar(), None
+        return evaluate_cost(instance, candidate), None
 
-    cost = transaction.cost.as_scalar()
+    cost = transaction.cost
     if evaluation == VERIFY and check:
-        expected = evaluate_cost(instance, candidate).as_scalar()
+        expected = evaluate_cost(instance, candidate)
         if cost != expected:
             raise AssertionError(
-                f"incremental cost {cost} != full cost {expected} "
+                f"incremental cost {cost.as_scalar()} != full cost {expected.as_scalar()} "
                 f"after heuristic {heuristic.id!r}"
             )
     return cost, transaction
@@ -108,13 +110,17 @@ def run_lahc(
     current = initial
     current_cost = (
         evaluator.cost if evaluator is not None else evaluate_cost(instance, current)
-    ).as_scalar()
+    )
     best, best_cost = current, current_cost
     history = [current_cost] * history_length
     last_progress_time = time.monotonic()
 
+    weights = [1.0] * len(pool)
+    reaction_factor = 0.1
+
     for step in range(max_iterations):
-        heuristic = rng.choice(pool)
+        heuristic = rng.choices(pool, weights=weights, k=1)[0]
+        heuristic_idx = pool.index(heuristic)
         try:
             candidate = heuristic.apply(current, instance, rng)
         except ValueError:
@@ -131,6 +137,19 @@ def run_lahc(
 
         v = step % history_length
         accepted = candidate_cost <= current_cost or candidate_cost <= history[v]
+        
+        reward = 0.0
+        if accepted:
+            if candidate_cost < best_cost:
+                reward = 3.0
+            elif candidate_cost < current_cost:
+                reward = 2.0
+            else:
+                reward = 1.0
+
+        weights[heuristic_idx] = (1.0 - reaction_factor) * weights[heuristic_idx] + reaction_factor * reward
+        weights[heuristic_idx] = max(weights[heuristic_idx], 0.01)
+
         if accepted:
             current, current_cost = candidate, candidate_cost
             if current_cost < best_cost:
@@ -144,7 +163,7 @@ def run_lahc(
             if (
                 step + 1
             ) % progress_every == 0 or now - last_progress_time >= progress_seconds:
-                on_progress(step + 1, best_cost)
+                on_progress(step + 1, best_cost.as_scalar())
                 last_progress_time = now
 
-    return best, best_cost
+    return best, best_cost.as_scalar()
