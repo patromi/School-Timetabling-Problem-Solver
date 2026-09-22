@@ -1,0 +1,1500 @@
+@Chapter
+    @Title { Matchings and Evenness }
+    @Tag { matchings }
+@Begin
+Suppose a decision is made to run five Music meets simultaneously,
+when the school has only two Music teachers and two Music rooms.
+Clearly, when teachers and rooms are assigned later, there will be
+major problems, but until then the usual cost function will not
+reveal any problems.
+@PP
+More subtly, suppose there are eight teachers, and that three of
+them teach English only, three teach History only, and two teach
+both.  Suppose a decision is make to run five English meets
+and five History meets simultaneously.  Then there are enough
+English teachers to teach the five English meets, and there
+are enough History teachers to teach the five History meets,
+but there are not enough English and History teachers, taken
+together, to teach the ten meets.
+@PP
+@I { Matchings } (officially, @I { unweighted bipartite matchings })
+detect such problems.  Although not compulsory, they are often
+helpful.  This chapter describes them in general, how they apply
+to timetabling, and how to use them in KHE.
+@PP
+The functions defined here are everything that the KHE platform
+offers to support matching.  They are used as is for some things,
+such as diagnosing failure to match, but for setting up a matching
+to begin with and deleting it later, in practice it is better to use
+the solver functions @C { KheMatchingBegin } and @C { KheMatchingEnd }
+(Section {@NumberOf general_solvers.matchings.intro}) since they call
+the functions defined here in just the right way.
+@FootNote {
+Prior to Version 2.10, most of the setup code was in the platform.
+The current arrangement is better in every way.
+}
+@BeginSections
+
+@Section
+    @Title { Introducing bipartite matching }
+    @Tag { matchings.intro }
+@Begin
+@LP
+A @I { bipartite graph } is an undirected graph whose nodes are divided
+into two sets, such that every edge connects a node of one set to a node
+of the other.  A @I { matching } is a subset of the edges such that no
+two edges touch the same node.  A @I { maximum matching } is a matching
+containing as many edges as possible.  The @I { bipartite matching problem }
+is the problem of finding a maximum matching in a bipartite graph.  For
+example, here is a bipartite graph (at left), and the same graph with
+a maximum matching shown in bold (at right):
+@CD @OneCol
+{
+@Diag
+{
+@Tbl
+    aformat { @Cell ml { 0c } mr { 1.5c } A | @Cell mr { 0c } B }
+    mv { 0.3c }
+{
+@Rowa
+    ma { 0i }
+    A { A1:: @Circle }
+    B { B1:: @Circle }
+@Rowa
+    A { A2:: @Circle }
+    B { B2:: @Circle }
+@Rowa
+    A { A3:: @Circle }
+    B { B3:: @Circle }
+@Rowa
+    A { A4:: @Circle }
+    B { B4:: @Circle }
+    mb { 0i }
+}
+//
+@Line from { A1 } to { B1 }
+@Line from { A1 } to { B2 }
+@Line from { A1 } to { B3 }
+@Line from { A1 } to { B4 }
+@Line from { A2 } to { B1 }
+@Line from { A2 } to { B2 }
+@Line from { A3 } to { B2 }
+@Line from { A4 } to { B2 }
+@Line from { A4 } to { B3 }
+@Line from { A4 } to { B4 }
+}
+||4c
+@Diag
+{
+@Tbl
+    aformat { @Cell ml { 0c } mr { 1.5c } A | @Cell mr { 0c } B }
+    mv { 0.3c }
+{
+@Rowa
+    ma { 0i }
+    A { A1:: @Circle }
+    B { B1:: @Circle }
+@Rowa
+    A { A2:: @Circle }
+    B { B2:: @Circle }
+@Rowa
+    A { A3:: @Circle }
+    B { B3:: @Circle }
+@Rowa
+    A { A4:: @Circle }
+    B { B4:: @Circle }
+    mb { 0i }
+}
+//
+@Line from { A1 } to { B1 }
+@Line from { A1 } to { B2 }
+@Line from { A1 } to { B3 } pathwidth { thick }
+@Line from { A1 } to { B4 }
+@Line from { A2 } to { B1 } pathwidth { thick }
+@Line from { A2 } to { B2 }
+@Line from { A3 } to { B2 } pathwidth { thick }
+@Line from { A4 } to { B2 }
+@Line from { A4 } to { B3 }
+@Line from { A4 } to { B4 } pathwidth { thick }
+}
+}
+There is a standard polynomial-time algorithm for this problem.
+@PP
+In timetabling, where bipartite matching has been used for many
+years @Cite { $csima1964, $gotlieb1962, $werra1971 }, it is usual
+for one of the two sets of nodes to represent variables (slots,
+events, etc.) demanding something to be assigned to them, while
+the other set represents values (times, resources, etc.) which
+are available to supply these demands.  So these sets are called
+the @I { demand nodes } and the @I { supply nodes } here.  A
+maximum matching assigns supply nodes to as many demand nodes
+as possible, given that each demand node requires any one of
+the supply nodes it is connected to, and each supply node may
+be assigned to at most one demand node.  Although the problem
+is formally symmetrical between the two kinds of nodes, in
+timetabling it is not symmetrical:  it does not matter if some
+supply nodes are not matched, but it does matter if some demand
+nodes are not matched.
+@PP
+One does not usually want to make the assignments indicated by a
+maximum matching, because there are other constraints not modelled
+by it, and the aim is to find, not just any maximum matching, but
+one satisfying these other constraints.  Instead, the matching
+helps to evaluate the current state.  Because it is maximum, it
+indicates that there must be at least a certain number of problems,
+in the form of unassigned demand nodes, in any solution incorporating
+the decisions already made, and that is valuable information when
+evaluating those decisions.
+@PP
+Some applications of matching to timetabling utilize the idea of a
+@I { tixel }, the author's term for one resource at one time (the
+name recalls the @I pixel of computer graphics).  For example,
+teacher Smith during the first time on Mondays is one tixel; it
+may be represented by the ordered pair
+@ID @M { ("Smith", "Mon1") }
+This is also called a @I { supply tixel }, because it can supply the
+demands of events for teachers.  The events are said to contain
+@I { demand tixels }.  For example, an event of duration 2 which
+requests student group @M { 8A }, one English teacher, and one
+room, is said to contain six demand tixels.  This is shorthand for
+saying that it demands six supply tixels.
+@PP
+Underlying the high school timetabling problem is a matching that
+we will call the @I { global tixel matching }.  Its supply nodes are
+the supply tixels, one for each resource of the instance at each time.
+Its demand nodes are the demand tixels of the events of the instance.
+Edges connect demand tixels to those supply tixels that suit them.
+For example, a demand for student group 8A would be connected to
+supply tixels whose resource is 8A; a demand for an English teacher
+at time @M { "Mon1" } would be connected to those supply tixels
+whose resource is an English teacher and whose time is @M { "Mon1" }.
+Each demand tixel wants to be assigned one supply tixel, and each
+supply tixel may only be assigned to one demand tixel (otherwise
+there would be a timetable clash).  So a matching is indeed
+required, and a maximum matching will have the fewest problems.
+@PP
+As decisions are made, in the form of assignments of times to
+meets or resources to tasks (or domain reductions, for example from
+all qualified resources to a smaller set of preferred resources),
+the demand tixels affected by these decisions become connected
+to fewer supply tixels.  When the maximum matching is recalculated
+(there is an efficient algorithm for doing this incrementally as
+the graph changes) there may be more unmatched nodes than before,
+suggesting that the decisions made may have been poor ones, and
+that alternatives should be explored.
+@PP
+The global tixel matching is useful for evaluating instances before
+solving begins.  It can reveal, for example, that the supply of computer
+laboratories is insufficient to cover the demand, and other problems of
+that kind.  It turns out to be very powerful late in the solve process,
+when resources are being assigned after times have been assigned,
+provided it is enhanced with tixels expressing resource unavailabilities
+and workload limits (Section {@NumberOf matchings.demand}).
+However, it is quite weak before times are assigned, because it does
+not understand that the supply tixels assigned to events must be
+correlated in time:  it does not perceive the contradiction in
+assigning, say, the two supply tixels @M { ("Smith", "Mon1") }
+and @M { ("Lab6", "Wed5") } to an event of duration 1.
+@PP
+An example given earlier, of scheduling five Music events
+simultaneously when there are only two Music teachers and two Music
+rooms, shows that useful checks can be made when deciding to run
+events simultaneously, even though their actual time is not fixed.
+Whatever time is ultimately assigned to such events, each resource
+can supply at most one tixel to satisfy their demands.  So the demand
+tixels for one time of the events concerned may be matched with a set
+of supply nodes, one for each resource.  This will be called
+@I { local tixel matching }.  The tixels are rather different:  they
+share a common generic time rather than holding a variety of true times.
+@End @Section
+
+@Section
+    @Title { Basic operations }
+    @Tag { matchings.setup }
+@Begin
+@LP
+By default, a solution contains no matching.  To add one,
+and later to delete it, call
+@ID @C {
+void KheSolnMatchingBegin(KHE_SOLN soln);
+void KheSolnMatchingEnd(KHE_SOLN soln);
+}
+(As already remarked, solver functions @C { KheMatchingBegin } and
+@C { KheMatchingEnd } from Section {@NumberOf general_solvers.matchings.intro}
+will usually be better in practice.)  The matching is also deleted
+when its solution is deleted, since a matching without a solution
+makes no sense.  @C { KheSolnMatchingBegin } does not add any
+demand nodes, and @C { KheSolnMatchingEnd } requires all demand
+nodes that have been added (by calls that we'll come to later)
+since the preceding @C { KheSolnMatchingBegin } to have been
+deleted before it is called.
+@PP
+A solution can have at most one matching, and KHE will abort if
+@C { KheSolnMatchingBegin } is called twice without an intervening
+@C { KheSolnMatchingEnd }.  When present, the matching is kept up
+to date automatically as the solution changes.  A lazy implementation
+is used:  no matching is done until a query is received (for example,
+a request for the current number of unmatched demand nodes).  This
+allows the time spent matching to be amortized over all operations
+carried out since the previous query.  There is no way for the user
+to observe the laziness.  The key operation, of bringing the matching
+up to date (making it maximum) runs in time roughly proportional
+to the number of unmatched nodes in the graph when it is called.
+@PP
+Function
+@ID @C {
+bool KheSolnHasMatching(KHE_SOLN soln);
+}
+returns @C { true } when @C { soln } has a matching.  Most of
+the operations of this chapter assume that the matching is present.
+If it isn't, some may abort, while others may do nothing.
+@PP
+A demand node is a kind of monitor; we use the terms @I { demand node }
+and @I { demand monitor } interchangeably.  Demand monitors may be
+attached and detached separately as usual.  Detaching a demand
+monitor removes its node from the matching graph.
+@PP
+In the usual way, a demand monitor contributes a cost to the solution
+when it is attached to the solution and linked in as a descendant of
+the solution object (considered as a group monitor).  The cost is 0
+when the node is matched, and some non-negative value when it is
+unmatched.  This value, the cost to report when the node is unmatched,
+is set and retrieved by functions
+@ID @C {
+void KheSolnMatchingSetWeight(KHE_SOLN soln, KHE_COST weight);
+KHE_COST KheSolnMatchingWeight(KHE_SOLN soln);
+}
+The value is the same for all demand nodes, because this is
+unweighted bipartite matching.  Any change in weight is reflected
+immediately in the costs of all demand monitors.
+# @PP
+# Immediately after @C { KheSolnMatchingBegin } returns, the demand
+# monitors it makes are all detached, so the matching graph has no
+# demand nodes.  Convenience functions defined below may be used to
+# attach the demand monitors.
+# @PP
+# Rather than fiddling around calling @C { KheSolnHasMatching }, it is
+# conventional to assume that a matching is present when KHE is being
+# used for solving, but not when it is being used only to evaluate
+# solutions.  The rationale for this is that by comparison with the
+# overall cost of a solve, it costs virtually nothing, and helps to
+# make the solve environment uniform, if a matching is always
+# present.  If it isn't actually wanted, its demand monitors can
+# be detached.  On the other hand, when evaluating solutions, at
+# least when just their cost is required, matchings have no use,
+# and if there are many solutions it is best to avoid the memory
+# cost of the demand and supply nodes.
+# @PP
+# Although it would be trivial to allow the user to set the cost of
+# each demand monitor individually, this has not been done, because
+# it might suggest that the matching algorithm is capable of finding
+# the matching which minimizes the total cost of unmatched nodes.
+# In reality, there is no way to make the cost depend on which nodes
+# are unmatched, nor on how appropriate the matching's assignments
+# are.  Those would be useful features, since then the cost of
+# assign resources and prefer resources constraints could be
+# reflected in the matching cost, but then a different problem,
+# called @I { weighted bipartite matching }, would have to be solved,
+# whose algorithm the author considers to be too slow for solving.
+# @PP
+# In the absence of weighted matching, choosing @C { weight } is not easy.
+# The simple choice is @C { KheCost(1, 0) }, and it may well be the best.
+# Another choice is one which guarantees that the weighted cost of the
+# matching is a lower bound on the ultimate total cost of the violations
+# of all relevant constraints, assuming that more assignments are added
+# without changing the current ones.  Each unassigned tixel in the
+# matching must ultimately correspond with either a missing resource
+# assignment at one time, or a resource clash at one time.  So a
+# suitable weight is the minimum of the following quantities:  for
+# each event resource, the sum of the combined weights of the assign
+# resource constraints that apply to it; and for each resource, the
+# sum of the combined weights of the avoid clashes constraints that
+# apply to it.  (Fortunately, both of these constraints incur a cost
+# for each violating tixel.)  Function
+# @ID @C {
+# KHE_COST KheSolnMinMatchingWeight(KHE_SOLN soln);
+# }
+# works out this value.  If there are no event resources and no
+# resources, it returns 0.
+@PP
+The matching has a @I type that may be changed at any moment:
+@ID @C {
+void KheSolnMatchingSetType(KHE_SOLN soln, KHE_MATCHING_TYPE mt);
+KHE_MATCHING_TYPE KheSolnMatchingType(KHE_SOLN soln);
+}
+@C { KHE_MATCHING_TYPE } is the enumerated type
+@ID @C {
+typedef enum {
+  KHE_MATCHING_TYPE_EVAL_INITIAL,
+  KHE_MATCHING_TYPE_EVAL_TIMES,
+  KHE_MATCHING_TYPE_EVAL_RESOURCES,
+  KHE_MATCHING_TYPE_SOLVE
+} KHE_MATCHING_TYPE;
+}
+A full explanation of these values is given in the following section.
+Just briefly, however, @C { KHE_MATCHING_TYPE_SOLVE } implements a
+kind of local tixel matching and is the best choice when solving;
+it is also the default value.  The others are variants of global
+tixel matching.  A change of type is reflected immediately in the
+costs of all demand monitors.
+@PP
+For the most part, matchings work quietly behind the scenes without
+attention from the user.  However, there is an important optimization
+that only the user can invoke.  Suppose that some changes are made to
+the solution as an experiment, then either retained or undone.  Then
+KHE will run faster if that part of the program is bracketed by calls
+to these functions:
+@ID @C {
+void KheSolnMatchingMarkBegin(KHE_SOLN soln);
+void KheSolnMatchingMarkEnd(KHE_SOLN soln, bool undo);
+}
+Calls to these operations must occur in matching pairs, possibly nested.
+If @C { undo } is @C { true }, then @C { KheSolnMatchingMarkEnd }
+assumes without checking that all changes to @C { soln } since the
+corresponding call to @C { KheSolnMatchingMarkBegin } have been
+undone.  It uses this information to bring the matching up to date
+more quickly than could be done without it.  To encourage their use,
+both functions are well-defined even when there is no matching:  in
+that case, they do nothing.
+@PP
+As an aid to debugging, function
+@ID @C {
+void KheSolnMatchingDebug(KHE_SOLN soln, int verbosity,
+  int indent, FILE *fp);
+}
+ensures that the matching is up to date, then prints its current
+state onto @C { fp }.  Verbosity 1 prints just the number of
+unmatched demand monitors, verbosity 2 prints those monitors,
+and verbosity 3 prints all demand monitors and the supply nodes
+they are matched with.
+@End @Section
+
+@Section
+    @Title { Supply nodes and demand nodes }
+    @Tag { matchings.demand }
+@Begin
+@LP
+Supply nodes are created automatically behind the scenes, and are
+not accessible to the user.  There is one supply node for each
+resource at each time of each meet @C { m } that is not assigned to
+another meet.  When such an assignment is made, the supply nodes of
+@C { m } are deleted, since the two meets then run simultaneously.
+@PP
+The rest of this section deals with demand nodes.  These are of two
+kinds:  @I { ordinary demand nodes } and @I { workload demand nodes }.
+To create and delete an ordinary demand node, call
+@ID @C {
+KHE_ORDINARY_DEMAND_MONITOR KheOrdinaryDemandMonitorMake(
+  KHE_TASK task, int offset, KHE_MONITOR orig_m);
+void KheOrdinaryDemandMonitorDelete(KHE_ORDINARY_DEMAND_MONITOR odm);
+}
+An ordinary demand node represents a demand for one resource at one
+time made by @C { task } at @C { offset } (between 0 inclusive and
+the duration of the task exclusive).  The originating monitor,
+@C { orig_m }, is the monitor that led to the creation of this
+demand monitor.  It would probably be an assign resource monitor for
+@C { task }, although there is no strict rule; it may be @C { NULL }.
+@PP
+The usual monitor operations (attach and detach, etc.) may be obtained
+by upcasting from @C { KHE_ORDINARY_DEMAND_MONITOR } to @C { KHE_MONITOR }
+as usual.  There are also these operations specific to ordinary demand
+monitors:
+@ID @C {
+KHE_TASK KheOrdinaryDemandMonitorTask(KHE_ORDINARY_DEMAND_MONITOR odm);
+int KheOrdinaryDemandMonitorOffset(KHE_ORDINARY_DEMAND_MONITOR odm);
+KHE_MONITOR KheOrdinaryDemandMonitorOriginatingMonitor(
+  KHE_ORDINARY_DEMAND_MONITOR odm);
+void KheOrdinaryDemandMonitorDebug(KHE_ORDINARY_DEMAND_MONITOR odm,
+  int verbosity, int indent, FILE *fp);
+}
+Functions
+@ID @C {
+int KheTaskDemandMonitorCount(KHE_TASK task);
+KHE_ORDINARY_DEMAND_MONITOR KheTaskDemandMonitor(KHE_TASK task, int i);
+}
+visit the ordinary demand monitors associated with @C { task },
+attached or detached.  In practice there will be one of these
+for each legal offset, although that is not an absolute requirement.
+@PP
+We turn now to workload demand nodes.  These originate in constraints
+on the availability of resources.  For example, if resource
+@C { r } is unavailable at time @C { Mon1 }, we might want to remove
+supply node @C { (r, Mon1) }, but there is no way to do that, so
+instead we add a workload demand node that matches only with that
+supply node.  To create and delete such a node, call
+@ID @C {
+KHE_WORKLOAD_DEMAND_MONITOR KheWorkloadDemandMonitorMake(
+  KHE_SOLN soln, KHE_RESOURCE r, KHE_TIME_GROUP tg, KHE_MONITOR orig_m);
+void KheWorkloadDemandMonitorDelete(KHE_WORKLOAD_DEMAND_MONITOR wdm);
+}
+@C { KheWorkloadDemandMonitorMake } creates one tixel of demand
+which matches with all supply nodes whose resource is @C { r } and
+whose time is an element of time group @C { tg }.  In our example,
+@C { tg } would be the singleton time group containing time
+@C { Mon1 }.  As usual, @C { orig_m } is the monitor that originates
+this demand (in our example it would be an avoid unavailable times
+monitor), and the usual monitor operations are available by upcasting.
+There are also these operations specific to workload demand monitors:
+@ID @C {
+KHE_RESOURCE KheWorkloadDemandMonitorResource(
+  KHE_WORKLOAD_DEMAND_MONITOR wdm);
+KHE_TIME_GROUP KheWorkloadDemandMonitorTimeGroup(
+  KHE_WORKLOAD_DEMAND_MONITOR wdm);
+KHE_MONITOR KheWorkloadDemandMonitorOriginatingMonitor(
+  KHE_WORKLOAD_DEMAND_MONITOR wdm);
+void KheWorkloadDemandMonitorDebug(KHE_WORKLOAD_DEMAND_MONITOR wdm,
+  int verbosity, int indent, FILE *fp);
+}
+There are no functions specifically for visiting workload demand monitors.
+They are classed as resource monitors and can be visited along with
+the other resource monitors for a given resource @C { r } by calling
+@C { KheSolnResourceMonitorCount } and @C { KheSolnResourceMonitor }
+(Section {@NumberOf monitoring.resource_monitors}).
+# Functions
+# @ID @C {
+# int KheResourceDemandMonitorCount(KHE_SOLN soln, KHE_RESOURCE r);
+# KHE_ORDINARY_DEMAND_MONITOR KheResourceDemandMonitor(KHE_SOLN soln,
+#   KHE_RESOURCE r, int i);
+# }
+# may be used to visit the resource demand monitors of @C { r }
+# in @C { soln }, in the usual way.
+@PP
+Ordinary and workload demand monitors are created in the detached
+state.  Users who create these monitors are free to attach each
+of them immediately after it is created, if they wish.
+@PP
+Before leaving demand monitors we need to explain matching types in
+detail.  An ordinary demand node's @I { own meet } is the meet its
+task lies in.  Its @I { root meet } is the meet reached by following
+the chain of assignments (possibly empty) out of its own meet to
+a meet that contains no assignment.  Its @I { own offset } is its
+offset in its own meet, and its @I { root offset } is its offset
+in its root meet (the sum of its own offset and the offsets along
+the assignment path).
+@PP
+When linking an ordinary demand node to supply nodes, there are
+at least two ways to take time into account:
+@UCAlphaList
+
+@LI @Tag { methodb } {
+Link it only to ordinary supply nodes lying in cycle meets at
+offsets that represent the times of the time domain of its own
+meet, shifted by its own offset.
+}
+
+@LI @Tag { methoda } {
+Link it only to ordinary supply nodes lying in its root meet at
+its root offset.
+}
+
+@EndList
+Informally, (A) evaluates the initial state of time assignment,
+whereas (B) evaluates its current state in a way that ensures
+that simultaneous demands compete for the same supply nodes, as
+in local tixel matching.  And there are at least two ways to
+take resources into account:
+@NumberedList
+
+@LI {
+Link it to supply nodes representing the resources of its task's domain.
+}
+
+@LI {
+Link it to supply nodes representing the resources of its task's root
+task's domain.  If the root task is a cycle task, this will link
+only to supply nodes representing that resource.
+}
+
+@EndList
+Informally, (1) evaluates the initial state of resource assignment,
+whereas (2) evaluates the current state.  The four matching types
+produce the four conjunctions of these conditions:
+@CD @Tbl
+  aformat { @Cell H | @Cell A | @Cell B }
+  mv { 0.5vx }
+{
+@Rowa
+   rb { yes }
+   A { A }
+   B { B }
+@Rowa
+   H { 1 }
+   A { @C { KHE_MATCHING_TYPE_EVAL_INITIAL } }
+   B { @C { KHE_MATCHING_TYPE_EVAL_TIMES } }
+@Rowa
+   rb { yes }
+   H { 2 }
+   A { @C { KHE_MATCHING_TYPE_EVAL_RESOURCES } }
+   B { @C { KHE_MATCHING_TYPE_SOLVE } }
+}
+Type (B2) is suited to solving; the others are suited to evaluation
+before or after solving.
+# @PP
+# This section explains how most of the supply and demand nodes of the
+# matching, the ones associated with meets, are defined.  Since
+# they are linked together with edges that depend on the type of the
+# matching, this section also explains @C { KHE_MATCHING_TYPE } in detail.
+# @PP
+# For each offset of a meet @C { meet } (for each integer
+# between 0 inclusive and the duration of @C { meet } exclusive), the
+# matching contains @M { R } @I { ordinary supply nodes }, where
+# @M { R } is the total number of resources in the instance.  If
+# @C { meet } has duration @M { d }, this is @M { dR } supply nodes
+# altogether.  Each models the supply of one resource at one offset.
+# These supply nodes cannot be accessed by the user.
+# @PP
+# Each task of @C { meet } contains @C { KheMeetDuration(meet) } demand
+# nodes, which will be called @I { ordinary demand nodes } to distinguish
+# them from the workload demand nodes to be defined later.  Each models
+# the demand made by its task at one offset.  Ordinary demand nodes have
+# type @C { KHE_ORDINARY_DEMAND_MONITOR } and may be accessed in the usual
+# way by
+# @ID @C {
+# int KheTaskDemandMonitorCount(KHE_TASK task);
+# KHE_ORDINARY_DEMAND_MONITOR KheTaskDemandMonitor(KHE_TASK task, int i);
+# }
+# The first function's value is equal to the duration of the enclosing
+# meet.  Like most monitors, these ones cannot be created or deleted
+# by the user.  They are created when the task is created, split and
+# merged when it is split and merged, and deleted when it is deleted.
+# Unlike other monitors, they are detached initially.  This is so that,
+# by default, KHE monitors only the official cost.
+# @PP
+# In addition to the operations applicable to all monitors,
+# ordinary demand monitors offer
+# @ID @C {
+# KHE_TASK KheOrdinaryDemandMonitorTKHE_WORKLOAD_DEMAND_MONITORask(KHE_ORDINARY_DEMAND_MONITOR m);
+# int KheOrdinaryDemandMonitorOffset(KHE_ORDINARY_DEMAND_MONITOR m);
+# }
+#KHE_TIME_GROUP KheOrdinaryDemandMonitorTimeGroup(
+#  KHE_ORDINARY_DEMAND_MONITOR m);
+#KHE_RESOURCE_GROUP KheOrdinaryDemandMonitorResourceGroup(
+#  KHE_ORDINARY_DEMAND_MONITOR m);
+# returning the task that @C { m } monitors, and its offset within
+# that task.  Helper functions
+# @ID @C {
+# void KheSolnMatchingAttachAllOrdinaryDemandMonitors(KHE_SOLN soln);
+# void KheSolnMatchingDetachAllOrdinaryDemandMonitors(KHE_SOLN soln);
+# }
+# ensure that all ordinary demand monitors are attached or detached;
+# they visit every ordinary demand monitor of every task of every
+# meet of @C { soln }, check whether it is currently attached, then
+# attach or detach it if required.
+# Function
+# @ID @C {
+# void KheOrdinaryDemandMonitorDebug(KHE_ORDINARY_DEMAND_MONITOR m,
+#   int verbosity, int indent, FILE *fp);
+# }
+# is like @C { KheMonitorDebug }, only specific to this type of monitor.
+#, and the time group
+#and resource group that determine which supply nodes it is
+#linked to.  The time group depends on the matching type; if
+#the type is @C { KHE_MATCHING_TYPE_EVAL_INITIAL } or
+#@C { KHE_MATCHING_TYPE_EVAL_RESOURCE }, it is the domain of
+#the enclosing meet; otherwise it is @C { NULL }.
+#The resource group is the domain of the task.
+# @PP
+# Although the list of monitors in a task is fixed,
+# each may be attached or detached individually, and they may be
+# linked by edges to supply nodes in different ways, depending
+# on the matching type, as will now be explained.
+#@BeginSubSections
+#
+#@SubSection
+#    @Title { Optimization of preassigned demands }
+#    @Tag { matchings.ordinary.preassigned }
+#@Begin
+#@LP
+#Sometimes it is clear that certain demand nodes may be deleted without
+#risk of ever changing the cost of the matching, because they will always
+#be able to find supply nodes to match with, in a way that will never
+#prevent other demand nodes from matching.  It will save time and change
+#nothing else if these monitors are detached.
+#@PP
+#Suppose that every task that could accept an assignment of
+#resource @C { r } is in fact preassigned @C { r }, that these solution
+#resources lie in meets that never overlap in time (this is
+#quite realistic, since they are all preassigned @C { r }), and that
+#@C { r } has no workload requirements (these are defined below).
+#Then the ordinary demand nodes of these tasks satisfy
+#the condition just given that assures us that they can be excluded
+#without any risk of changing the cost of the matching.  Student
+#group resources usually satisfy these conditions, and deleting
+#them typically removes about one third of the demand nodes of the
+#graph---a significant reduction, although admittedly the deleted
+#nodes are very easy to match.  Helper functions
+#@ID @C {
+#void KheSolnMatchingAttachPreassignedDemandMonitors(KHE_SOLN soln,
+#  KHE_RESOURCE r);
+#void KheSolnMatchingDetachPreassignedDemandMonitors(KHE_SOLN soln,
+#  KHE_RESOURCE r);
+#}
+#visit every ordinary demand monitor of every task to which @C { r } is
+#preassigned and ensure that it is attached or detached.  There is also
+#@ID { 0.95 1.0 } @Scale @C {
+#void KheSolnMatchingAttachEligiblePreassignedDemandMonitors(KHE_SOLN soln);
+#void KheSolnMatchingDetachEligiblePreassignedDemandMonitors(KHE_SOLN soln);
+#}
+#For each @I eligible resource, these call
+#@C { KheSolnMatchingAttachPreassignedDemandMonitors } or
+#@C { KheSolnMatchingDetachPreassignedDemandMonitors }.
+#A resource @C { r } of type @C { rt }
+#is eligible if it has no workload requirements and
+#@ID @C { KheResourceTypeDemandIsAllPreassigned(rt) }
+#(Section {@NumberOf resource_types}) returns @C { true }, meaning
+#that all demands for any resource of this type, and hence all demands
+#for @C { r }, are preassigned demands.  This is everything required
+#to prove that the matching cost cannot change, except the requirement
+#that the demands never be simultaneous, which the user might well be
+#able to assume, typically because all preassigned resources have
+#been used to seed layers which the user knows will never be deleted.
+#@End @SubSection
+#
+#@EndSubSections
+@End @Section
+
+# @Section
+#     @Title { Workload demand nodes }
+#     @Tag { matchings.workload }
+# @Begin
+# @LP
+# @I { This whole section to be moved to a new section of the general
+# solvers chapter. }
+# @LP
+# In addition to ordinary demand nodes, matchings may contain
+# @I { workload demand nodes }, used to take account of avoid unavailable
+# times constraints, limit busy times constraints, and limit workload
+# constraints, collectively called @I { workload demand constraints }
+# here.  For example, suppose the cycle contains 40 times, and teacher
+# @M { "Smith" } has a required workload limit of 30 times and is
+# unavailable at time @M { "Mon1" }.  Then ten workload demand nodes
+# should be created, one demanding supply tixel @M { ("Smith", "Mon1") },
+# and the other nine demanding @M { "Smith" } at one unrestricted time.
+# @PP
+# It is important to include workload demand nodes, since otherwise
+# the problems reported by the matching will be unrealistically few.
+# They are the same for all matching types, and in most cases it is
+# enough to call helper function
+# @ID @C {
+# void KheSolnMatchingAddAllWorkloadRequirements(KHE_SOLN soln);
+# }
+# This may be done at any time, and does what is usually wanted.
+# However, it is partly heuristic, so KHE offers the option of
+# controlling the details.
+# @PP
+# For the purposes of matchings only, a @I { workload requirement } is
+# a requirement imposed on a resource that it be occupied attending
+# meets for at most a given number of the times of some time group.
+# There are no operations for creating workload demand nodes directly;
+# instead, there are operations for defining workload requirements, and
+# the workload demand nodes are derived from them by KHE behind the
+# scenes, as explained below (Section {@NumberOf matchings.workload.tree}).
+# @PP
+# Within a solution at any moment, a sequence of workload requirements is
+# associated with each resource.  They may be visited in order by calling
+# @ID @C {
+# int KheSolnMatchingWorkloadRequirementCount(KHE_SOLN soln,
+#   KHE_RESOURCE r);
+# void KheSolnMatchingWorkloadRequirement(KHE_SOLN soln, KHE_RESOURCE r,
+#   int i, int *num, KHE_TIME_GROUP *tg, KHE_MONITOR *m);
+# }
+# The first returns the number of workload requirements associated
+# wth @C { r } in @C { soln }, and the second returns the @C { i }'th
+# requirement, in the form of a number of times and a time group.
+# If the third return parameter, @C { *m }, is non-@C { NULL }, it
+# is the @I { originating monitor }:  the monitor that gave rise to
+# this requirement.  The originating monitor is stored in each workload
+# demand monitor created as a consequence of this requirement.
+# @PP
+# Each resource has no workload requirements initially.  To change the
+# requirements of resource @C { r }, begin with a call to
+# @ID {0.94 1.0} @Scale @C {
+# void KheSolnMatchingBeginWorkloadRequirements(KHE_SOLN soln, KHE_RESOURCE r);
+# }
+# continue with any number of calls to
+# @ID @C {
+# void KheSolnMatchingAddWorkloadRequirement(KHE_SOLN soln,
+#   KHE_RESOURCE r, int num, KHE_TIME_GROUP tg, KHE_MONITOR m);
+# }
+# where @C { m } may be @C { NULL }, and end with a call to
+# @ID @C {
+# void KheSolnMatchingEndWorkloadRequirements(KHE_SOLN soln,
+#   KHE_RESOURCE r);
+# }
+# All three functions must be called, in order.  The first clears
+# @C { r }'s workload requirements, the second appends a requirement
+# that @C { r } attend events for at most @C { num } of the times of
+# @C { tg } (@C { num } may not exceed the number of times in @C { tg }),
+# and the third replaces any existing workload demand nodes for
+# @C { r } with new ones derived from the workload requirements.
+# The new monitors are attached as they are created.
+# @C { KheMatchingMonitorSetAllWorkloadRequirements } calls these
+# functions.  The sections below describe the calls it makes, and
+# how workload requirements are converted into workload demand nodes.
+# @PP
+# To delete the workload requirements of @C { r }, along with their
+# workload demand nodes, call
+# @ID @C {
+# void KheSolnMatchingDeleteWorkloadRequirements(KHE_SOLN soln,
+#   KHE_RESOURCE r);
+# }
+# @C { KheSolnMatchingBeginWorkloadRequirements } does this, as does
+# @C { KheSolnMatchingEnd } when deleting the whole matching.
+# @PP
+# The workload demand nodes created by
+# @C { KheSolnMatchingEndWorkloadRequirements } are monitors of type
+# @C { KHE_WORKLOAD_DEMAND_MONITOR }.  Like other monitors of
+# resources, they appear on the list of monitors visited by functions
+# @C { KheResourceMonitorCount } and @C { KheResourceMonitor }
+# from Section {@NumberOf monitoring.resource_monitors}.
+# @PP
+# In addition to the operations applicable to all monitors, workload
+# demand monitors offer
+# @ID @C {
+# KHE_RESOURCE KheWorkloadDemandMonitorResource(
+#   KHE_WORKLOAD_DEMAND_MONITOR m);
+# KHE_TIME_GROUP KheWorkloadDemandMonitorTimeGroup(
+#   KHE_WORKLOAD_DEMAND_MONITOR m);
+# KHE_MONITOR KheWorkloadDemandMonitorOriginatingMonitor(
+#   KHE_WORKLOAD_DEMAND_MONITOR m);
+# }
+# These return the resource that the workload demand monitor is for,
+# the time group of the workload requirement that led to @C { m },
+# and the originating monitor (possibly @C { NULL }) of the workload
+# requirement that led to @C { m }.  Finally, function
+# @ID @C {
+# void KheWorkloadDemandMonitorDebug(KHE_WORKLOAD_DEMAND_MONITOR m,
+#   int verbosity, int indent, FILE *fp);
+# }
+# is like @C { KheMonitorDebug }, only specific to this type of monitor.
+# @BeginSubSections
+#
+# @SubSection
+#     @Title { Constructing workload requirements }
+#     @Tag { matchings.workload.construct }
+# @Begin
+# @LP
+# This section explains how @C { KheSolnMatchingAddAllWorkloadRequirements }
+# works.  It is in fact a solver (not part of the KHE platform), built on
+# calls to the workload requirements functions (which are themselves part
+# of the platform), but for convenience we describe it here.
+# @PP
+# For each resource @C { r }, @C { KheSolnMatchingAddAllWorkloadRequirements }
+# begins by calling @C { KheSolnMatchingBeginWorkloadRequirements(soln, r) }.
+# It then visits @C { r }'s hard workload demand monitors @C { m } of weight
+# greater than 0, in order of decreasing weight, handling each as explained
+# below.  It ends with @C { KheSolnMatchingEndWorkloadRequirements(soln, r) }.
+# @PP
+# If @C { m } is an avoid unavailable times monitor, or a limit busy
+# times monitor whose @C { Maximum } attribute is 0, then for each
+# time @C { t } in @C { m }'s constraint's domain it calls
+# @ID @C {
+# KheSolnMatchingAddWorkloadRequirement(soln, r, 0,
+#   KheTimeSingletonTimeGroup(t), m);
+# }
+# If @C { m } is a limit busy times monitor with @C { Maximum }
+# greater than 0, then for each time group @C { tg } in @C { m }'s
+# constraint it calls
+# @ID @C {
+# KheSolnMatchingAddWorkloadRequirement(soln, r, k, tg);
+# }
+# where @C { k } is the @C { Maximum } attribute.  The @C { Minimum }
+# attribute is ignored.
+# @PP
+# A limit workload monitor is like a limit busy times monitor
+# whose time group contains all the times of the cycle, so
+# @C { KheSolnMatchingAddWorkloadRequirement } is called once with
+# this time group.  The number passed to this call requires careful
+# calculation, involving the workloads of all events.  The remainder
+# of this section explains this calculation.
+# @PP
+# Let @M { k } be the integer eventually passed to
+# @C { KheSolnMatchingAddWorkloadRequirement }.  Initialize @M { k }
+# to the @C { Maximum } attribute of the limit workload constraint.
+# For each event resource @M { er }, let @M { d(er) } be its duration
+# and @M { w(er) } be its workload.  The basic idea is that if
+# @C { r } is assigned to @M { er }, then @M { d(er) - w(er) } should
+# be added to @M { k }.  For example, a resource with workload
+# limit 30 that is assigned to an event resource with duration 3
+# and workload 2 needs a workload requirement of 31, not 30.  And if
+# @C { r } is assigned to an event with duration 6 but workload
+# 12, then @M { k } needs to be decreased by 6.
+# @PP
+# In some cases, preassignments or domain restrictions make it
+# certain that @C { r } will be assigned to some event, and in
+# those cases the adjustment can be done safely in advance.  For
+# example, if every staff member attends a weekly meeting with
+# duration 1 and workload 0, then their workload requirements
+# can all be increased by 1 to compensate.  Similarly, if @C { r }
+# will definitely not be assigned to some event, then the event's
+# duration and workload have no effect on @C { r }.
+# @PP
+# The residual problem cases are those event resources @M { er }
+# whose workload and duration differ, which @C { r } may be assigned
+# to but not necessarily.  In these cases, an inexact model is used
+# which preserves the guarantee that the number of unmatched nodes
+# is a lower bound on the final number, but the number is weaker
+# (that is, smaller) than the ideal.
+# @PP
+# If @M { w(er) > d(er) }, then @M { er } is ignored.  This case can
+# only make the problem harder, so ignoring it means that the number
+# returned will be smaller than the ideal.  If @M { w(er) < d(er) },
+# then @M { d(er) - w(er) } is added to @M { k }, just as though
+# @C { r } was assigned to @M { er }.  If @C { r } is ultimately
+# assigned to @M { er }, then this will be exact; if it is not,
+# then again it will weaken the bound, by overestimating @C { r }'s
+# available workload.
+# @PP
+# These tests are actually applied to clusters of events known to
+# be running simultaneously, because of required link events
+# constraints or preassignments and other time domain restrictions.
+# Each resource can be assigned to at most one of the event
+# resources of the events of a cluster, so only one of the events,
+# the one whose modelling is least exact, needs to be taken account of.
+# @End @SubSection
+#
+# @SubSection
+#     @Title { From workload requirements to workload demand nodes }
+#     @Tag { matchings.workload.tree }
+# @Begin
+# @LP
+# KHE converts workload requirements to workload demand nodes automatically,
+# during the call to @C { KheSolnMatchingEndWorkloadRequirements }
+# (defined above).  The following explanation of how this is done,
+# adapted from @Cite { $kingston2008resource }, is included for completeness.
+# @PP
+# When converting workload requirements into workload demand nodes,
+# the relationships between the requirements' sets of times affect the
+# outcome.  In general, an exact conversion seems to be possible only
+# when these sets of times satisfy the @I { subset tree condition }:
+# each pair of sets of times is either disjoint, or else one is a
+# subset of the other.
+# @PP
+# For example, suppose the cycle has five days of eight times each,
+# and resource @M { r } is required to be occupied for at most thirty
+# times altogether and at most seven on any one day, and to be
+# unavailable at times @I { Fri6 }, @I { Fri7 }, and @I { Fri8 }.
+# These requirements form a tree (in general, a forest):
+# @CD @Diag treehsep { 0.6c } treevsep { 0.8c } margin { 0.3f } {
+# @Tree
+# {
+#   @Box { 30 @I Times }
+#   @FirstSub @Box { 7 @I Mon }
+#   @NextSub @Box { 7 @I Tue }
+#   @NextSub @Box { 7 @I Wed }
+#   @NextSub @Box { 7 @I Thu }
+#   @NextSub
+#   {
+#       @Box { 7 @I Fri }
+#       @FirstSub @Box { 0 @I Fri6 }
+#       @NextSub @Box { 0 @I Fri7 }
+#       @NextSub @Box { 0 @I Fri8 }
+#   }
+# }
+# }
+# A postorder traversal of this tree may be used to deduce that workload
+# demand nodes for @M { r } are needed for one @I Mon time, one @I Tue
+# time, one @I Wed time, one @I Thu time, one @I Fri6 time, one @I Fri7
+# time, one @I Fri8 time, and three arbitrary times.  In general, each
+# tree node contributes a number of demand nodes equal to the size of
+# its set of times minus its number minus the number of demand nodes
+# contributed by its descendants, or none if this number is negative.
+# @PP
+# The tree is built by inserting the workload requirements in order,
+# ignoring requirements that fail the subset tree condition.  For example,
+# a failure would occur if, in addition to the above requirements, there
+# were limits on the number of morning and afternoon times.  The
+# constraints which give rise to such requirements are still monitored
+# by other monitors, but their omission from the matching causes it to
+# report fewer unmatchable nodes than the ideal.  Fortunately, such
+# overlapping requirements do not seem to occur in practice, at least,
+# not as required constraints.
+# @End @SubSection
+#
+# @EndSubSections
+# @End @Section
+#
+# @Section
+#     @Title { Separate matching and integrated matching }
+#     @Tag { matchings.solving }
+# @Begin
+# @LP
+# @I { This whole section to be moved to a new section of the general
+# solvers chapter. }
+# @LP
+# By default, KHE runs without the matching.  One use for adding
+# it is to evaluate an instance for problems (not enough Science
+# laboratories, and so on) before solving begins.  The HSEval web
+# site can do this, for example.  Use of the matching for solving
+# is less straightforward.  There seem to be two main approaches,
+# which we call @I { separate matching } and @I { integrated matching }.
+# @PP
+# Separate matching means keeping the matching separate from the
+# regular calculation of solution cost, by attaching demand
+# monitors but not making them descendants of the solution.
+# @C { KheSolnMatchingDefectCount } (Section {@NumberOf matchings.failure})
+# is called to find the number of unmatched demand nodes at any moment.
+# Do-it-yourself solvers (Section {@NumberOf general_solvers.yourself})
+# have item @C { gtb } for this.
+# @PP
+# An example of separate matching is the @I { resource assignment invariant },
+# which states that as resource assignment proceeds the number of unmatched
+# demand nodes must not increase.  The details don't concern us here (see
+# Section {@NumberOf resource_solvers.invt}); our point is that this
+# invariant influences the solve while keeping the matching separate
+# from the regular calculation of solution cost.
+# @PP
+# Integrated matching means including the cost of the matching in the cost
+# of the solution, by attaching the demand monitors and also making them
+# descendants of the solution.  Each unmatched demand node contributes a
+# cost to the solution cost; @C { KheSolnMatchingDefectCount } is not needed.
+# Do-it-yourself solvers (Section {@NumberOf general_solvers.yourself})
+# have item @C { gta } for this.
+# @PP
+# The main advantage of integrated matching is that it allows a solver
+# to use the matching without having to access it explicitly.  But
+# there are problems, which we'll consider now.
+# @PP
+# To understand these problems, we define what we will call the
+# @I { integrated matching ideal }.  This is a state of affairs,
+# not always achievable in practice, in which the reported solution
+# cost can be justified as being truthful, while at the same time
+# including the matching cost.  For example, if there are six Science
+# classes running simultaneously but only five Science laboratories,
+# then even before rooms are assigned we can justify the matching
+# cost by saying that in every solution derived from this one, there
+# must be either a Science class without a room, or a Science
+# laboratory room clash, and a cost equal to the smaller of the
+# costs of these two defects is inevitable.  The integrated matching
+# ideal tells no lies about cost, and gives earlier warning of defects
+# than a naive evaluation of constraints can do.  All problems are
+# departures from this ideal.
+# @PP
+# Our first problem is @I { invalidity }, where the matching
+# reports a non-existent defect.  If the demand nodes truly represent
+# demand, and the supply nodes truly represent supply, then this
+# will not happen.  But the matching assumes that every event has
+# either a preassigned time or an assign time constraint, every
+# task has either a preassigned resource or an assign resource
+# constraint, and every resource has an avoid clashes constraint.
+# If not, using it may be invalid.
+# @PP
+# Invalidity is not hard to avoid.  If some resource has no
+# avoid clashes constraint, omit every demand node concerned with
+# that resource's resource type.  If some event does not have either
+# a preassigned time or an assign time constraint, then omit all
+# demand nodes for tasks from that event.  More nuanced responses
+# are possible, but these cases never arise anyway.
+# @PP
+# If some task does not have either a preassigned resource or an
+# assign resource constraint, omit its demand nodes.  This case
+# does arise in practice---in nurse rostering, when a shift needs
+# at least @M { a } and at most @M { b } nurses.  Its last
+# @M { b - a } tasks have no assign resource constraints.
+# @PP
+# Our next problem is @I { double counting }, where the matching
+# reports a defect, justifiably, but another monitor also reports
+# it.  The defect is counted twice, effectively doubling its weight.
+# @PP
+# Double counting is analysed in
+# Section {@NumberOf general_solvers.grouping.demand}.  The solution
+# given there detaches monitors that double-count with demand
+# monitors.  It includes detaching avoid clashes monitors, but not
+# assign resource monitors.  If a resource could easily be assigned
+# to some task but a solver refrains from doing that for any reason,
+# the matching will not report a defect, but the assign resource
+# monitor will.  On the other hand, if a solver refrains from
+# assigning a resource because no suitable resource is available,
+# this defect will be double counted, once by the matching, and
+# again by the assign resource constraint.  So we fall short of
+# the integrated matching ideal in this case.
+# @PP
+# If there is no invalidity and no double counting, can anything else
+# go wrong?  Just one thing:  @I { incorrect weights } for the demand
+# monitors.  Choosing weights is a problem because the monitors that
+# get detached to avoid double counting have individual weights, but
+# the demand monitors that replace them have equal weights.  This is
+# because the matching algorithm tries to minimize the total number
+# of unmatched nodes, not their total weight.  Another algorithm,
+# @I { weighted bipartite matching }, can minimize total weight,
+# but the author has judged it to be too slow for solving.
+# @PP
+# The preferred solution is to take notice only of monitors that
+# have weight at least 1 (hard), and to replace them with demand
+# monitors that have weight exactly 1 (hard).  In this way the
+# weights of the demand monitors roughly equal the weights of
+# the detached monitors that they replace, given that hard
+# weights larger than 1 are rarely used.
+# @PP
+# For example, if assignment of @M { k } nurses to some shift
+# is desirable but not essential, there will be @M { k } tasks
+# with soft assign resource constraints, but those constraints
+# will not be noticed, so the matching will not have demand
+# nodes for those tasks.
+# @PP
+# Problems matter only if they lead solvers astray.  During time
+# assignment, for example, it may not matter if some resource
+# defect is double counted, but it does matter if no-one realizes
+# that six simultaneous Science classes will not work when there
+# are only five Science laboratories.  The significance of a
+# departure from the ideal is more important than its mere existence.
+# @End @Section
+
+@Section
+    @Title { Diagnosing failure to match }
+    @Tag { matchings.failure }
+@Begin
+@LP
+KHE's usual methods of organizing monitors, such as grouping and
+tracing, may be applied to demand monitors.  This section offers
+three other ways to visit unmatched demand monitors.
+@BeginSubSections
+
+@SubSection
+    @Title { Visiting unmatched demand nodes }
+    @Tag { matchings.failure.unmatched }
+@Begin
+@LP
+The unmatched demand nodes may be visited by functions
+@ID @C {
+int KheSolnMatchingDefectCount(KHE_SOLN soln);
+KHE_MONITOR KheSolnMatchingDefect(KHE_SOLN soln, int i);
+}
+Each monitor is either an ordinary demand monitor or a workload
+demand monitor; a call to @C { KheMonitorTag } followed by a
+downcast will produce the specific type.  Then functions defined
+earlier give access to the part of the solution being monitored
+by these monitors.
+@PP
+Unmatched demand nodes with higher indexes tend to have become
+unmatched more recently than demand nodes with lower indexes.
+When the number of unmatched demand nodes increases, it is
+reasonable to take the last unmatched demand node as an
+indication of what went wrong.  However, it will usually be
+better to use grouping and tracing to localize problems.
+@End @SubSection
+
+@SubSection
+    @Title { Hall sets }
+    @Tag { matchings.failure.hall }
+@Begin
+@LP
+@I { Hall sets } are the definitive method of diagnosing failure to
+match.  They are fine for occasional use, such as for generating
+a report to the user, but too slow for repeated use during solving.
+@PP
+Suppose there is a set @M { D } of demand nodes, whose outgoing edges
+all lead to nodes in some set @M { S } of supply nodes.  Then every
+node in @M { D } must be matched with a node in @M { S }, or not
+matched at all.  If @M { "|" D "|" > "|" S "|" }, then at least
+@M { "|" D "|" - "|" S "|" } nodes of @M { D } will be unmatched
+in any maximum matching.
+@PP
+It turns out that every case of an unmatched node can be explained
+in this way, often utilizing sets @M { D } and @M { S } that are
+small enough to understand in user terms:  they might represent
+the demand and supply of Science laboratories, for example.
+Such a @M { D } and @M { S }, with every edge out of @M { D }
+leading to @M { S }, and @M { "|" D "|" > "|" S "|" }, is called
+a @I { Hall set } after the mathematician Philip Hall.  Given a
+maximum matching, every unmatched demand node lies in a Hall set.
+@PP
+The following functions examine the Hall sets of a matching.  They
+all begin by building the Hall sets if the ones currently stored
+are not up to date.  This means that any change to the solution
+invalidates everything returned by all previous calls to these
+functions.
+@PP
+The number of Hall sets is returned by
+@ID @C {
+int KheSolnMatchingHallSetCount(KHE_SOLN soln);
+}
+This is not usually the same as the number of unmatched demand nodes,
+since there may be several of those in one Hall set.  No node lies
+in two Hall sets.  The number of supply and demand nodes in the
+@C { i }'th Hall set may be found by calling
+@ID @C {
+int KheSolnMatchingHallSetSupplyNodeCount(KHE_SOLN soln, int i);
+int KheSolnMatchingHallSetDemandNodeCount(KHE_SOLN soln, int i);
+}
+By the way that Hall sets are defined,
+@C { KheSolnMatchingHallSetDemandNodeCount(soln, i) }
+must be larger than
+@C { KheSolnMatchingHallSetSupplyNodeCount(soln, i) }.
+@PP
+The @C { j }'th supply node of the @C { i }'th Hall set can only be
+an ordinary supply node, but, in case other kinds of supply nodes
+are added in future, the following function is used to find the
+meet it lies in, its offset within that meet,
+and the resource it represents:
+@ID @C {
+bool KheSolnMatchingHallSetSupplyNodeIsOrdinary(KHE_SOLN soln,
+  int i, int j, MEET *meet, int *meet_offset, KHE_RESOURCE *r);
+}
+At present this always returns @C { true }.  A report to the user
+should distinguish the cases when @C { *meet } is and is not a cycle
+meet.  The @C { j }'th demand node of the @C { i }'th
+Hall set is returned by
+@ID @C {
+KHE_MONITOR KheSolnMatchingHallSetDemandNode(KHE_SOLN soln,
+  int i, int j);
+}
+It will be either an ordinary demand node or a workload demand node
+as usual.  Finally,
+@ID @C {
+void KheSolnMatchingHallSetsDebug(KHE_SOLN soln,
+  int verbosity, int indent, FILE *fp);
+}
+prints the Hall sets of @C { m }'s matching onto @C { fp } with
+the given verbosity and indent.  The verbosity must be at least
+1 but otherwise does not affect what is printed.
+@End @SubSection
+
+@SubSection
+    @Title { Finding competitors }
+    @Tag { matchings.failure.competitor }
+@Begin
+@LP
+Given an unmatched demand monitor @C { m } returned by
+@C { KheSolnMatchingHallSetDemandNode }
+or @C { KheSolnMatchingDefect }, a @I competitor of
+that monitor is either @C { m } itself or a monitor whose removal
+would allow @C { m } to match.  Competitors are similar to the
+demand nodes of Hall sets, except that they relate to a single
+unmatched demand node.  They are themselves always matched.
+Finding competitors amounts to redoing the search for an augmenting
+path for the failed node and noting the demand nodes that are visited
+along the way.
+@PP
+Functions
+@ID @C {
+void KheSolnMatchingSetCompetitors(KHE_SOLN soln, KHE_MONITOR m);
+int KheSolnMatchingCompetitorCount(KHE_SOLN soln);
+KHE_MONITOR KheSolnMatchingCompetitor(KHE_SOLN soln, int i);
+}
+may be used together to visit the competitors of unmatched demand
+monitor @C { m }:
+@ID @C {
+KheSolnMatchingSetCompetitors(soln, m);
+for( i = 0;  i < KheSolnMatchingCompetitorCount(soln);  i++ )
+{
+  competitor_m = KheSolnMatchingCompetitor(soln, i);
+  ... visit competitor_m ...
+}
+}
+The competitors are visited in breadth-first order, beginning with
+@C { m } (which the user may choose to skip by initializing @C { i }
+in the loop above to @C { 1 } rather than @C { 0 }).  There may be
+any number of competitors other than @C { m }, including none, and
+they may be ordinary demand monitors and workload demand monitors.
+@PP
+The solution contains one set of competitors which remains constant
+except when reset by a call to @C { KheSolnMatchingSetCompetitors }.
+If the solution changes, this set of competitors remains well-defined
+as a set of monitors, but becomes out of date as a set of competitors.
+@PP
+Competitors are useful because they can be found quickly, but they
+are not definitive in the way that Hall sets are:  in unusual cases,
+a given unmatched monitor may have different competitors in different
+maximum matchings.  For example, consider these two matchings:
+@CD @OneCol {
+@Diag
+{
+@Tbl
+    aformat { @Cell ml { 0c } mr { 1.5c } A | @Cell mr { 0c } B }
+    mv { 0.4c }
+{
+@Rowa
+    ma { 0i }
+    A { A1:: @Circle blabel { @M { A } } }
+    # B { B1:: @Circle }
+@Rowa
+    A { A2:: @Circle blabel { @M { B } } }
+    B { B2:: @Circle }
+@Rowa
+    A { A3:: @Circle blabel { @M { C } } }
+    B { B3:: @Circle }
+@Rowa
+    A { A4:: @Circle blabel { @M { D } } }
+    B { B4:: @Circle }
+@Rowa
+    A { A5:: @Circle blabel { @M { E } } }
+    # B { B5:: @Circle }
+    mb { 0i }
+}
+//
+@Line from { A1 } to { B2 } pathwidth { thick }
+@Line from { A2 } to { B2 }
+@Line from { A2 } to { B3 } pathwidth { thick }
+@Line from { A3 } to { B3 }
+@Line from { A4 } to { B3 }
+@Line from { A4 } to { B4 }
+@Line from { A5 } to { B4 } pathwidth { thick }
+}
+||4c
+@Diag
+{
+@Tbl
+    aformat { @Cell ml { 0c } mr { 1.5c } A | @Cell mr { 0c } B }
+    mv { 0.4c }
+{
+@Rowa
+    ma { 0i }
+    A { A1:: @Circle blabel { @M { A } } }
+    # B { B1:: @Circle }
+@Rowa
+    A { A2:: @Circle blabel { @M { B } } }
+    B { B2:: @Circle }
+@Rowa
+    A { A3:: @Circle blabel { @M { C } } }
+    B { B3:: @Circle }
+@Rowa
+    A { A4:: @Circle blabel { @M { D } } }
+    B { B4:: @Circle }
+@Rowa
+    A { A5:: @Circle blabel { @M { E } } }
+    # B { B5:: @Circle }
+    mb { 0i }
+}
+//
+@Line from { A1 } to { B2 } pathwidth { thick }
+@Line from { A2 } to { B2 }
+@Line from { A2 } to { B3 }
+@Line from { A3 } to { B3 }
+@Line from { A4 } to { B3 } pathwidth { thick }
+@Line from { A4 } to { B4 }
+@Line from { A5 } to { B4 } pathwidth { thick }
+# @Line from { A4 } to { B4 } pathwidth { thick }
+}
+}
+Both are maximum, since all three supply nodes are matched in each;
+but the competitors of @M { C } in the first matching are @M { A }
+and @M { B }, while the competitors of @M { C } in the second are
+@M { D } and @M { E }.
+@PP
+It is important not to change the solution when traversing
+competitors.  Even if it is changed back again, the unmatched
+demand nodes may be different afterwards.  In the usual case
+where the aim is to move one meet that is competing for some
+scarce resources, the right approach is to use the loop to
+find those meets, store them, and move them after it ends.
+@PP
+In applications such as ejection chains it is important to
+understand what the defect really is.  In the case of unmatched
+demand nodes, the true defect is the Hall set.  This may be
+approximated in practice by the set of competitors.  Thus, a
+repair should operate on the set of competitors independently
+of their order or which one happens to be the unmatched one.
+@End @SubSection
+
+@EndSubSections
+@End @Section
+
+@Section
+    @Title { Evenness monitoring }
+    @Tag { matchings.evenness }
+@Begin
+@LP
+Suppose that a school has seven Mathematics teachers, and that at
+some time there are seven Mathematics lessons running simultaneously.
+All seven teachers must be utilized at that time, which, although
+feasible, will restrict the options for resource assignment later.
+@PP
+Unless the teachers are very overworked, there must be other times
+when few Mathematics lessons are running.  The Mathematics lessons
+are distributed unevenly through the cycle.
+@PP
+KHE offers a kind of monitor, of type @C { KHE_EVENNESS_MONITOR },
+which monitors this kind of evenness.  These work similarly to
+demand monitors; they are created and removed by
+@ID @C {
+void KheSolnEvennessBegin(KHE_SOLN soln);
+void KheSolnEvennessEnd(KHE_SOLN soln);
+}
+although the call to @C { KheSolnEvennessEnd } may be omitted
+when evenness monitoring is wanted for the lifetime of the
+solution.  Evenness monitors are created by @C { KheSolnEvennessBegin }
+but not attached initially.  There is one evenness monitor for each
+resource partition of the instance and each time of the cycle, which
+keeps track of how many tasks whose domains lie within that partition
+(as determined by @C { KheResourceGroupPartition }) are running
+at that time.  The monitor reports a deviation when this number
+exceeds some limit, which is usually set at one less than the
+number of resources in the partition.  Thus, the deviation would be
+zero when six Mathematics teachers are needed, and one when seven
+are needed.  Function
+@ID @C {
+bool KheSolnHasEvenness(KHE_SOLN soln);
+}
+returns @C { true } when evennness monitors are present.
+@PP
+Like demand monitoring, evenness monitoring depends on the
+resources demanded at each time.  Unlike demand monitoring,
+however, domains that cross partition boundaries are not taken
+into account, and evenness is only monitored at the root level of
+the layer tree.  Despite these simplifications, evenness monitoring
+is potentially useful for giving early warning of demand problems,
+especially when used in conjunction with domain tightening
+(Section {@NumberOf resource_structural.task_trees.construction}).
+@PP
+When present, evenness monitors may be found in the list of all
+monitors kept in the solution, and attached and detached in the
+usual way.  More useful in practice are functions
+@ID @C {
+void KheSolnAttachAllEvennessMonitors(KHE_SOLN soln);
+void KheSolnDetachAllEvennessMonitors(KHE_SOLN soln);
+}
+which visit each evenness monitor and ensure that it is
+attached or detached.  The usual operations on monitors
+may be carried out by upcasting to type @C { KHE_MONITOR }
+as usual.  There are also operations specific to evenness
+monitors:
+@ID @C {
+KHE_RESOURCE_GROUP KheEvennessMonitorPartition(KHE_EVENNESS_MONITOR m);
+KHE_TIME KheEvennessMonitorTime(KHE_EVENNESS_MONITOR m);
+int KheEvennessMonitorCount(KHE_EVENNESS_MONITOR m);
+}
+These return the partition being monitored, the time being monitored,
+and the number of tasks whose domains lie within that partition that
+are currently running at that time (or 0 if @C { m } is unattached).
+It would be useful to be able to retrieve the specific tasks that go
+to make up this count, but that information is not kept.  If it is
+needed, it is necessary to search the cycle meet overlapping the
+time, and all the meets assigned to that cycle meet directly or
+indirectly, to find the tasks running at the monitored time whose
+domains lie within the monitored partition.
+@PP
+Each evenness monitor also contains a limit, such that when the count
+goes above that limit a deviation is reported.  This limit can be
+retrieved and changed at any time by calling
+@ID @C {
+int KheEvennessMonitorLimit(KHE_EVENNESS_MONITOR m);
+void KheEvennessMonitorSetLimit(KHE_EVENNESS_MONITOR m, int limit);
+}
+Its default value is the number of resources in the partition,
+minus this same number divided by six and rounded down.  Thus,
+when there are less than six resources, the value is the number
+of resources; when there are between six and eleven resources,
+the value is one less than the number of resources; and so on.
+This seems to work reasonably well in practice.  Another way
+to ignore unevenness in small partitions would be to detach
+their monitors.
+@PP
+The deviation is @C { KheEvennessMonitorCount(m) - KheEvennessMonitorLimit(m) },
+or 0 if this number is negative.  This is converted into a cost by
+multiplying by a weight (there is no choice of cost function).  The
+weight may be retrieved, and set at any time, by
+@ID { 0.98 1.0 } @Scale @C {
+KHE_COST KheEvennessMonitorWeight(KHE_EVENNESS_MONITOR m);
+void KheEvennessMonitorSetWeight(KHE_EVENNESS_MONITOR m, KHE_COST weight);
+}
+The default weight is the smallest non-zero weight, @C { KheCost(0, 1) }.
+Helper function
+@ID { 0.98 1.0 } @Scale @C {
+void KheSolnSetAllEvennessMonitorWeights(KHE_SOLN soln, KHE_COST weight);
+}
+sets the weights of all evenness monitors at once.  Finally, function
+@ID @C {
+void KheEvennessMonitorDebug(KHE_EVENNESS_MONITOR m,
+  int verbosity, int indent, FILE *fp);
+}
+is like @C { KheMonitorDebug }, only specific to this type of monitor.
+@PP
+Evenness is not monitored in the current version of @C { KheGeneralSolve }
+(Section {@NumberOf general_solvers.general}), because tests run by the
+author showed run time increases of about 20%, for little or no gain.
+Although it has some beneficial effects, evenness monitoring tends to
+disrupt node regularity and reduce diversity, since it causes very
+similar solutions to have slightly different costs.
+@End @Section
+
+@Section
+    @Title { Redundancy monitoring }
+    @Tag { matchings.redundancy }
+@Begin
+@LP
+In nurse rostering it is common for a shift to require, not a
+specific number of nurses, but rather a number in some range, for
+example between 3 and 5 nurses.  This is expressed in KHE by 3
+tasks with assign resource monitors plus 2 tasks without either an
+assign resource monitor (requiring assignment) or a prefer resources
+monitor with an empty domain (requiring non-assignment).  These last
+two tasks have event resource monitor cost 0 whether they are
+assigned a resource or not.  We call them @I { redundant tasks },
+although they are not completely useless, because assigning a
+resource to a redundant task may help that resource to satisfy
+its resource constraints.
+@PP
+A redundant task may have a prefer resources monitor with a
+non-empty set of resources, saying in effect that it is open
+for assignment by certain resources but not others.  Such
+constraints do not affect its status as a redundant task.
+@PP
+When workload is tight, assigning a resource to a redundant task
+can have a cost.  Not an overt cost in the sense of a monitor
+with non-zero cost, but a hidden cost which comes out in workload
+overloads.  In such cases it may be worthwhile to associate a cost
+with assigning a resource to a redundant task, to discourage
+solvers from doing it, and also to give repair methods like
+ejection chains a reason to try to remove these unnecessary
+assignments.
+@PP
+The same idea is at work in the `complete weekends' constraints
+that many nurse rostering instances have, requiring a nurse to
+work both days of a weekend or neither.  Arguably, the true
+constraint is a limit on the number of busy weekends (where
+the nurse works on one or both days), but requiring complete
+weekends helps to reduce the total number of busy weekends.
+@PP
+What is needed is one prefer resources monitor with an empty
+domain for each redundant task.  However, the instance does
+not contain prefer resources constraints for these tasks'
+event resources, so we need some other way to add these
+prefer resources monitors during solving.
+@PP
+KHE offers such an alternative.  It follows the pattern set by
+evenness monitoring, except that it installs monitors that we
+are already familiar with:  prefer resources monitors with empty
+domains.  These are just like ordinary prefer resources monitors
+(Section {@NumberOf monitoring.event_resource_monitors.prefer})
+except that they are not derived from any constraint, so
+@C { KhePreferResourcesMonitorConstraint }
+returns @C { NULL }.  @C { KhePreferResourcesMonitorDomain }
+works as usual and returns an empty resource group.
+@PP
+We call these monitors @I { redundancy monitors }.  To begin and end
+monitoring, the calls are:
+@ID @C {
+void KheSolnRedundancyBegin(KHE_SOLN soln, KHE_RESOURCE_TYPE rt,
+  KHE_COST_FUNCTION cf, KHE_COST combined_weight);
+void KheSolnRedundancyEnd(KHE_SOLN soln);
+}
+@C { KheSolnRedundancyBegin } makes one prefer resources monitor
+with empty domain for each task of type @C { rt } for which there
+are no assign resource monitors and no prefer resources monitors
+with empty domains, assigning cost function @C { cf } and weight
+@C { combined_weight } to it.  @C { KheSolnRedundancyEnd }
+deletes these monitors.
+@PP
+As for evenness monitoring, there are functions
+@ID @C {
+bool KheSolnHasRedundancy(KHE_SOLN soln)
+}
+which returns @C { true } when @C { soln } is currently
+monitoring unnecessary assignments, and
+@ID @C {
+void KheSolnAttachAllRedundancyMonitors(KHE_SOLN soln);
+void KheSolnDetachAllRedundancyMonitors(KHE_SOLN soln);
+}
+to attach all redundancy monitors that are not already attached, and
+to detach all redundancy monitors that are not already detached.
+@PP
+Redundancy monitors appear in the same places that ordinary prefer
+resources monitors do.  They are distinguishable from ordinary
+prefer resources monitors by the @C { NULL } value returned by
+@C { KhePreferResourcesMonitorConstraint }, and by a somewhat
+different monitor Id.
+@End @Section
+
+@EndSections
+@End @Chapter

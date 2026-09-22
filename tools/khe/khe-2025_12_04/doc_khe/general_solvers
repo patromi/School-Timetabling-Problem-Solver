@@ -1,0 +1,3852 @@
+@Chapter
+    @PartNumber { Part B }
+    @PartTitle { Solvers }
+    @Title { Introducing Solvers }
+    @Tag { general_solvers }
+@Begin
+@LP
+A @I { solver } is a function that finds a solution, or changes a
+solution, or potentially changes one.  This chapter introduces
+solvers, defines interfaces for them, and presents a few.  It has
+also evolved into a repository for features called on by solvers:
+time limits, options, statistics, and so on.
+@PP
+Solvers operate at a high level and should not be cluttered with
+implementation details:  their source files will include
+@C { khe_platform.h } as usual, but should not include header
+file @C { khe_interns.h } which gives access to KHE's internals.
+Thus, the user of KHE is as well equipped to write a solver as
+its author.
+@PP
+Many solvers are packaged with KHE.  They are the subject of this
+part of the manual, all of which is implemented using
+@C { khe_platform.h } but not @C { khe_interns.h }.  To gain access
+to these solvers, simply include header file @C { khe_solvers.h },
+which lies in subdirectory @C { src_solvers } of the KHE distribution.
+It includes header file @C { khe_platform.h }, so you can omit it.
+@BeginSections
+
+@Section
+    @Title { Keeping track of running time }
+    @Tag { general_solvers.runningtime }
+@Begin
+@LP
+Before we can get to grips with solvers, we need to describe
+(in this section) KHE's functions for handling time (real time,
+that is), and (in the following section) how the detailed
+behaviour of solvers can be controlled using @I { options }.
+@PP
+For the sake of compilations that do not have the Unix system functions
+that report time, file @C { khe_solvers.h } has a @C { KHE_USE_TIMING }
+preprocessor flag.  Its default value is 1; changing it to 0 will turn
+off all calls to Unix timing system functions.  If that is done, the
+functions documented in this section will still compile and run
+without error, but they will return placeholder values.
+@PP
+First up we have
+@ID @C {
+char *KheDateToday(void);
+}
+This returns the current date as a string in static memory,
+or @C { "?" } if @C { KHE_USE_TIMING } is 0.
+@PP
+KHE offers @I timer objects, of type @C { KHE_TIMER }, which keep
+track of running time.  A timer object stores its @I { start time },
+the time that it was most recently created or reset.  It may also
+store a @I { time limit }, in which case it can report whether that
+much time has passed since its start time.  Storing a time limit
+does not magically stop the program at the time limit; it is up
+to solvers to check the time limit periodically and stop themselves
+when it is reached.  Function @C { KheOptionsTimeLimitReached }
+(Section {@NumberOf general_solvers.options}) is the right way
+to check, as we'll eventually see.
+@PP
+Timers represent a time as a floating point number of seconds.
+@C { KHE_NO_TIME }, a synonym for @C { -1.0 }, means `no time'.
+Function
+@ID @C {
+float KheTimeFromString(char *str);
+}
+converts a string into a floating point time.  If @C { str } is
+@C { "-" }, it returns @C { KHE_NO_TIME}, otherwise it returns
+the number of seconds represented by @C { str }, in the format
+@F { secs }, or @F { mins:secs }, or @F { hrs:mins:secs }.  For
+example, @F { 0.5 } is 0.5 seconds, and @F { 5:0 } is 5 minutes.
+@PP
+If @C { str } does not contain a time, @C { KheTimeFromString }
+aborts.  A more forgiving version is
+@ID @C {
+bool KheStringContainsTime(char *str, float *time);
+}
+If @C { str } contains a time, @C { KheStringContainsTime }
+sets @C { *time } to that time (possibly @C { KHE_NO_TIME })
+and returns @C { true }.  Otherwise it sets @C { *time } to
+@C { KHE_NO_TIME } and returns @C { false }.
+@PP
+Conversely,
+@ID @C {
+char *KheTimeShow(float secs, char buff[20]);
+}
+returns @C { secs } in string form, using @C { buff } for scratch
+memory.  It writes in a more readable format than the input format,
+for example @C { "2.5 secs" } or @C { "5.0 mins" }.
+@PP
+To make a new timer object in arena @C { a }, call
+@ID @C {
+KHE_TIMER KheTimerMake(char *tag, float limit_in_seconds, HA_ARENA a);
+}
+The @C { tag } parameter, which must be non-@C{ NULL }, identifies the
+timer, and also appears in debug output.  The @C { limit_in_seconds }
+parameter is the time limit; it may be @C { KHE_NO_TIME }.  The timer's
+start time is set to the time that @C { KheTimerMake } is called.  Also,
+@ID @C {
+KHE_TIMER KheTimerCopy(KHE_TIMER timer, HA_ARENA a);
+}
+returns a copy of @C { timer } in arena @C { a }.  Nothing is reset.
+@PP
+To retrieve the attributes of a timer, call
+@ID @C {
+char *KheTimerTag(KHE_TIMER timer);
+float KheTimerTimeLimit(KHE_TIMER timer);
+}
+@C { KheTimerTimeLimit } may return @C { KHE_NO_TIME }.
+To change them, call
+@ID @C {
+void KheTimerResetStartTime(KHE_TIMER timer);
+void KheTimerResetTimeLimit(KHE_TIMER timer, float limit_in_seconds);
+}
+@C { KheTimerResetStartTime } resets @C { timer }'s start time
+to the time that it is called.  @C { KheTimerResetTimeLimit } resets
+@C { timer }'s time limit to @C { limit_in_seconds }, which may
+be @C { KHE_NO_TIME } as usual.
+@PP
+These functions give access to elapsed time:
+@ID @C {
+float KheTimerElapsedTime(KHE_TIMER timer);
+float KheTimerRemainingTime(KHE_TIMER timer);
+bool KheTimerTimeLimitReached(KHE_TIMER timer);
+}
+@C { KheTimerElapsedTime } returns the amount of time that has
+elapsed since the most recent call to @C { KheTimerMake } or
+@C { KheTimerResetStartTime } for the timer.
+@PP
+@C { KheTimerRemainingTime } returns the amount of time remaining
+until the time limit is reached:  the time limit minus the elapsed
+time.  However, there are two special cases.  First, if the time
+limit is passed it returns 0.0 rather than a negative result.  And
+second, if @C { timer } has no time limit the result is logically
+infinite, but what is actually returned is @C { KHE_NO_TIME }.
+@PP
+@C { KheTimerTimeLimitReached } returns @C { true } when the
+elapsed time is equal to or greater than the time limit (always
+false when the time limit is @C { KHE_NO_TIME }).  Finally,
+@ID {0.98 1.0} @Scale @C {
+void KheTimerDebug(KHE_TIMER timer, int verbosity, int indent, FILE *fp);
+}
+produces a debug print of @C { timer } onto @C { fp } with the
+given verbosity and indent.
+@PP
+Complex solvers may want to keep track of several time limits
+simultaneously, for example a global limit plus a limit on the
+running time of one phase.  For this there are objects of type
+@C { KHE_TIMER_SET }, representing sets of timers.  To create
+a new, empty timer set in arena @C { a }, call
+@ID @C {
+KHE_TIMER_SET KheTimerSetMake(HA_ARENA a);
+}
+To make a copy of a timer set, call
+@ID @C {
+KHE_TIMER_SET KheTimerSetCopy(KHE_TIMER_SET timer_set, HA_ARENA a);
+}
+To add and delete timers, call
+@ID @C {
+void KheTimerSetAddTimer(KHE_TIMER_SET timer_set, KHE_TIMER timer);
+void KheTimerSetDeleteTimer(KHE_TIMER_SET timer_set, KHE_TIMER timer);
+}
+@C { KheTimerSetDeleteTimer } aborts if @C { timer } is not present
+in @C { timer_set }.  There is also
+@ID @C {
+bool KheTimerSetContainsTimer(KHE_TIMER_SET timer_set, char *tag,
+  KHE_TIMER *timer);
+}
+which seaches for a timer with the given @C { tag } in @C { timer_set }.
+If there is one, it sets @C { *timer } to one such timer and returns
+@C { true }, otherwise it returns @C { false }.
+@PP
+This time around there are only two functions for elapsed time:
+@ID @C {
+float KheTimerSetRemainingTime(KHE_TIMER_SET timer_set);
+bool KheTimerSetTimeLimitReached(KHE_TIMER_SET timer_set);
+}
+A @C { KheTimerSetElapsedTime } function would make no sense,
+since different timers may have different start times.
+@C { KheTimerSetRemainingTime } returns the minimum of the
+remaining times of the timer set's timers that have time limits
+(never negative as usual), or @C { KHE_NO_TIME } if there are no
+such timers, or if time limit consistency checking is active
+as described below.  @C { KheTimerSetTimeLimitReached } returns
+@C { true } if at least one of the timers of @C { timer_set } has
+reached its limit---the logical moment to stop if several time
+limits are present.
+# @PP
+# Function
+# @ID @C {
+# int KheTimeSetTimeLimitReachedQueryCount(KHE_TIMER_SET timer_set);
+# }
+# returns the number of calls to @C { KheTimerSetTimeLimitReached }
+# since the previous call to @C { KheTimeSetTimeLimitReachedQueryCount },
+# or since the timer set object was created if there has been no
+# previous call.  It is used to support run consistency.
+@PP
+When there are time limits, slight variations in running time can
+cause runs with identical options to produce different results.  This
+is inconvenient when testing, and it can mask uninitialized variable
+bugs.  So timer sets offer these functions:
+@ID @C {
+void KheTimerSetTimeLimitConsistencyBegin(KHE_TIMER_SET timer_set,
+  KHE_SOLN soln);
+void KheTimerSetTimeLimitConsistencyEnd(KHE_TIMER_SET timer_set,
+  KHE_SOLN soln);
+}
+The idea is to call @C { KheTimerSetTimeLimitConsistencyBegin } near
+the start of the solve that @C { timer_set } supplies time limits
+for, and @C { KheTimerSetTimeLimitConsistencyEnd } near the end.
+Then when subsequent runs call on @C { KheTimerSetTimeLimitReached }
+they will get the same results as this run, ensuring that any
+difference in their solutions is not due to time limits.
+@PP
+The timer set caches the result of each call
+to @C { KheTimerSetTimeLimitReached }.  At the end of the run,
+@C { KheTimerSetTimeLimitConsistencyEnd } writes these results to a file.
+At the start of the next run, @C { KheTimerSetTimeLimitConsistencyBegin }
+reads the file and takes control of @C { KheTimerSetTimeLimitReached },
+ensuring that each call returns what it returned last time.  This means
+that a timer set's time limit consistency aspect can be in one of three states:
+it can be @I absent (when @C { KheTimerSetTimeLimitConsistencyBegin } is
+not called), or @I starting (when @C { KheTimerSetTimeLimitConsistencyBegin }
+is called but there is no file to read), or @I active
+(when @C { KheTimerSetTimeLimitConsistencyBegin } is called and
+there is a file to read).  In the active state, the timers' time
+limits are bypassed and the contents of the file are used to
+determine when to tell callers that time has run out.
+@PP
+The file name is @C { khe_<instanceid>_<diversifier>.tlc }.  The user
+must ensure that when a file with this name is present, the next run
+has identical options to the run that wrote the file (because if
+options differ, time limit consistency usually makes no sense).  That
+is, the user must delete this file if this condition does not hold.
+Although time limit consistency is packaged up conveniently for the
+user in option @C { gs_time_limit_consistency }
+(Section {@NumberOf general_solvers.general}), that option reads
+any @C { .tlc } file with the right name; it has no way to check
+whether it really should.
+@PP
+Finally,
+@ID @C {
+void KheTimerSetDebug(KHE_TIMER_SET timer_set, int verbosity,
+  int indent, FILE *fp)
+}
+produces a debug print of @C { timer_set } onto @C { fp } with the
+given verbosity and indent.
+@PP
+The usual way to keep track of running time is by calling the timer
+functions of options objects (Section {@NumberOf general_solvers.options}).
+These just delegate to a timer set object stored within the options
+object.
+@End @Section
+
+# @Section
+#     @Title { Consistency of time limits across multiple runs }
+#     @Tag { general_solvers.consistency }
+# @Begin
+# @LP
+# Modern computers are complicated, and their clock rate is
+# affected by many things, including the ambient temperature.
+# This makes it hard to get repeated solves to produce the same
+# result each time, which can be a problem for testing.
+# @PP
+# This section presents a feature of the timer set module which
+# makes it possible to get the same result repeatedly, assuming
+# that discrepancies are caused only by different results being
+# returned by function @C { KheTimerSetTimeLimitReached } on
+# different runs that are otherwise identical.
+# @End @Section
+
+@Section
+    @Title { Options, running time, and time limits }
+    @Tag { general_solvers.options }
+@Begin
+@LP
+Solvers have an @C { options } parameter of type @C { KHE_OPTIONS },
+holding options that influence their behaviour.  This type is similar
+to a Unix environment:  it is a symbol table with strings for its
+keys and values.  The KHE main program allows options to be passed
+in via the command line.
+@PP
+To create a new options object containing the empty set of options, call
+@ID @C {
+KHE_OPTIONS KheOptionsMake(HA_ARENA a);
+}
+It is created in arena @C { a }, which it remembers and returns in
+@ID @C {
+HA_ARENA KheOptionsArena(KHE_OPTIONS options);
+}
+There is no operation to delete an options object; instead, delete
+its arena.
+#@ID @C {
+#void KheOptionsDelete(KHE_OPTIONS options);
+#}
+#This works by deleting the arena.
+@PP
+Options can be changed at any time, so when solving in parallel it
+is important for different options objects to be passed to each solve.
+These can be created by copying using
+@ID @C {
+KHE_OPTIONS KheOptionsCopy(KHE_OPTIONS options, HA_ARENA a);
+}
+The copy is stored in arena @C { a }.  @C { KheArchiveParallelSolve }
+and @C { KheInstanceParallelSolve }
+(Section {@NumberOf general_solvers.parallel}) do this.
+@PP
+To set an option, and to retrieve the previously set value, the calls
+are
+@ID @C {
+void KheOptionsSet(KHE_OPTIONS options, char *key, char *value);
+char *KheOptionsGet(KHE_OPTIONS options, char *key, char *dft);
+}
+@C { KheOptionsGet } returns the value associated with @C { key }
+in the most recent call to @C { KheOptionsSet } with that key.
+If there is no such call, it returns @C { dft }, reflecting the
+principle that solvers should not rely on their options being
+set, but rather should be able to choose a suitable value when
+they are absent---a value that may depend upon circumstances,
+not necessarily a fixed default value.
+@PP
+By convention, when an option represents a Boolean, its legal values
+are @C { "false" } and @C { "true" }.  On the KHE command line, omitting
+the option omits it from the options object, which usually means that
+its value is intended to be @C { false }, while including it, either
+in the full form @C { "option=true" } or the short form @C { "option" },
+gives it value @C { "true" }.  Functions
+@ID @C {
+void KheOptionsSetBool(KHE_OPTIONS options, char *key, bool value);
+bool KheOptionsGetBool(KHE_OPTIONS options, char *key, bool dft);
+}
+make it easy to handle Boolean options.  @C { KheOptionsSetBool }
+calls @C { KheOptionsSet }, with value @C { "true" } or @C { "false" }
+depending on @C { value }.  @C { KheOptionsGetBool } calls
+@C { KheOptionsGet }, returning an actual Boolean rather than a string.
+It aborts if the value is not @C { "false" } or @C { "true" }.  If
+there is no value it returns @C { dft }, which, as explained above,
+would usually be @C { false }.
+@PP
+Another common case is when an option represents an integer.
+Convenience functions
+@ID @C {
+void KheOptionsSetInt(KHE_OPTIONS options, char *key, int value);
+int KheOptionsGetInt(KHE_OPTIONS options, char *key, int dft);
+}
+make this case easy.  @C { KheOptionsSetInt } calls @C { KheOptionsSet },
+with value equal to @C { value } in string form.  @C { KheOptionsGetInt }
+calls @C { KheOptionsGet }, then returns the value converted to an
+integer.  It aborts if the value is not an integer.  If there is no
+value it returns @C { dft }.  Functions
+@ID @C {
+void KheOptionsSetFloat(KHE_OPTIONS options, char *key, float value);
+float KheOptionsGetFloat(KHE_OPTIONS options, char *key, float dft);
+}
+work in the same way for floating-point options.
+@PP
+It is also possible to associate an arbitrary pointer with a key,
+by calling functions
+@ID @C {
+void KheOptionsSetObject(KHE_OPTIONS options, char *key, void *value);
+void *KheOptionsGetObject(KHE_OPTIONS options, char *key, void *dft);
+}
+These work in much the same way as the other functions.
+@PP
+When @C { KheOptionsCopy } is called, by @C { KheArchiveParallelSolve }
+for example, object options are shared between the copies.  Care is
+needed, since sharing mutable objects between threads is not safe.
+The KHE solvers avoid problems here by not adding any object options
+until after the copying has been done:  only single-threaded solve
+functions add them.
+@PP
+Options can be roughly classified into two kinds.  One kind is for
+end users, to allow them to try out different possibilities.  Options
+of this kind are not set by KHE's solvers, only used.  The other
+kind is for KHE's solvers, to allow them to vary the behaviour of
+other solvers that they call.  These are set by KHE's solvers, so
+it is usually futile for the end user to set them.
+@PP
+Throughout this Guide, options are described along with the solvers
+they influence.  As an aid to managing option names, there is a
+convention for beginning option names with a three-character prefix:
+@ID @Tbl
+   aformat { @Cell ml { 0i } @F A | @Cell mr { 0i } B }
+   mv { 0.5vx }
+{
+@Rowa
+   A { gs_ }
+   B { Options set or consulted by general solvers }
+@Rowa
+   A { ps_ }
+   B { Options set or consulted by parallel solvers }
+@Rowa
+   A { ss_ }
+   B { Options set or consulted by time-structural solvers }
+@Rowa
+   A { ts_ }
+   B { Options set or consulted by time solvers }
+@Rowa
+   A { rs_ }
+   B { Options set or consulted by resource solvers }
+@Rowa
+   A { es_ }
+   B { Options set or consulted by ejection chain solvers }
+}
+Some options are set by one kind of solver and consulted by
+another; such options are hard to classify.  The sole option
+consulted by the KHE main program has no prefix.  It is:
+@TaggedList
+
+@DTI { @F no_print }
+{
+If this Boolean option appears in the first list of options on the
+@C { khe -s } or @C { khe -r } command line, then solving will
+proceed as usual but the result archive will not be printed.
+}
+
+# @DTI { @F soln_group }
+# {
+# The name of the solution group created by @C { khe -s }.  When
+# absent, the name is @C { "KHE" } plus a version number.  Absent
+# or not, if a solution group with the specified name already exists,
+# then @C { "_1" }, @C { "_2" } etc. is appended to the name until
+# a fresh name is created.
+# }
+
+@EndList
+The default values of all Boolean options consulted by KHE code are
+always @C { false }; for the other options, a default value is always
+given as part of the description of the option.
+@PP
+Options objects are passed around through solvers, making them a
+good, if not entirely natural, place to keep other things which are
+not options, strictly speaking.  In particular, each options object
+contains a timer set (Section {@NumberOf general_solvers.runningtime})
+which may be used to keep track of running time and impose time limits.
+The relevant functions are
+@ID @C {
+KHE_TIMER KheOptionsAddTimer(KHE_OPTIONS options, char *tag,
+  float limit_in_seconds);
+void KheOptionsDeleteTimer(KHE_OPTIONS options, KHE_TIMER timer);
+bool KheOptionsContainsTimer(KHE_OPTIONS options, char *tag,
+  KHE_TIMER *timer);
+float KheOptionsRemainingTime(KHE_OPTIONS options);
+bool KheOptionsTimeLimitReached(KHE_OPTIONS options);
+void KheOptionsTimeLimitConsistencyBegin(KHE_OPTIONS options,
+  KHE_SOLN soln);
+void KheOptionsTimeLimitConsistencyEnd(KHE_OPTIONS options,
+  KHE_SOLN soln);
+int KheOptionsTimeLimitReachedQueryCount(KHE_OPTIONS options);
+void KheOptionsTimerSetDebug(KHE_OPTIONS options, int verbosity,
+  int indent, FILE *fp);
+}
+All these functions simply delegate their work to the corresponding
+function of the option object's timer set.  See
+Section {@NumberOf general_solvers.runningtime} to find out what they do.
+# @PP
+# @ID @C {
+# void KheOptionsTimeLimitBegin(KHE_OPTIONS options, char *tag,
+#   float limit_in_secs);
+# float KheOptionsTimeLimitEnd(KHE_OPTIONS options, char *tag);
+# bool KheOptionsTimeLimitNow(KHE_OPTIONS options, char *tag,
+#   float *elapsed_time_in_secs);
+# bool KheOptionsTimeLimitReached(KHE_OPTIONS options);
+# void KheOptionsTimeLimitReset(KHE_OPTIONS options, char *tag,
+#   float limit_in_secs);
+# }
+# Calls on functions @C { KheOptionsTimeLimitBegin } and
+# @C { KheOptionsTimeLimitEnd } must occur in matching pairs;
+# their tags must also match, and be distinct from the tags
+# of any other time limits that lie in @C { options } at the
+# same time.  For example:
+# @ID @C {
+# KheOptionsTimeLimitBegin(options, "tabu_search", 10.0);
+# TabuSearch(soln, options);
+# KheOptionsTimeLimitEnd(options, "tabu_search");
+# }
+# limits the amount of time spent in function @C { TabuSearch } to
+# at most 10 seconds, in addition to any other time limits currently
+# in effect.  The tags are not copied, they are shared with the caller.
+# @PP
+# Within a matching
+# @C { KheOptionsTimeLimitBegin }"/"@C { KheOptionsTimeLimitEnd } pair
+# with its tag, @C { KheOptionsTimeLimitNow } returns @C { true } and
+# sets @C { elapsed_time_in_secs } to the amount of time, in seconds,
+# that has elapsed since the time limit with the given tag was begun
+# (or reset, see below).  Outside such a pair it returns @C { false }.
+# @PP
+# Sadly, setting a time limit does not mean that the solve will magically
+# end after that amount of time.  Instead, solvers that are likely to
+# consume large amounts of time are expected to decide for themselves
+# when it is time to stop.  Function @C { KheOptionsTimeLimitReached } is
+# a convenient way to do this.  It returns @C { true } when, for at
+# least one of the time limits currently in force, the amount of time
+# elapsed since that time limit began equals or exceeds its limit.
+# @PP
+# @C { KheOptionsTimeLimitReset } does nothing if it does not lie inside a
+# matching @C { KheOptionsTimeLimitBegin }"/"@C { KheOptionsTimeLimitEnd }
+# pair with its tag.  If it does lie inside such a pair, it resets that
+# time limit's starting time to the current time, and either resets the
+# time limit to @C { limit_in_secs } or, if @C { limit_in_secs } is
+# @C { -1.0 }, leaves it.  To terminate a solver if it has found no
+# improvement in a given time, reset the time limit each time an
+# improvement is found.
+# @C { KheOptionsTimeLimit(options) } is not @C { -1.0 },
+# @C { KheOptionsTimeNow(options) } is not @C { -1.0 }, and
+# @C { KheOptionsTimeNow(options) >=  KheOptionsTimeLimit(options) }.
+# @PP
+# Options objects are passed around through solvers, and they are
+# the natural place to keep other things which are not options,
+# strictly speaking.  In particular, each option contains an
+# optional time limit, as well as a timer object that can
+# be used to find out how much time has passed since a solve
+# began.  The relevant functions are
+# @ID @C {
+# float KheOptionsTimeNow(KHE_OPTIONS options);
+# void KheOptionsSetTimeLimit(KHE_OPTIONS options, float limit_in_secs);
+# float KheOptionsTimeLimit(KHE_OPTIONS options);
+# bool KheOptionsTimeLimitReached(KHE_OPTIONS options);
+# }
+# @C { KheOptionsTimeNow } returns the wall clock time in seconds since
+# @C { options } was created, either from scratch or by copying.  The
+# caller needs to make sure that this is the time when the solution
+# being solved was
+# created.  @C { KheOptionsSetTimeLimit } sets a time limit variable in
+# @C { options } to @C { limit_in_secs }, and @C { KheOptionsTimeLimit }
+# returns that value.  Its default value is @C { -1.0 }, a special value
+# meaning `no limit'.
+# @PP
+# Setting a time limit does not mean that the solve will magically end
+# after that amount of time.  Instead, solvers that are likely to consume
+# large amounts of time are expected to compare @C { KheOptionsTimeNow }
+# with @C { KheOptionsTimeLimit } and decide for themselves that it
+# is time to stop.  Function @C { KheOptionsTimeLimitReached } is
+# a convenient way to do this.  It returns @C { true } when
+# @C { KheOptionsTimeLimit(options) } is not @C { -1.0 },
+# @C { KheOptionsTimeNow(options) } is not @C { -1.0 }, and
+# @C { KheOptionsTimeNow(options) >=  KheOptionsTimeLimit(options) }.
+@PP
+Finally, there is one stray function,
+@ID {0.98 1.0} @Scale @C {
+KHE_FRAME KheOptionsFrame(KHE_OPTIONS options, char *key, KHE_SOLN soln);
+}
+This returns a shared common frame for use by solvers, as described
+in Section {@NumberOf extras.frames}.
+@End @Section
+
+@Section
+    @Title { Do-it-yourself solving }
+    @Tag { general_solvers.yourself }
+@Begin
+@LP
+KHE offers many solvers, opening up several questions:  are they all
+useful?  which order should they be called in?  how much running
+time should each get?  KHE makes it easy to investigate these
+questions empirically, by means of @I { do-it-yourself solving }, which
+means using options to determine which solvers get called, in what
+order, and how much time to give to each.
+@PP
+Some solvers do something, then run an arbitrary solver, then
+finish by doing something else (typically undoing some or all
+of what they did initially).  For example, a solver might change
+the weights of some monitors, run an arbitrary solver, then change
+the weights back again.  Or it might make some assignments and
+fix them, run an arbitrary solver, then remove the fixes.  We call
+such solvers @I { enclosing solvers } here.  Other solvers just
+do something.  For example, a time sweep assignment algorithm
+just assigns resources to tasks; it does not do something else
+later.  Such solvers we call @I { non-enclosing solvers }.
+# The confusing point is that the grammar
+# treats all solvers as enclosing solvers.  Unenclosing solvers are
+# handled like enclosing solvers which finish by doing nothing.
+@PP
+There are three do-it-yourself solving options:  @C { gs } for
+general solving, @C { ts } for time solving, and @C { rs } for
+resource solving.  The values of these three options all
+follow this little grammar:
+@ID lines @Break @F @Verbatim {
+<solver>      ::=  <name> [ <solver> ]
+              ::=  "(" <item> "," <item> { "," <item> } ")"
+<name>        ::=  <id> [ "!" <id> ]
+<item>        ::=  [ <time_weight> ":" ] <solver>
+<time_weight> ::=  <int>
+              ::=  "*"
+}
+# @ID lines @Break @F @Verbatim {
+# <solver>  ::=  <item> { "," <item> }
+# <item>    ::=  [ <int> ":" ] <name> [ "(" <solver> ")" ]
+# <name>    ::=  <id> [ "!" <id> ]
+# }
+Here @F "{" and @F "}" mean zero or more of what they enclose,
+@F "[" and @F "]" mean that what they enclose is optional, @F "<id>"
+is an identifier from a fixed set of short names for solvers
+defined in this and following chapters, @F { <int> } is an
+integer concerned with time limits, as explained below, and
+values in quotes appear literally.  White space is allowed
+between tokens but not within them.
+@PP
+The first line of the grammar calls a solver defined by @F { <name> }.
+For each identifier from the fixed set, do-it-yourself solving
+knows whether that identifier names an enclosing solver or a
+non-enclosing solver, and it chooses
+@ID @F { <name> <solver> }
+when the solver is enclosing, and
+@ID @F { <name> }
+when it is non-enclosing.  If @F { <name> } denotes an enclosing
+solver, then that solver is called, then
+@F { <solver> } is run, then @F { <name> }'s finishing
+action is called.  If @F { <name> } denotes a non-enclosing
+solver, then that solver (only) is called.
+@PP
+If @F { <name> } has the form @F { id1!id2 }, then @F { id1 } is
+called when the model is high school timetabling, and @F { id2 }
+is called when it is nurse rostering.  In this case, @F { do } and
+@F { skip } make good values for @F { id1 } and @F { id2 }; the
+solve will do something for one model and nothing for the other.
+@PP
+The second line of the grammar causes two or more solvers to be
+called sequentially, in the order they appear.  In this case the
+grammar allows you to specify how running time is to be apportioned
+among the solvers, if you wish.  This is done in two steps.
+@PP
+First, set an overall time limit.  For example,
+@ID @C {
+gs_time_limit="10:0"
+}
+sets an overall time limit of 10 minutes.  There are also
+@F { ts_time_limit } and @F { rs_time_limit } options which limit
+the time given to the time assignment and resource assignment phases
+(options @C { ts } and @C { rs }), in conjunction with (not replacing)
+any @C { gs_time_limit } value.  None of these time limits is required;
+omitting one means that there is no time limit.
+@PP
+The second step is to prefix an integer @I { time weight }
+to each solver in a sequence of two or more solvers.  Each
+solver gets an amount of time proportional to its weight.  For
+example, the hypothetical solver
+@ID @C {
+"(3: s1, 1: s2, 1: s3)"
+}
+apportions 60% of the available time to @C { s1 }, 20% to
+@C { s2 }, and 20% to @C { s3 }.
+@PP
+A time weight must be a non-negative integer.  Omitted time
+weights default to 1.  Time weight 0 means that the item's
+solver will not be called, even when there is no time limit.
+@PP
+A time weight can also have the special value @C { * }.  For
+time limit calculating purposes this is just as though the
+entire item (the time weight and its following solver) are not
+there at all; but when that point is reached in the solve, that
+solver is called anyway.  This time weight is suitable for
+solvers that are expected to take an insignificant amount
+of time.  We want to call them, but we don't want our time
+limit calculations to be influenced by them.
+@PP
+Each solver is expected to return promptly when its share of
+available time is up.  It can and should find this out, without
+caring what its time limit is or who imposed it, by periodically
+calling @C { KheOptionsTimeLimitReached }
+(Section {@NumberOf general_solvers.options}).  Do-it-yourself
+solving sets timers which influence @C { KheOptionsTimeLimitReached },
+but it cannot compel a solver to return on time.  If a solver
+returns late, the time available to following solvers is reduced,
+possibly to zero, in which case they are not called.  If
+a solver returns early, the time available to following solvers
+is increased.  Either way, the proportions given by the following
+time weights are preserved.
+@PP
+One function, @C { KheDoItYourselfSolverParseAndRun },
+is exported by the source file that implements do-it-yourself
+solving.  It parses an option value and runs it.  It is easy
+to use, but it is not intended for end users.  It is called
+by the three documented do-it-yourself solver functions.
+@PP
+There is also a simple macro system which is applied before
+the string is parsed using the grammar above.  Anything of
+this form:
+@ID @F "@<id>{ ... }"
+causes the key @C { id } to be looked up in @C { options }.
+If it is present, its corresponding value replaces this
+whole construct.  If it is absent, the string between braces
+replaces it.  Further macro expansions within either result
+string are carried out where requested by other @F { "@" }
+constructs.
+@PP
+Several of the identifiers from the fixed set name solvers
+that require additional parameters, beyond @C { soln } and
+@C { options }:  a cycle node, a domain finder, a solution
+adjuster, and so on.  These additional parameters are created and
+deleted for you by the do-it-yourself solver in the way that works
+best.  This is another big advantage of do-it-yourself solving.
+@End @Section
+
+@Section
+    @Title { General solving }
+    @Tag { general_solvers.general }
+@Begin
+@LP
+We have defined a solver to be a function that finds a solution, or
+changes a solution, or potentially changes one.  A @I { general solver }
+solves an instance completely, unlike, say, a @I { time solver } which
+only finds time assignments, or a @I { resource solver } which only finds
+resource assignments.  A general solver may split meets, build layer
+trees and task trees, assign times and resources, and so on without
+restriction.
+@PP
+The recommended interface for a general solver, defined in @C { khe.h }, is
+@ID {0.95 1.0} @Scale @C {
+typedef KHE_SOLN (*KHE_GENERAL_SOLVER)(KHE_SOLN soln, KHE_OPTIONS options);
+}
+It will usually return the solution it is given, but it may return a
+different solution to the same instance, in which case it should delete
+the solution it is given.  Its second parameter, @C { options }, is a
+set of options (Section {@NumberOf general_solvers.options}) which may
+be used to vary the behaviour of the solver.
+@PP
+The main general solver distributed with KHE is
+@ID @C {
+KHE_SOLN KheGeneralSolve2024(KHE_SOLN soln, KHE_OPTIONS options);
+}
+This single-threaded solver works by calling functions defined elsewhere
+in this guide.  It returns the solution it is given.  The name includes the
+year it was completed and will change from time to time.  In publications
+and solution group names it is referred to as KHE20, KHE24, etc.
+@PP
+If memory runs out while @C { KheGeneralSolve2024 } is solving
+@C { soln }, by default it will abort.  This can be changed by
+calling @C { HaArenaSetJmpEnvBegin } (Appendix {@NumberOf ha.arena_sets})
+on @C { soln }'s arena set.  @C { KheArchiveParallelSolve } and
+@C { KheInstanceParallelSolve }
+(Section {@NumberOf general_solvers.parallel}) do this.
+@PP
+@C { KheGeneralSolve2024 } assumes that @C { soln } is as returned by
+@C { KheSolnMake }, so it carries on from there.  To begin with, it
+checks @C { options } for the options listed below, and handles them
+as described there.  Then it calls a few functions that are basically
+unavoidable when starting a solve:
+@C { KheSolnSplitCycleMeet } (Section {@NumberOf solutions.meets.cycle}),
+@C { KheSolnMakeCompleteRepresentation }
+(Section {@NumberOf solutions.complete}),
+@C { KheLayerTreeMake } (Section {@NumberOf time_structural.construction}),
+and @C { KheTaskTreeMake }
+(Section {@NumberOf resource_structural.task_trees.construction}).
+It also sets option @C { es_split_moves }, to @C { true } if the
+instance contains soft split assignments constraints, and to
+@C { false } otherwise, for the convenience of other solvers
+which might be wondering whether there is any point in splitting
+or merging meets.
+@PP
+@C { KheGeneralSolve2024 } then switches to do-it-yourself
+solving, using option @C { gs } (described in detail below) as its
+guide.  Then it calls a few functions that again are basically
+unavoidable when ending a solve:
+@C { KheSolnEnsureOfficialCost } (Section {@NumberOf monitoring.attach}),
+@C { KheMergeMeets } (Section {@NumberOf time_structural.split.merging}),
+a brief ejection chain call which is mainly useful for trying task
+unassignments; and
+# @C { KheSolnTryTaskUnAssignments }
+# (Section {@NumberOf resource_solvers.unassignments}), and
+@C { KheSolnTryMeetUnAssignments } (Section {@NumberOf time_solvers.basic}).
+It also sets the running time field of the solution to the wall clock
+time since it began.  This is not necessarily what the caller wants, but
+it can easily be reset after the function returns if not.  Finally it
+returns the solution object it was given, highly modified.
+# begins with @C { KheSolnSplitCycleMeet } and
+# @C { KheSolnMakeCompleteRepresentation }.  Then it calls solvers
+# defined in this guide:  it builds a layer tree and task tree,
+# attaches demand monitors, calls @C { KheCycleNodeAssignTimes } to
+# assign times, and the three @C { KheTaskingAssignResources } functions
+# to assign resources, ending with @C { KheSolnEnsureOfficialCost }.
+# @PP
+# For convenience, @C { KheGeneralSolve2024 } calls
+# @ID @C {
+# KheOptionsSetRunningTime(options, elapsed_time);
+# }
+# (Section {@NumberOf general_solvers.options}) just before returning,
+# where @C { elapsed_time } is its running time, obtained by calling
+# @C { KheOptionsTimeLimitNow } (Section {@NumberOf general_solvers.options})
+# on a time limit with tag @C { "general" } which it creates at its start
+# and deletes at its end.  Arguably, this is not quite right, because
+# @C { soln } has to be created before @C { KheGeneralSolve2024 } is
+# called, and more work could be done on @C { soln } afterwards.  However,
+# callers can easily reset the running time if they wish to.
+@PP
+By convention, options set or consulted directly by @C { KheGeneralSolve2024 }
+have names beginning with @C { gs }.  Here is the full list:
+@TaggedList
+
+@DTI { @F gs }
+{
+A string option containing a do-it-yourself solver which determines
+most of what @C { KheGeneralSolve2024 } does.  See below for futher
+details.
+}
+
+@DTI { @F gs_diversifier }
+{
+An integer option which, when set, causes @C { KheGeneralSolve2024 }
+to set the diversifier of the solution it is given to the given
+value.  When omitted, the diversifier retains the value it has
+when @C { KheGeneralSolve2024 } is called.
+}
+
+@DTI { @F gs_time_limit }
+{
+A string option defining a soft time limit for each call to
+@C { KheGeneralSolve2024 }.  The format is as for function
+@C { KheTimeFromString } described above
+(Section {@NumberOf general_solvers.runningtime}):  either
+@C { "-" }, meaning no time limit (the default value), or
+@F { secs }, or @F { mins:secs }, or @F { hrs:mins:secs }.  For
+example, @F { 10 } is 10 seconds, and @F { 5:0 } is 5 minutes.
+Enforcement is up to particular
+solvers; this option merely calls @C { KheOptionsAddTimer }
+(Section {@NumberOf general_solvers.options}).
+}
+
+@DTI { @F gs_time_limit_consistency }
+{
+A Boolean option whose default value is @C { false }.  When its value
+is changed to @C { true }, @C { KheOptionsTimeLimitConsistencyBegin }
+(Section {@NumberOf general_solvers.options}) is called near the start
+of the solve, and @C { KheOptionsTimeLimitConsistencyEnd } is called
+near the end.  As Section {@NumberOf general_solvers.runningtime}
+explains, this ensures that successive runs with the same options do not
+produce different results owing to small differences in running time.
+@LP
+This option works with multiple instances and parallel solves, but it
+does not reinitialize when options change, making it quite error-prone.
+It is best used only occasionally, to verify that annoying variations
+in results really are due to small differences in running time.  This
+option writes and reads files with @C { .tlc } suffixes, and these
+files need to be deleted by the user after finishing with this option,
+or when changing any other options.
+}
+
+# @DTI { @F gs_matching_off }
+# {
+# A Boolean option which, when @C { "true" }, instructs
+# @C { KheGeneralSolve2024 } to refrain from installing
+# the global tixel matching (Chapter {@NumberOf matchings}).
+# }
+
+# @DTI { @F gs_hard_constraints_only }
+# {
+# A Boolean option which, when @C { "true" }, instructs
+# @C { KheGeneralSolve2024 } to detach monitors for soft
+# constraints, by calling @C { KheDetachLowCostMonitors }
+# with @C { min_weight } set to @C { KheCost(1, 0) } at the
+# start of the solve, and @C { KheAttachLowCostMonitors } at
+# the end.  See Section {@NumberOf general_solvers.monitor.detach}
+# for these functions.
+# }
+
+# @DTI { @F gs_monitor_evenness }
+# {
+# A Boolean option which, when @C { "true" }, instructs
+# @C { KheGeneralSolve2024 } to install evenness monitors
+# (Section {@NumberOf matchings.evenness}).
+# }
+
+# @DTI { @F gs_propagate_unavailable_times_off }
+# {
+# A Boolean option which, when @C { "true" }, instructs
+# @C { KheGeneralSolve2024 } to omit its usual call to
+# @C { KhePropagate UnavailableTimes }
+# (Section {@NumberOf general_solvers.monitor.unavail}).
+# }
+
+# @DTI { @F gs_time_assignment_only }
+# {
+# A Boolean option which, when @C { "true" }, instructs
+# @C { KheGeneralSolve2024 } to exit early, leaving the
+# solution in its state after time assignment.
+# }
+
+@DTI { @F gs_unassignment_off }
+{
+A Boolean option which, when @C { "true" }, instructs
+@C { KheGeneralSolve2024 } to omit the brief ejection
+chain run and the call to
+# @C { KheSolnTryTaskUnAssignments }
+# (Section {@NumberOf resource_solvers.unassignments}) and
+@C { KheSolnTryMeetUnAssignments }
+(Section {@NumberOf time_solvers.basic}) at the end.
+}
+
+# @DTI { @F gs_event_timetable_monitor }
+# {
+# During the resource assignment phase of @C { KheGeneralSolve2024 },
+# this option has a value of type @C { KHE_EVENT_TIMETABLE_MONITOR },
+# and holds the result of the call
+# @ID @C {
+# KheEventTimetableMonitorMake(soln, KheInstanceFullEventGroup(ins));
+# }
+# The monitor is attached.  Before and after that phase, the option is
+# either absent or has value @C { NULL }.  The point of this is that
+# this event timetable monitor is expensive to create and probably
+# too expensive to update during time assignment, but it is useful
+# during resource assignment.  So this arrangement gives resource
+# assignment algorithms access to a single shared event timetable
+# monitor, at little cost.
+# }
+
+@DTI { @F gs_debug_monitor_id }
+{
+This option is a string identifying a monitor.  It has two or more
+fields, separated by slashes.  The first field is a constraint Id;
+the others identify a point of application of the constraint.  For
+example, @C { "Constraint:5/Nurse3/27" } is the monitor for constraint
+@C { "Constraint:5" } at point of application @C { Nurse3 }, offset
+@C { 27 }.  This option is used by @C { KheGeneralSolve2024 } to
+define option @F { gs_debug_monitor }, as explained next.  The
+conversion from string to monitor is carried out by function
+@C { KheSolnRetrieveMonitor } (Section {@NumberOf monitoring_monitors}).
+}
+
+@DTI { @F gs_debug_monitor }
+{
+This option is set at the start of @C { KheGeneralSolve2024 }, when
+@C { gs_debug_monitor_id } is present, to the monitor identified by
+@C { gs_debug_monitor_id }.  Any solver can reference it and use it
+as a hint to produce debug output relevant to that monitor.  At
+present only ejectors do this:  they produce debug output focussed on
+answering the question `Why is the defect represented by this monitor
+not removed by the ejection chain algorithm?'.
+}
+
+@DTI { @F gs_debug_rtm }
+{
+A string with format @C { resource:timegroup }.
+If present, @C { KheGeneralSolve2024 } calls
+@C { KheResourceTimetableMonitorSetDebug }
+(Section {@NumberOf monitoring_timetables_resource}) to set up
+debugging of the resource timetable monitor of @C { resource } at the
+times of @C { timegroup }.  This will abort if macro @C { DEBUG_CELL }
+in file @C { khe_resource_timetable_monitor.c } does not have
+value 1.
+}
+
+@EndList
+@C { KheGeneralSolve2024 } is affected indirectly by many other
+options, via the solvers it calls.
+@PP
+Option @C { gs } is a do-it-yourself solver
+(Section {@NumberOf general_solvers.yourself}) which determines
+most of what @C { KheGeneralSolve2024 } does, as described earlier.
+The solvers it is able to call are these:
+@QD @Tbl
+  aformat { @Cell ml { 0i } @F A | @Cell mr { 0i } B }
+{
+@Rowa
+    A { <item> }
+    B { Meaning }
+    rb { yes }
+@Rowa
+    A { do <solver> }
+    B { Run @C { <solver> }.  Useful with @F { ! }. }
+@Rowa
+    A { skip <solver> }
+    B { Do nothing (don't run @C { <solver> }).  Useful with @F { ! }. }
+@Rowa
+    A { empty }
+    B { Do nothing (non-enclosing syntax).  Useful with @F { ! }. }
+@Rowa
+    A { ts }
+    B { Call @C { KheCombinedTimeAssign }
+(Section {@NumberOf time_solvers.yourself}). }
+@Rowa
+    A { rs }
+    B { Call @C { KheCombinedResourceAssign }
+(Section {@NumberOf resource_solvers.yourself}). }
+@Rowa
+    A { gdl <solver> }
+    B { Call @C { KheDetachLowCostMonitors }
+(Section {@NumberOf general_solvers.adjust.detach}), then run
+@C { <solver> }, then undo what @C { KheDetachLowCostMonitors } did.
+}
+@Rowa
+    A { gts <solver> }
+    B { Install a separate matching, run @C { <solver> },
+then uninstall it.   `Separate' means that unmatched demand
+nodes can be accessed but do not contribute to the cost of
+the solution (Section {@NumberOf general_solvers.matchings.intro}).
+}
+@Rowa
+    A { gti <solver> }
+    B { Install an integrated matching, run @C { <solver> },
+then uninstall it.   `Integrated' means that unmatched demand
+nodes contribute to the cost of the solution
+(Section {@NumberOf general_solvers.matchings.intro}).
+}
+@Rowa
+    A { gem <solver> }
+    B { Install evenness monitoring (Section {@NumberOf matchings.evenness}),
+run @C { <solver> }, then uninstall it. }
+@Rowa
+    A { gtp <solver> }
+    B { Call @C { KheTiltPlateau }
+(Section {@NumberOf resource_structural.adjust.tilting}), run @C { <solver> },
+then remove the tilt. }
+@Rowa
+    A { gpu }
+    B { Call @C { KhePropagateUnavailableTimes }
+(Section {@NumberOf resource_structural.adjust.unavail}). }
+    rb { yes }
+}
+Actually everything callable from any of the @C { gs }, @C { ts }, and
+@C { rs } options is callable from all of them.  But for sanity it
+seems best to partition solvers into general, time, and resource kinds.
+@PP
+It is wrong to call a solver from within itself.  Also @C { gti }
+should not be called from within @C { gts }, and @C { gts } should
+not be called from within @C { gti }.  The result in such cases
+is unpredictable.
+@PP
+The default value of @C { gs } is
+@ID @C {
+gs="(gpu, ts, rs)"
+}
+Calls on @C { gts } and @C { gti } appear within the default
+values of @C { ts } and @C { rs }.  The default values do
+not call @C { gdl } or @C { gem }, because the author has not
+found them to be useful.  However they are available.
+@PP
+Function
+@ID @C {
+void KheSolveDebug(KHE_SOLN soln, KHE_OPTIONS options, char *fmt, ...);
+}
+produces a one-line debug of the current state of a solve.  For
+conciseness it always prints onto @C { stderr } with indent
+2.  The print contains @C { soln }'s instance name, diversifier,
+cost, and running time (if @C { options } contains a timer called
+@C { "gs_time_limit" }; if not, the running time is omitted), and
+ends with whatever @C { fprintf(stderr, fmt, ...) } would produce,
+followed by a newline.
+@End @Section
+
+@Section
+    @Title { Parallel solving }
+    @Tag { general_solvers.parallel }
+@Begin
+@LP
+Function
+@ID @C {
+void KheArchiveParallelSolve(KHE_ARCHIVE archive,
+  KHE_GENERAL_SOLVER solver, KHE_OPTIONS options,
+  KHE_SOLN_TYPE soln_type, HA_ARENA_SET as);
+}
+solves the instances of @C { archive } in parallel, optionally
+adding the solutions it finds to @C { archive }.  Any existing
+instances and solution groups of @C { archive } remain as they
+were, although if the @C { ps_cache } option (see below) is
+active they may be replaced by new versions of themselves.
+@PP
+Each individual solve is carried out by @C { solver }, which is
+passed a fresh solution and a copy of @C { options }.  The fresh
+solution is as returned by @C { KheSolnMake } except that the
+diversifier is set, as explained below.
+@PP
+If solutions are saved in @C { archive } (see options
+@C { ps_soln_group } and @C { ps_first_soln_group } below),
+@C { soln_type } determines whether they are left as they are or
+reduced to placeholders (Section {@NumberOf solutions.top.placeholder}).
+@C { KHE_SOLN_WRITABLE_PLACEHOLDER } is recommended because
+it recycles a lot of memory, while still permitting
+the solutions to be written.  Only if further processing of
+the solutions is intended would they be left as they are,
+by passing @C { KHE_SOLN_ORDINARY }.
+@PP
+Each call to @C { KheSolnMake } is passed an arena set.  There is one
+arena set per thread, with @C { as } (which must be non-@C { NULL })
+serving one thread and freshly created arena sets serving the others.
+At the end, any solutions needing to be kept are copied into arenas
+of @C { as }, and the other arena sets are merged back into @C { as },
+so no memory is lost.  If further parallel solving of these solutions
+is attempted, it will be necessary to copy them into arenas from distinct
+arena sets first.
+@PP
+Before each call to @C { solver }, @C { KheArchiveParallelSolve }
+calls @C { HaArenaSetJmpEnvBegin } (Appendix {@NumberOf ha.arena_sets})
+on the arena set of the solution passed to @C { solver }.  This
+ensures that if memory runs out while @C { solver } is running,
+@C { KheArchiveParallelSolve } can take back control and handle
+the problem.  What it does is to take the solution object passed
+to @C { solver } (which contains a valid value, the value just before
+@C { solver } ran out of memory) and use that as the final solution,
+recording in its description metadata field that memory ran out.
+# @PP
+# If parameter @C { out_file_name } is non-@C { NULL }, a file with
+# that name is used to store intermediate results, allowing a long
+# solve to be interrupted and resumed later, as follows:
+# @BulletList
+
+# # @LI {
+# # If file @C { out_file_name } exists when @C { KheArchiveParallelSolve }
+# # is called, it is read as an archive and replaces the @C { archive }
+# # parameter.
+# # }
+
+# @LI {
+# Before starting to solve any instance @C { ins } with the intention
+# of adding one or more solutions to some solution group @C { sg },
+# the archive is checked to see whether @C { sg } already exists in
+# the archive and contains one or more solutions for @C { ins }.  If
+# so, then solving of @C { ins } is skipped.
+# }
+
+# @LI {
+# After solving an instance and adding its solutions to a solution
+# group, the archive is written to file @C { out_file_name },
+# overwriting any existing value.
+# }
+
+# @EndList
+# So if the solve is interrupted at any point except during the
+# archive write, it can be resumed later with the same call and will
+# carry on from the first instance that it did not complete before.
+# It is up to the caller to ensure that @C { archive } comes from
+# @C { out_file_name } when a file with that name exists at the
+# start of the run.  Otherwise @C { KheArchiveParallelSolve }
+# does it all.
+@PP
+There is also
+@ID @C {
+KHE_SOLN KheInstanceParallelSolve(KHE_INSTANCE ins,
+  KHE_GENERAL_SOLVER solver, KHE_OPTIONS options,
+  KHE_SOLN_TYPE soln_type, HA_ARENA_SET as);
+}
+Behind the scenes it is the same, but it solves a single instance
+rather than an entire archive, and it returns any one best solution
+rather than storing solutions in a solution group.
+@PP
+All objects created by these two functions, except for solutions
+that are kept, are deleted before they return.  This includes
+all copies of @C { options }, and all freshly created arena sets.
+@PP
+Options consulted by parallel solvers have names beginning
+with @C { ps_ }.  Here is the full list:
+@TaggedList
+
+@DTI { @F ps_threads }
+@OneRow {
+The number of threads used for solving.  This includes the initial
+thread, the one that called @C { KheArchiveParallelSolve } or
+@C { KheInstanceParallelSolve }, so the value must be at least 1.
+If @F ps_threads is absent, or present but KHE has been compiled
+with multi-threading off, its value is taken to be 1.
+}
+
+@DTI { @F ps_make }
+@OneRow {
+The number of solutions @C { KheArchiveParallelSolve } and
+@C { KheInstanceParallelSolve } are supposed to make per instance.
+This must be at least 1, and 1 is its default value.  The number
+actually made will be less than this in two cases:  when time runs
+out before all the solves are started, and when an evidently
+optimal solution is found before all the solves are started.  A
+solution is evidently optimal when its cost equals the lower
+bound returned by @C { KheMonitorLowerBound((KHE_MONITOR) soln) }.
+This value is usually 0.
+}
+
+@DTI { @F ps_no_diversify }
+@OneRow {
+For each instance, the solutions passed to @C { solver } are identical
+except that the diversifier of the first is 0, the diversifier of the
+second is 1, and so on.  The solver may use these values to create
+diverse solutions.  Boolean option {@F ps_no_diversify}, when @C { true },
+gives the same diversifier (namely 0) to all solutions.  All
+solutions should then turn out the same, except when there are time
+limits:  they can cut off solving at slightly different moments.
+}
+
+@DTI { @F ps_keep }
+@OneRow {
+The maximum number of solutions that @C { KheArchiveParallelSolve }
+keeps (stores in @C { ps_soln_group } below) per instance.  If
+@F ps_keep is absent, its value is taken to be 1.  The best
+@F ps_keep solutions are kept.  @C { KheInstanceParallelSolve }
+does not consult this option; it always keeps (in fact, returns)
+one solution, the best it found.
+}
+
+@DTI { @F ps_recombine }
+@OneRow {
+A Boolean option which, when its value is {@F true} (the default
+value), causes the following behaviour for each solved instance
+@M { I } when all events in @M { I } have preassigned times.  After
+all solutions to @M { I } have been made, it reconstructs the best
+solution as follows.  For each resource type @C { rt }, it replaces
+its set of task assignments for tasks of type @C { rt } by the best
+set of such assignments over all solutions.  If any actual recombining
+takes place (if any assignments are actually changed), the reconstructed
+solution is marked by being given diversifier 999.  The solutions for
+each resource type are independent of one another when times are
+preassigned, so it makes sense to do this.  This happens before
+any solutions are thrown away to reduce the @C { ps_make }
+solutions found to the @C { ps_keep } solutions kept.
+}
+
+@DTI { @F ps_soln_group }
+@OneRow {
+A string option, which, if present, causes a solution group to
+be added to @C { archive } holding the best @F ps_keep solutions
+found for each instance.  The value of the string is the name of
+the solution group.  If there is already a solution group in
+@C { archive } with that name, @C { KheArchiveParallelSolve }
+aborts with an error message.
+@LP
+If @F ps_soln_group is omitted, no solution group is made.  When
+solutions have been found but they are not in the result archive,
+this is the usual reason.  Or the solution group may have been
+added to the archive in memory, but the archive has not been
+written to a file.
+}
+
+@DTI { @F ps_first_soln_group }
+@OneRow {
+Like @C { ps_soln_group } except that the solution group
+holds one solution for each instance, the one whose solve was
+started first.  This solution will thus be added to two solution
+groups if @C { ps_soln_group } and @C { ps_first_soln_group }
+are both present and the solution is one of the @F ps_keep best
+for its instance.  (Actually, in that case the solution is
+copied, owing to the possible need to store different running
+times in the two versions, as explained just below under
+option {@F ps_time_measure}.)  The author has at times used
+@ID @F {
+ps_first_soln_group=KHE20 ps_soln_group=KHE20x8
+}
+to get the results of a single run and of a best of 8 run,
+while producing only eight (not nine) solutions.  If present,
+@F ps_first_soln_group will precede the other in the archive.
+The solution stored is not affected by recombining.
+}
+
+@DTI { @F ps_time_measure }
+@OneRow {
+Measuring running time is awkward for parallel solving.
+This option says how to do it.
+@LP
+If @C { ps_time_measure } is @C { "omit" }, the parallel solver does not
+set the solutions' running times.  They have the values given to them by
+@C { solver }.  If @C { solver } is @C { KheGeneralSolve2024 }, for example,
+each holds the wall clock time from when @C { KheGeneralSolve2024 }
+was called to when it returns.  This is useful when all solutions
+are kept, for showing how running times vary.  It is misleading
+when @C { ps_threads } exceeds the number of processors.
+@LP
+If @C { ps_time_measure } is @C { "shared" }, each instance monopolizes
+all threads while its solutions are being constructed.  There
+is some idle time for some threads while they wait for others to
+finish off the current instance, making the total wall clock
+time of the solve somewhat larger than for @C { "omit" }.  Then
+the running times of all solutions for one instance are set to
+the same value:  the wall clock time from when the first solve of
+their instance began until the last solve ended.  This is useful
+when only the best, or the few best, solutions are being kept,
+because it records in those solutions how long it really takes to
+find them, given that all the solutions have to be found, albeit
+in parallel, before the few can be chosen.
+@LP
+If @C { ps_time_measure } is @C { "auto" } (the default value), then
+the behaviour is as for @C { "omit" } when @C { ps_keep >= ps_make },
+and as for @C { "shared" } when @C { ps_keep < ps_make }.
+@LP
+This option only affects the solutions stored in @F { ps_soln_group }.
+The solutions stored in @F { ps_first_soln_group } have the running
+times given to them by @C { solver }.
+@LP
+There are at least two other effects that can influence the integrity
+of reported running times.  One is that arena memory allocated for one
+solve is recycled for the next solve by the same thread, which could
+change the running time for solving an instance depending on whether
+it is the thread's first solve.  The other is that parallel solves
+are not completely independent of one another:  they may contend for
+resources such as @C { malloc }, memory caches, and memory
+buses.  On the author's nominally 12-core computer, one run of
+12 parallel runs proceeds about 20% more slowly than one run
+with no competing parallel runs.
+}
+
+@DTI { @F ps_time_limit }
+@OneRow {
+A string option defining a soft time limit for solving each
+instance.  The parallel solver will stop initiating solves of
+an instance once the wall clock time since it initiated the
+first solve of that instance exceeds this limit, even if
+the requested { @F ps_make } solves have not all begun.  The
+format is as for function @C { KheTimeFromString } described
+above (Section {@NumberOf general_solvers.runningtime}):  either
+@C { "-" }, meaning no time limit (which is the default value), or
+@F { secs }, or @F { mins:secs }, or @F { hrs:mins:secs }.  For
+example, @F { 10 } is 10 seconds, and @F { 5:0 } is 5 minutes.
+In practice, setting @F { gs_time_limit }
+(Section {@NumberOf general_solvers.general})
+will be more effective than setting @F { ps_time_limit }.
+}
+
+@DTI { @F ps_avail_mem }
+@OneRow {
+An integer option that tells the solve how much memory is
+available, measured in bytes.  The value of the option is
+divided by @C { ps_threads } and the result passed as
+memory limit to each thread's arena set, ensuring that no
+thread can monopolize memory.
+@LP
+Value @C { 0 } means `set no limits':  each thread consumes
+memory until none is left.  Special value @C { sysinfo }
+takes the value from the Linux @C { sysinfo } system function;
+it is available only when the @C { KHE_USE_SYSINFO } flag,
+defined at the top of @C { khe_solvers.h }, is set to 1.
+@LP
+When a thread's memory runs out, its current
+solve stops immediately.  There is no guarantee that its
+current solution will be in a state which is safe for
+writing, so that solution is deleted.  If the solver is
+running but no solutions are being kept, this may be the
+reason.  It is usual to print a small amount of debug
+information even in production runs of the solver, and
+that includes information about solutions that were deleted
+owing to running out of memory.
+@LP
+The default value of @F ps_avail_mem is @C { sysinfo } when
+@C { KHE_USE_SYSINFO } is set to 1, and @C { 0 } otherwise.
+There are arguments for both values, indeed there seems to be
+no value which is best in all cases, but the author considers
+thrashing of memory-hungry solvers to be the greatest danger,
+which is why @C { sysinfo } is the default value when available.
+# This maximises the number of solves that run to completion,
+# but leaves them exposed to memory thrashing if memory-hungry
+# solvers are used, so care is needed.
+@LP
+However @F ps_avail_mem is set, there are three main ways to
+reduce memory usage:  reduce the number of threads; avoid
+memory-hungry solvers; and use the @C { soln_type } parameter
+of @C { KheArchiveParallelSolve } to make finished solutions
+use less memory.
+}
+
+@DTI { @F ps_use_cache }
+@OneRow {
+This Boolean option, when @C { true }, makes @C { KheArchiveParallelSolve }
+store intermediate results in a file, allowing a long solve to be
+interrupted and resumed later.  This works as follows.
+If the file exists when @C { KheArchiveParallelSolve } is called,
+it is read as an archive and its instances and solution groups
+replace the instances and solution groups initially present in the
+@C { archive } parameter.  Then, before starting to solve each
+instance @C { ins }, the archive is checked to see whether it
+already contains any solutions for @C { ins }.  If so, then
+@C { ins } is not solved.  Finally, after solving each instance,
+if at least one solution was added to the archive, the whole archive
+is written to the file, overwriting any existing value.
+@LP
+This only works for @C { KheArchiveParallelSolve }, not for
+@C { KheInstanceParallelSolve }.  There must be a @F { ps_soln_group }
+or @F { ps_first_soln_group } option.
+@LP
+If the Id of the original archive is @F { X }, then the name of
+the cache file is @F { tmp_X.xml }.  This ensures that unrelated
+archives never become confused and that original archive files are
+never overwritten (although they may be unexpectedly bypassed in
+favour of a cache file).  To run from scratch, remove the cache
+file or set @F { ps_use_cache } to @C { false }.
+}
+
+@EndList
+Parallelism is obtained via functions @C { pthread_create } and
+@C { pthread_join } from the Posix threads library.  KHE has been
+carefully designed to ensure that operations carried out in parallel
+on distinct solutions cannot interfere with each other.  If you do not
+have Posix threads, a simple workaround documented in KHE's makefile
+will allow you to compile KHE without it.  The only difference is that
+@C { KheArchiveParallelSolve } and @C { KheInstanceParallelSolve }
+will find their solutions sequentially rather than in parallel.
+@End @Section
+
+#@Section
+#    @Title { Benchmarking }
+#    @Tag { general_solvers.benchmarking }
+#@Begin
+#@LP
+#@I { This section is still applicable, but its general approach
+#has been rendered obsolete by the advent of command-line options.
+#So in time it is likely to be deleted. }
+#@PP
+#For benchmarking (that is, for gathering statistics while a solver runs),
+#KHE offers
+#@ID @C {
+#void KheBenchmark(KHE_ARCHIVE archive, KHE_GENERAL_SOLVER solver,
+#  char *solver_name, char *author_name, char test_label,
+#  KHE_STATS_TABLE_TYPE table_type);
+#}
+#It solves @C { archive }, possibly several times, using @C { solver },
+#writing the results into files in directory @C { "stats" } of the
+#current directory.  Some files are archives, others contain tables of
+#statistics recording the performance of @C { solver }, printed by KHE's
+#statistics functions (Section {@NumberOf general_solvers.stats}).
+#@PP
+#Parameter @C { solver_name } is a brief name for @C { solver }, suited
+#for use in the header of a table column; @C { author_name } is the name
+#of the author of the solver; and @C { test_label } (a character between
+#@C { 'A' } and @C { 'Z' }) determines which tests are performed and
+#which files are written.  These may change from time to time.  See
+#the top of file @C { khe_sm_benchmark.c } for current details.
+#@PP
+#Parameter @C { table_type } determines the format of any tables
+#written.  Its values are
+#@ID @C {
+#typedef enum {
+#  KHE_STATS_TABLE_PLAIN,
+#  KHE_STATS_TABLE_LOUT,
+#  KHE_STATS_TABLE_LATEX
+#} KHE_STATS_TABLE_TYPE;
+#}
+#which request plain text, Lout, or LaTeX format.
+#@PP
+#@C { KheBenchmark } takes it upon itself to skip some instances of
+#the archive it is given.  To see which are skipped, consult function
+#@C { KheBenchmarkTryInstance } in file @C { khe_sm_benchmark.c }.
+#If it comes upon such an instance, it includes a row for it in the
+#tables it prints, but it does not attempt to solve it, and it leaves
+#the entries for that row blank.
+## For example, it skips instance
+## @C { DK-HG-12 } of the standard XHSTT-2013 data set.  Solving
+## @C { DK-HG-12 } well involves choosing a good set of meets to
+## @I not assign times to, something KHE's solvers have no idea about.
+#@End @Section
+
+@Section
+    @Title { Solution adjustments }
+    @Tag { general_solvers.adjust }
+@Begin
+@LP
+To @I adjust a solution is to change it in some way, with the
+intention of changing it back again later.  This section presents
+the @I { solution adjuster }, or just @I { adjuster }, which
+supports many kinds of adjustments.  It accepts a mixture of
+different kinds of adjustments, which can be useful, but its
+main value is that it makes it easy to remove the adjustments
+when they are no longer wanted.  (We can't use marks and paths
+for this, because there may be other operations on the path that
+we don't want to remove.)  One application of adjustment is
+documented in this section.  Other sections of this Guide contain
+other applications.  There are also sections which would naturally
+use adjusters but currently do not.  This is for historical reasons
+only; in time, hopefully, all places where adjustments are made
+and subsequently removed will use adjusters.
+@BeginSubSections
+
+@SubSection
+    @Title { The solution adjuster }
+    @Tag { general_solvers.adjust.adjuster }
+@Begin
+@LP
+When we adjust a solution we want to remember what we have done, so
+that we can undo it later.  KHE offers @I { solution adjusters } for
+this.  Function
+@ID @C {
+KHE_SOLN_ADJUSTER KheSolnAdjusterMake(KHE_SOLN soln, KHE_ARENA a);
+}
+creates a new solution adjuster object in arena @C { a }.  There
+is no function to delete a solution adjuster; it is deleted when
+@C { a } is deleted or recycled.
+# void KheSolnAdjusterDelete(KHE_SOLN_ADJUSTER sa);
+# @C { KheSolnAdjusterMake } takes an arena from @C { soln } for the
+# solution adjuster to use; it is returned by @C { KheSolnAdjusterDelete }.
+Function
+@ID @C {
+void KheSolnAdjusterClear(KHE_SOLN_ADJUSTER sa);
+}
+returns @C { sa } to its initial state, and
+@ID @C {
+KHE_SOLN KheSolnAdjusterSoln(KHE_SOLN_ADJUSTER sa);
+}
+returns @C { sa }'s @C { soln } attribute.
+@PP
+Between the calls to @C { KheSolnAdjusterMake } and
+@C { KheSolnAdjusterDelete }, any number of adjustments may be
+requested of the adjuster.  These are both applied to @C { soln }
+and recorded within the adjuster.  When it is time to undo them,
+the call is
+@ID @C {
+void KheSolnAdjusterUndo(KHE_SOLN_ADJUSTER sa);
+}
+This traverses the stored operations in reverse order, undoing
+each in turn.  Although it is not often used, after an undo it
+is also possible to redo:
+@ID @C {
+void KheSolnAdjusterRedo(KHE_SOLN_ADJUSTER sa);
+}
+If this is called at all, it must be the first call on @C { sa }
+after a call to @C { KheSolnAdjusterUndo }.
+@PP
+The presence of undo and redo is reminiscent of type @C { KHE_PATH }
+(Section {@NumberOf solutions.marks}).  The author considered
+unifying these two types, but decided against it.  The basic
+obstacle is that a path undo undoes every operation on a solution,
+and this guarantees that the solution returns to the state it was
+in at the start of the path.  Among other things this means that
+there is no need to check that the undo operations make sense.  A
+solution adjuster only undoes the operations that are reported to
+it, and so it does not in general return a solution to any previous
+state.  Indeed we would not want it to:  this is not what we want
+@C { KheSolnAdjusterTaskGroup } below to do, for example.
+@PP
+With marks and paths, the adjustment operations are applied
+directly to the solution, which takes responsibility for
+updating the current path.  This is very convenient because
+it allows solvers to carry out these adjustments without knowing
+or caring that they are being recorded.  This convenience is
+not available with solution adjusters.  A solution adjuster must
+be informed explicitly that the adjustment is wanted.  As described
+above, it will then apply the adjustment to the solution and
+(if it succeeds) also record it so that it can be undone later.
+@PP
+A request for a specific adjustment is make by calling a function
+which has the same signature as the function which changes the
+solution directly, except that `@C { SolnAdjuster }' is inserted
+into the function name, and `@C { KHE_SOLN_ADJUSTER sa }' is
+inserted into the parameter list.  This solution adjuster
+function calls the corresponding direct function, but it also
+records enough information about the initial solution state
+and the call itself to allow the call to be undone later.
+@PP
+The adjustments to monitors currently supported by solution adjusters are
+@ID @C {
+void KheSolnAdjusterMonitorAttachToSoln(KHE_SOLN_ADJUSTER sa,
+  KHE_MONITOR m);
+void KheSolnAdjusterMonitorDetachFromSoln(KHE_SOLN_ADJUSTER sa,
+  KHE_MONITOR m);
+void KheSolnAdjusterMonitorSetCombinedWeight(KHE_SOLN_ADJUSTER sa,
+  KHE_MONITOR m, KHE_COST combined_weight);
+void KheSolnAdjusterMonitorSetTilt(KHE_SOLN_ADJUSTER sa,
+  KHE_LIMIT_ACTIVE_INTERVALS_MONITOR laim);
+}
+The adjustments to tasks currently supported by solution adjusters are
+@ID @C {
+bool KheSolnAdjusterTaskMove(KHE_SOLN_ADJUSTER sa,
+  KHE_TASK task, KHE_TASK target_task);
+bool KheSolnAdjusterTaskAssignResource(KHE_SOLN_ADJUSTER sa,
+  KHE_TASK task, KHE_RESOURCE r);
+void KheSolnAdjusterTaskAssignFix(KHE_SOLN_ADJUSTER sa, KHE_TASK task);
+void KheSolnAdjusterTaskAssignUnFix(KHE_SOLN_ADJUSTER sa,
+  KHE_TASK task);
+bool KheSolnAdjusterTaskAddTaskBound(KHE_SOLN_ADJUSTER sa,
+  KHE_TASK task, KHE_TASK_BOUND tb);
+bool KheSolnAdjusterTaskDeleteTaskBound(KHE_SOLN_ADJUSTER sa,
+  KHE_TASK task, KHE_TASK_BOUND tb);
+}
+There is one more task adjustment that we've singled out because
+it does not correspond to any function which directly alters the
+solution:
+@ID @C {
+bool KheSolnAdjusterTaskGroup(KHE_SOLN_ADJUSTER sa,
+  KHE_TASK task, KHE_TASK leader_task);
+}
+This groups @C { task } with @C { leader_task }; undoing it
+takes that grouping away.  Concretely, it moves @C { task } to
+@C { leader_task }, exactly like @C { KheSolnAdjusterTaskMove }.
+But undoing is different:  instead of moving @C { task } back to
+its original assignment, it moves it to whatever @C { leader_task }
+is assigned to at the moment of undo (possibly @C { NULL }).  This
+removes the grouping without removing any assignment that has
+appeared since the grouping was done.
+@PP
+Task grouping is a surprisingly complicated business.  It has its own
+solver (Section {@NumberOf resource_structural.task_grouping.task_grouper}),
+which calls @C { KheSolnAdjusterTaskGroup } in just the right way.
+It is probably best not to call @C { KheSolnAdjusterTaskGroup } directly.
+@PP
+The solution adjuster also helps to add and delete task bounds:
+@ID @C {
+KHE_TASK_BOUND KheSolnAdjusterTaskBoundMake(KHE_SOLN_ADJUSTER sa,
+  KHE_SOLN soln, KHE_RESOURCE_GROUP rg);
+}
+This calls @C { KheTaskBoundMake(soln, rg) } and both stores the
+result in @C { sa } and returns it.  The user may then add the
+task bound to any number of tasks without informing @C { sa }.
+Then when @C { sa } is deleted, it deletes the task bound object,
+which deletes itself from every task it was added to.  This is
+all fine, but a redo would be illogical because the caller would
+not have access to the remade task bound object.  Unlike for paths,
+objects remade by solution adjusters do not have the same memory
+addresses as the originals.
+@PP
+It is safe to call all these adjustment operations when @C { sa }
+is @C { NULL }.  In that case, the adjustment is carried out but
+not remembered anywhere.  This can be convenient when writing code
+that only remembers the adjustments it makes when that is requested.
+@End @SubSection
+
+@SubSection
+    @Title { Ordinary solvers and structural solvers }
+    @Tag { general_solvers.adjust.thoughts }
+@Begin
+@LP
+KHE offers many solvers, which adjust solutions in various ways.
+# Inevitably, there are going to be interactions between these
+# solvers, not all of which will be straightforward.
+# @PP
+Solution adjustments can be divided into two kinds.  First are
+@I { ordinary adjustments }, which are meet splits and merges,
+assignments of times to meets, and assignments of resources to
+tasks.  These directly determine the final solution as written
+out to a file.  Second are @I { structural adjustments }, which
+solvers use to change solutions in ways that are not evident in
+the written value.  Examples include changing monitor weights,
+changing the domains of meets and tasks, task grouping, and so
+on.  It is usually easy to classify a solver as either ordinary
+or structural, based on the adjustments it makes.
+# , although there are one or two cases (assign by history
+# is a good example) where the boundary does become blurred.
+@PP
+Some structural adjustments change the way that solution cost
+is defined, and so must be undone before the overall solve
+returns, otherwise the caller will be misled about the true
+cost of the solution.  In practice, most structural adjustments
+do get undone eventually.  This is why solution adjusters are
+associated with structural solvers and not with ordinary solvers.
+@PP
+In fact, we prefer the following definitions.  A @I { structural solver }
+is a solver which usually undoes its own adjustments eventually.
+(It will probably use a solution adjuster to do this.)  This
+implies that other solvers must leave these adjustments in place.
+An @I { ordinary solver }, on the other hand, is a solver whose
+adjustments will not be undone, so other solvers are free to alter them.
+@PP
+@BI { Interactions between solvers. }
+Solvers carry out their work only by updating objects of type
+@C { KHE_SOLN }.  Information is not passed between solvers
+through other types, except for some simple values passed as
+parameters that serve to configure solvers (a resource type,
+for example).  This basic principle constrains how solvers
+interact.  It makes a solution object into what is sometimes
+called a @I { blackboard }:  a shared value open to inspection
+and change by all solvers.
+@PP
+At first glance, then, interactions between solvers should
+be straightforward:  they all act on the blackboard and they
+are all able to change what they find there.  This is
+exactly how ordinary solvers interact.  The first one to run
+makes some adjustments; the second is free to change them.
+Interactions between structural solvers and ordinary solvers
+are rather different.  Structural solvers usually run first,
+and ordinary solvers are expected to handle the adjustments
+made by structural solvers, without changing them.  For
+example, an ordinary solver would use the monitor weights
+it is given; it would not change any task groupings; and it
+would not change any fixed assignments of meets or tasks.
+Thus, although these changes are all visible on the blackboard
+and all may be changed, by convention an ordinary solver does
+not change them.
+@PP
+This raises an obvious question:  how does an ordinary solver
+know which adjustments on the blackboard are ordinary, and
+so may be changed, and which are structural, and so may not
+be changed?  Most structural adjustments are unmistakably
+structural:  domain changes, task groupings, and so on.  But
+if an assignment is made for structural reasons (as in assign
+by history), there is no clear way to distinguish it from an
+ordinary assignment.  This is where meet and task fixing are useful,
+and we can now state a principle that gives valuable guidance:
+@QD ragged @Break @I {
+Ordinary meet and task assignments must not be fixed;
+structural meet and task assignments must be fixed.
+}
+A structural assignment can be removed later by unfixing
+it.  There is no need to unassign it.
+@PP
+It remains to discuss interactions between structural solvers.
+Assuming our definition above, that a structural solver is
+one that eventually removes its adjustments, the driver here
+is the need to ensure that that removal is well-defined.
+@PP
+There are many structural solvers whose adjustments are
+independent of each other:  for example, solvers which
+adjust monitor weights are independent of solvers which
+adjust task groupings.  However, we are going to develop
+a rule which works for all structural solvers, which we
+do by concentrating on solvers whose adjustments are not
+independent.
+@PP
+For example, suppose one solver reduces the weight of every
+monitor by 1, and the other doubles the weight of some
+monitors.  If we apply the first, then the second, then
+undo the first, then the second, we will probably not
+end up where we started, however we define `undo'.
+@PP
+We can only made sense of non-independent structural
+adjustments if we say that if the first structural
+solver runs before the second, then the second must
+undo before the first.  In other words, structural
+solvers must be @I { nested }:
+@ID @C {
+structural_solver_1
+{
+  structural_solver_2
+  {
+    ordinary_solver_1
+  }
+  ordinary_solver_2
+}
+}
+The meaning of this diagram is that a structural solver's
+adjustments are added at its opening brace and removed
+at its closing brace.
+@PP
+We want a structural solver's adjustments to be in force
+from the moment it adds them to the moment it removes them.
+This means that an inner structural solver must accept an
+outer structural solver's adjustments, in the same way that
+an ordinary solver must accept them.  The inner structural
+solver's adjustments are added to the outer one's, and
+when they are removed, we must return to a state in which
+only the outer structural solver's adjustments are in force.
+@PP
+We can express all this as a second principle:
+@QD ragged @Break @I {
+Structural solvers must be nested, and removing a structural
+solver's adjustments must leave the solution with the structural
+adjustments it had before the structural solver's adjustments
+were added.
+}
+Given that @C { structural_solver_2 } could be nested inside any
+structural solver, we need to write it in such a way that we can
+prove that the structural adjustments in place after
+@C { structural_solver_2 }'s structural adjustments are removed are
+those that were in place before its structural adjustments were
+added.  To take a simple example, if @C { structural_solver_2 }
+fixes tasks, we need to write it so that it only fixes tasks that
+are not already fixed, and only unfixes tasks that it fixed itself.
+This will be correct no matter what solvers it is nested within.
+@PP
+The interactions between structural solvers may be non-trivial
+and may need to be analysed carefully.  The leading example of
+this is task grouping.  The description of the task grouping solver
+(Section {@NumberOf resource_structural.task_grouping.task_grouper})
+has a detailed discussion of its many interactions.
+# @PP
+# Assign by history and interval grouping both work off one limit
+# active intervals constraint at a time, and in practice they are
+# called one after the other by the overall solver.  So one option
+# would be to merge them into a single structural solver and handle
+# their interaction within that solver.  The author is reluctant to
+# do this because their implementations are very different.  In any
+# case, we should be able to implement them separately, and seeing
+# what happens when we do will teach us some valuable general lessons.
+# @PP
+# Suppose we are interval grouping based on a limit active intervals
+# constraint @M { C } which constrains night shifts to occur in
+# sequences of 4 or 5 consecutive shifts.  Suppose some resource
+# @M { r } has history value 2.  Then assign by history applied to
+# @M { C } will have found tasks on the first and second nights of
+# the cycle and assigned @M { r } to them, making a sequence of
+# length 4 including history, as desired.  These assignments will
+# have been fixed, as discussed above.
+# @PP
+# When interval grouping runs, to begin with it will group these two
+# tasks.  Then, depending on how things turn out generally, it
+# may choose to add a third task to the group to make a
+# sequence of length 5 including history.  This will have the effect
+# of assigning @M { r } to this third task.
+# @PP
+# To make a group out of these three tasks, two assigned @M { r }
+# and fixed, and one unassigned and unfixed, is awkward.  At least
+# one of the fixes has to be removed to allow its task's assignment
+# to be changed.  The leader task has to have a domain of minimal
+# cardinality in the group.  This could be the unassigned task, in
+# which case it will have to be assigned @M { r } and fixed.
+# However, all this can be done and it is not the problem.
+# @PP
+# We have been assuming that the assigned tasks were produced by
+# assign by history, but we can now see how any structural solver that
+# groups tasks should handle tasks that are assigned a resource (if it
+# chooses not to reject them).  Fixed or not, such assignments must be
+# preserved, so if a group contains a task assigned resource @M { r },
+# then the whole group must be assigned @M { r }.
+# @PP
+# When grouping a task assigned @M { r } with an unassigned task, the
+# unassigned task should not run on the same day as some other task
+# assigned @M { r }, since then the grouping would cause a clash.  This
+# rules out certain groups, but provided they are avoided it has no
+# other consequences.
+# @PP
+# When an unassigned task is grouped with an assigned and fixed task,
+# it becomes assigned and fixed too.  This prevents an ordinary
+# solver from changing its assignment.  Later on, when the structural
+# solver's work is undone, an exact undo would cause this task to
+# become unassigned again, after the opportunity for the ordinary
+# solver to assign it has passed.  This is the essential difficulty.
+# For example, if no other ordinary solvers are run subsequently,
+# the task will be unassigned at the end of solving, whereas without
+# grouping it would have been assigned (by the ordinary solver).
+# We handle this by treating the initial assignment as though it
+# was made by an ordinary solver:  we preserve it (but not its fix)
+# during ungrouping.  So the undo is not exact.
+# @PP
+# We conclude that structural solvers that group tasks can be called
+# after structural solvers that assign tasks and fix those assignments.
+# There is no need to (say) forbid assigned tasks from participating
+# in grouping, which would be a problem for our example of assign by
+# history and interval grouping.  (The opposite order, assigning and
+# fixing tasks after grouping, clearly requires limiting the assigning
+# and fixing to leader tasks.)  More generally, we have learned that
+# the interactions between structural solvers can be non-trivial, so
+# that careful analysis is needed.
+@End @SubSection
+
+@SubSection
+    @Title { Detaching low-cost monitors }
+    @Tag { general_solvers.adjust.detach }
+@Begin
+@LP
+On difficult instances it might make sense to forget about
+monitors whose violations cost very little, and concentrate on
+monitors whose violations cost a lot.  This idea is implemented by
+@ID @C {
+void KheDetachLowCostMonitors(KHE_SOLN soln, KHE_COST min_weight,
+  KHE_SOLN_ADJUSTER sa);
+}
+It detaches all attached monitors of @C { soln } whose combined
+weight is less than @C { min_weight }.  If @C { sa != NULL } it
+records what it has done in solution adjuster @C { sa }
+(Section {@NumberOf general_solvers.adjust.adjuster})
+so that it can be undone later.  For example,
+@ID @C {
+sa = KheSolnAdjusterMake(soln);
+KheDetachLowCostMonitors(soln, sa, KheCost(1, 0));
+do_something;
+KheSolnAdjusterDelete(sa);
+}
+detaches monitors for soft constraints while @C { do_something }
+is running, then reattaches them.  One could pass @C { NULL }
+for @C { sa }, but then undoing the detaches would be awkward,
+because it would not be clear which of all the detached monitors
+were detached by this function.
+@End @SubSection
+
+@EndSubSections
+@End @Section
+
+@Section
+    @Title { Monitor grouping }
+    @Tag { general_solvers.grouping }
+@Begin
+@LP
+To @I group two or more monitors means to make them children of a
+common parent group monitor.  This is a kind of solution adjustment,
+but for historical reasons it is treated separately.
+@PP
+There are several reasons why monitor grouping might be needed, the
+main ones being @I { correlation grouping }, where monitors are grouped
+because they monitor the same thing, and @I { focus grouping }, where
+the parent group monitor is a focus for some operation.
+@BeginSubSections
+
+@SubSection
+    @Title { Introduction }
+    @Tag { general_solvers.grouping.intro }
+@Begin
+@LP
+We'll start by making a few points about monitor grouping in general.
+@PP
+Solutions often contain structural constraints:  nodes, restricted
+domains, fixed assignments, and so on.  A solver is expected to
+respect such constraints, unless its specification explicitly states
+otherwise.  They are part of the solution, and every solver should
+be able to deal with them.  In the same way, a solver may find that
+some monitors have been deliberately detached before it starts
+running.  For example, all monitors of soft constraints may have
+been detached, because the caller wants the solver to concentrate
+on hard constraints.  A solver should not change the attachments
+of monitors to the solution, unless its specification explicitly
+states otherwise.  Its aim is to minimize @C { KheSolnCost(soln) },
+however that is defined by @C { soln }'s monitor attachments.
+@PP
+There are two ways to exclude a monitor from contributing to the
+solution cost:  by detaching it using @C { KheMonitorDetachFromSoln },
+and by ensuring that there is no path from it to the solution group
+monitor.  The first way is usually best, because it is the efficient way.
+@PP
+Some solvers need specific monitor groupings.  The Kempe meet
+move (Section {@NumberOf time_solvers.kempe}) is an
+example:  its precondition specifies that a particular group
+monitor must be present.  This is permissible, and as with all
+preconditions it imposes a requirement on the caller of the
+operation to ensure that the precondition is satisfied when the
+operation is called.  But such requirements should not prohibit the
+presence of other group monitors.  For example, the implementation
+of the Kempe meet move operation begins with a tiny search for the
+group monitor it requires.  If other group monitors are present
+nearby, that is not a problem.  If this example is followed,
+multiple requirements for group monitors will not conflict.
+@PP
+There is a danger that group monitors will multiply, slowing down
+the solve and confusing its logic.  It is best if each function
+that creates a group monitor takes responsibility for deleting it
+later, even if this means creating the same group monitors several
+times over.  Timing tests conducted by the author show that adding
+and deleting the group monitors used by the various solvers in this
+guide takes an insignificant amount of time.
+@PP
+It is convenient to have standard values for the sub-tags and
+sub-tag labels of the group monitors created by grouping functions,
+both correlation and focus.  So KHE defines type
+@ID {0.90 1.0} @Scale @C {
+typedef enum {
+  KHE_SUBTAG_SPLIT_EVENTS,	      /* "SplitEventsGroupMonitor"           */
+  KHE_SUBTAG_DISTRIBUTE_SPLIT_EVENTS, /* "DistributeSplitEventsGroupMonitor" */
+  KHE_SUBTAG_ASSIGN_TIME,	      /* "AssignTimeGroupMonitor"            */
+  KHE_SUBTAG_PREFER_TIMES,	      /* "PreferTimesGroupMonitor"           */
+  KHE_SUBTAG_SPREAD_EVENTS,	      /* "SpreadEventsGroupMonitor"          */
+  KHE_SUBTAG_LINK_EVENTS,	      /* "LinkEventsGroupMonitor"            */
+  KHE_SUBTAG_ORDER_EVENTS,	      /* "OrderEventsGroupMonitor"           */
+  KHE_SUBTAG_ASSIGN_RESOURCE,	      /* "AssignResourceGroupMonitor"        */
+  KHE_SUBTAG_PREFER_RESOURCES,	      /* "PreferResourcesGroupMonitor"       */
+  KHE_SUBTAG_AVOID_SPLIT_ASSIGNMENTS, /* "AvoidSplitAssignmentsGroupMonitor" */
+  KHE_SUBTAG_AVOID_CLASHES,	      /* "AvoidClashesGroupMonitor"          */
+  KHE_SUBTAG_AVOID_UNAVAILABLE_TIMES, /* "AvoidUnavailableTimesGroupMonitor" */
+  KHE_SUBTAG_LIMIT_IDLE_TIMES,	      /* "LimitIdleTimesGroupMonitor"        */
+  KHE_SUBTAG_CLUSTER_BUSY_TIMES,      /* "ClusterBusyTimesGroupMonitor"      */
+  KHE_SUBTAG_LIMIT_BUSY_TIMES,	      /* "LimitBusyTimesGroupMonitor"        */
+  KHE_SUBTAG_LIMIT_WORKLOAD,	      /* "LimitWorkloadGroupMonitor"         */
+  KHE_SUBTAG_LIMIT_ACTIVE_INTERVALS,  /* "LimitActiveIntervalsGroupMonitor"  */
+  KHE_SUBTAG_LIMIT_RESOURCES,         /* "LimitResourcesGroupMonitor"        */
+  KHE_SUBTAG_ORDINARY_DEMAND,	      /* "OrdinaryDemandGroupMonitor"        */
+  KHE_SUBTAG_WORKLOAD_DEMAND,	      /* "WorkloadDemandGroupMonitor"        */
+  KHE_SUBTAG_KEMPE_DEMAND,	      /* "KempeDemandGroupMonitor"           */
+  KHE_SUBTAG_NODE_TIME_REPAIR,	      /* "NodeTimeRepairGroupMonitor"        */
+  KHE_SUBTAG_LAYER_TIME_REPAIR,	      /* "LayerTimeRepairGroupMonitor"       */
+  KHE_SUBTAG_TASKING,		      /* "TaskingGroupMonitor"               */
+  KHE_SUBTAG_ALL_DEMAND		      /* "AllDemandGroupMonitor"             */
+} KHE_SUBTAG_STANDARD_TYPE;
+}
+for the sub-tags, and the strings in comments, obtainable by calling
+@ID @C {
+char *KheSubTagLabel(KHE_SUBTAG_STANDARD_TYPE sub_tag);
+}
+for the corresponding sub-tag labels.  There is also
+@ID @C {
+KHE_SUBTAG_STANDARD_TYPE KheSubTagFromTag(KHE_MONITOR_TAG tag);
+}
+which returns the appropriate sub-tag for a group monitor whose
+children have the given @C { tag }.
+@PP
+When adding and deleting groupings, these public functions are often helpful:
+@ID @C {
+void KheMonitorAddSelfOrParent(KHE_MONITOR m, int sub_tag,
+  KHE_GROUP_MONITOR gm);
+bool KheMonitorHasParent(KHE_MONITOR m, int sub_tag,
+  KHE_GROUP_MONITOR *res_gm);
+}
+# void KheMonitorDeleteAllParentsRecursive(KHE_MONITOR m);
+Consult the documentation in source file @C { khe_ss_grouping.c }
+to find out what they do.
+@End @SubSection
+
+@SubSection
+    @Title { Focus groupings }
+    @Tag { general_solvers.grouping.focus }
+@Begin
+@LP
+@I { Focus groupings } are monitor groupings that are not correlation
+groupings (that is, they do not group monitors which monitor the same
+thing).  They group uncorrelated monitors for particular purposes,
+such as efficient access to defects.
+@PP
+Focus groupings are often built on correlation groupings:  if a
+monitor that a focus grouping handles is a child of a correlation
+group monitor, the correlation group monitor goes into the focus
+grouping, replacing the individual monitors which are its children.
+@PP
+A focus grouping makes one group monitor, called a
+@I { focus group monitor }, not many.  The focus group monitor is not
+made a child of the solution object, nor are its children unlinked
+from any other parents that they may have.  So it does not disturb
+existing calculations in any way; rather, it adds a separate calculation
+on the side.  It follows that a focus grouping can be removed by
+passing the focus group monitor to @C { KheGroupMonitorDelete }.
+@PP
+Functions for creating focus groupings appear elsewhere in this
+guide.  They include @C { KheKempeDemandGroupMonitorMake }, needed by
+Kempe and ejecting meet moves (Section {@NumberOf time_solvers.kempe}),
+and several functions used by ejection chain repair algorithms
+(Section {@NumberOf eject.practice.focus}).
+@End @SubSection
+
+@SubSection
+    @Title { Correlation groupings }
+    @Tag { general_solvers.grouping.correlation }
+@Begin
+@LP
+Two monitors are @I correlated when they monitor the same thing, not
+necessarily formally, but in reality.  For example, if two events are
+joined by a link events constraint, and one is fixed to the other,
+then two spread events monitors, one for each event, will be correlated.
+@PP
+A @I defect is a specific point of imperfection in a solution,
+represented concretely by a monitor with non-zero cost.
+@I { Correlated defects } are a problem for some solvers, notably for
+ejection chains.  The cost of each defect separately might not be
+large enough to end the chain if removed, causing an ejection chain
+to terminate in failure, whereas if it was clear that there was really
+only one problem, the chain might be able to repair it and continue.
+@PP
+We solve this problem as follows.  Suppose we know that monitors
+@C { m1 } and @C { m2 } are correlated.  We introduce a group
+monitor @C { g }, make @C { m1 } and @C { m2 } children of @C { g },
+and ensure that when handling defects we use @C { g }, not @C { m1 }
+and @C { m2 }.  For example, ejection chains would ensure that
+focus groupings @C { start_gm } and @C { continue_gm } have
+@C { g } among their children, not @C { m1 } and @C { m2 }.  When
+@C { m1 } and @C { m2 } signal a defect, the signal is received as
+the single defect @C { g }, not as the two defects @C { m1 } and @C { m2 }.
+# @PP
+# So correlated monitors
+# should be grouped, whenever possible.  These groups are the
+# equivalence classes of the correlation relation, which is
+# clearly an equivalence relation.  A grouping of correlated
+# monitors is called a @I { correlation grouping }.
+@PP
+A @I { correlation grouping } is a set of group monitors, each of
+which groups some correlated monitors.  Installing a correlation
+grouping should not disturb existing groupings, or change the
+solution cost.  So a function which creates a correlation grouping
+works as follows.
+@PP
+Monitors not relevant to the grouping remain untouched.  Relevant
+monitors are partitioned into sets @M { S sub i } of monitors that
+monitor the same thing, and so could be grouped; and then each
+@M { S sub i } is partitioned again into sets @M { S sub ij } of
+monitors that have the same parents.  For each @M { S sub ij }
+of cardinality at least 2, create a group monitor @M { g }, make
+each @M { s in S sub ij } a child of @M { g }, make @M { g } a
+child of each of the common parents, and unlink each @M { s }
+from its other parents.
+# In this way, the grouping is added to the
+# existing monitor structure without changing the cost of any monitor.
+# are deleted from any parents they have, and partitioned into groups
+# of correlated monitors.  For each group containing two or more
+# monitors, a group monitor called a @I { correlation group monitor }
+# is made, the monitors are made children of it, and it is made a
+# child of the solution object.  For each group containing one monitor,
+# that monitor is made a child of the solution, and no group monitor
+# is made.  Any group monitors other than the solution object which
+# lose all their children because of these changes are deleted, possibly
+# causing further deletions of childless group monitors.
+@PP
+Group monitors that are part of a correlation grouping are given
+sub-tags that identify them as such.  These are used in two ways.
+Whenever a focus grouping wants to add a certain monitor, it should
+check first whether that monitor has a parent which is part of a
+correlation grouping.  In that case it should add the parent, not
+the original monitor, taking care to not add the same parent twice.
+(Notice that the same result is then produced whether the focus
+grouping is added first or the correlation grouping is added
+first.)  Second, a function which deletes a correlation grouping
+can do so by visiting all monitors relevant to the grouping and
+deleting those parents whose sub-tag identifies them as part of
+the correlation grouping.  The deleting is done by calls to
+@C { KheGroupMonitorBypassAndDelete }.  Clearly, this will return
+the monitor structure to its state before the grouping was added.
+@End @SubSection
+
+# @SubSection
+#     @Title { Correlation problems involving demand defects }
+#     @Tag { general_solvers.grouping.demand }
+# @Begin
+# @LP
+# # Section {@NumberOf time_structural.monitor} discusses the problem
+# # of correlated monitors, and how it can be solved by grouping.
+# Demand monitors (Chapter {@NumberOf matchings}), representing demand
+# nodes in the global tixel matching, are a difficult case for
+# correlation grouping.  They often correlate with other monitors,
+# but not in a simple way.  This section discusses the problems they
+# raise and how KHE handles them.
+# @PP
+# Demand monitors correlate with avoid clashes monitors:  when there is
+# a clash, there will be both an avoid clashes defect and an ordinary
+# demand defect.  They also correlate with avoid unavailable times, limit
+# busy times, and limit workload monitors:  when there is a hard avoid
+# unavailable times defect, for example, there will also be a demand
+# defect.  There are several possible ways to handle these correlations,
+# which we'll consider now.
+# # This section explores several
+# # ways of handling these correlations, beginning with grouping.
+# @PP
+# @BI { Group the correlated monitors. }  Grouping is the ideal solution
+# for correlation problems, but it does not work here.  There are two
+# reasons for this.
+# @PP
+# First, although every avoid clashes defect has a correlated ordinary
+# demand defect, unless the resource involved is preassigned there is
+# no way to predict which monitors will be correlated, since that
+# depends on which resource is assigned to the demand monitors' tasks.
+# @PP
+# Second, grouping workload demand monitors with the resource monitors
+# they are derived from has a subtle flaw.  A demand defect is really
+# the whole set of demand monitors that compete for the insufficient
+# supply.  (These sets, called Hall sets, are quite unpredictable and
+# cannot themselves be grouped.)  A workload demand defect shows up,
+# not in the workload demand monitor itself, but in an ordinary demand
+# monitor that competes with it.  This is because the last demand tixel
+# to change its domain and require rematching is the one that misses out
+# on the available supply, and workload demand monitors never change their
+# domains.
+# # So this grouping still leaves two correlated defects
+# # ungrouped:  the group monitor and the unmatched ordinary demand monitor.
+# @PP
+# If grouping does not work, then one of the correlated monitors has
+# to be detached or otherwise ignored.  There are several ways to do this.
+# The following discussion sometimes assumes that the grouping is being
+# done in support of ejection chains, but in fact it applies to any
+# algorithm which pays serious attention to defects.
+# @PP
+# @BI { Detach demand monitors. }  This does not work, because no-one
+# notices that six Science meets are scheduled simultaneously when
+# there are only five Science laboratories, and the resulting time
+# assignment is useless.
+# @PP
+# @BI { Attach demand monitors but exclude them from continue group monitors. }
+# This prevents correlated monitors from appearing on defect lists,
+# but both costs continue to be added to the solution cost, so
+# removing the resource defect alone does not produce an overall
+# improvement.  The chain ends in failure; the ejector cannot
+# see that repairing the resource defect could work.
+# @PP
+# @BI { Attach demand monitors but exclude them from the solution and
+# continue group monitors; add a limit monitor holding them. }  Then
+# other monitors will be repaired, but no chain which increases the total
+# number of demand defects will be accepted.  This has two problems.
+# @PP
+# First, it can waste time constructing chains which fall at the last
+# hurdle when it is discovered that they increase demand defects.  This
+# is particularly likely during time repair:  the six Science meets
+# problem could well occur and pass unnoticed as the chain is extended.
+# # Resource repair usually
+# # runs faster, and wasting time then does not matter so much.
+# @PP
+# Second, although it prevents demand defects from increasing, it
+# does not repair them.  This rules it out for time repair, which
+# is largely about repairing demand defects, but it may not matter
+# for resource repair.  Resource repair cannot reduce the number of
+# demand defects unless it moves meets:  merely assigning resources
+# reduces the domains of demand tixels, which cannot reduce demand
+# defects.  Even moving meets is unlikely to reduce demand defects
+# during resource repair, since many of those moves will have been
+# tried previously, during time repair.
+# @PP
+# @BI { Detach correlated resource monitors. }  Instead of detaching
+# demand monitors, detach the resource monitors they correlate with.
+# This is our preferred approach, and we will now go on to consider
+# how to carry it out for each kind of resource monitor.  The main
+# danger is @I { inexactness }:  if some detached resource monitor is
+# not modelled exactly by the demand monitors that replace it, then
+# some defects may be handled imperfectly.
+# @PP
+# @I { Detach all avoid clashes monitors. }  For every avoid clashes
+# defect there is an ordinary demand defect.  The only inexactness
+# is that avoid clashes monitors may have any weights, whereas demand
+# monitors have equal weight, usually 1 (hard).  But avoid clashes
+# constraints usually have weight 1 (hard) or more, so this does not
+# seem to be a problem in practice, given that, as the specification
+# says, hard constraint violations should be few in good solutions.
+# @PP
+# @I { Detach avoid unavailable times monitors that give rise to
+# workload demand monitors. }  These are monitors with weight at least 1
+# (hard).  The modelling here is exact apart from any difference in
+# hard weight, so again there is no problem in practice.
+# @PP
+# @I { Detach limit busy times monitors that give rise to workload
+# demand monitors. }  These are monitors with weight at least 1
+# (hard) which satisfy the subset tree condition
+# (Section {@NumberOf general_solvers.matchings.demand_nodes}).  Apart from the
+# possible difference in hard weight, this is exact except for one
+# problem:  limit busy times constraints can impose both a lower
+# and an upper limit on resource availability in some set of times,
+# and workload demand monitors do not model lower limits at all.
+# @PP
+# This can be fixed by (conceptually) breaking each limit busy times
+# monitor into two, an underload monitor and an overload monitor, and
+# detaching the overload monitor but not the underload monitor.  KHE
+# expresses this idea in a different way, chosen because it also
+# solves the problem presented by limit workload monitors, to be
+# discussed in their turn.
+# @PP
+# Limit busy times monitors have two attributes, @C { Minimum } and
+# @C { Maximum }, such that less than @C { Minimum } busy times is an
+# underload, and more than @C { Maximum } is an overload.  Add a third
+# attribute, @C { Ceiling }, such that @C { Ceiling >= Maximum }, and
+# specify that, with higher priority than the usual rule, when the number
+# of busy times exceeds @C { Ceiling } the deviation is 0.
+# @PP
+# Function @C { KheLimitBusyTimesMonitorSetCeiling }
+# (Section {@NumberOf monitoring.limitbusy}) may be called to set the
+# ceiling.  Setting it to @C { INT_MAX } (the default value) produces
+# the usual rule.  Setting it to @C { Maximum } is equivalent to
+# detaching overload monitoring.
+# @PP
+# @I { Detach limit workload monitors that give rise to workload
+# demand monitors. }  Limit workload monitors are similar to limit
+# busy times monitors whose set of times is the entire cycle.
+# However, the demand monitors derived from a limit workload
+# monitor do not necessarily model even the upper limit exactly
+# (Section {@NumberOf matchings.workload.construct}).  This
+# problem can be solved as follows.
+# @PP
+# Consider a resource with a hard limit workload monitor and some
+# hard workload demand monitors derived from it, and suppose that
+# all of these monitors are attached.  As the resource's workload
+# increases, it crosses from a `white region' of zero cost into a
+# `grey region' where the limit workload monitor has non-zero cost
+# but the workload demand monitors do not, and then into a `black
+# region' where both the limit workload monitor and the workload
+# demand monitors have non-zero cost.  This black region is the problem.
+# @PP
+# The problem is solved by adding a @C { Ceiling } attribute to
+# limit workload monitors, as for limit busy times monitors.
+# Function @C { KheLimitWorkloadMonitorSetCeiling }
+# (Section {@NumberOf monitoring_resource_monitors_workload})
+# sets the ceiling.  As before, the default value
+# is @C { INT_MAX }.  The appropriate alternative value is not
+# @C { Maximum }, but rather a value which marks the start of
+# the black region, so that the limit workload monitor's cost
+# drops to zero as the workload crosses from the grey region
+# to the black region.  In this way, all workload overloads
+# are reported, but by only one kind of monitor at any one time.
+# @PP
+# There is one anomaly in this arrangement:  a repair that
+# reduces workload from the black region to the grey region
+# does not always decrease cost.  This is a pity but it is
+# very much a second-order problem, given that the costs
+# involved are all hard costs, so that in practice repairs
+# are wanted that reduce them to zero.  What actually happens is
+# that one repair puts a resource above the white zone, and this
+# stimulates a choice of next repair which returns it to the white
+# zone.  Repairs which move between the grey and black zones are
+# possible but are not likely to lie on successful chains anyway,
+# so it does not matter much if their handling is imperfect.
+# @PP
+# The appropriate value for @C { Ceiling } is the number of times
+# in the cycle minus the total number of workload demand monitors
+# for the resource in question, regardless of their origin.  When
+# the resource's workload exceeds this value, there will be at
+# least one demand defect, and it is time for the limit workload
+# monitor to bow out.
+# @PP
+# To summarize all this:  there is some choice during resource
+# repair, but detaching resource monitors (with ceilings) always
+# works, and it is the only method that works during time repair.
+# @End @SubSection
+
+@SubSection
+    @Title { Functions for correlation grouping }
+    @Tag { general_solvers.grouping.functions }
+@Begin
+@LP
+One correlation grouping that does everything turns out to
+be best.  These functions provide it:
+@ID @C {
+void KheGroupCorrelatedMonitors(KHE_SOLN soln);
+void KheUnGroupCorrelatedMonitors(KHE_SOLN soln);
+}
+{0.93 1.0} @Scale @C { KheGroupCorrelatedMonitors }
+adds the grouping;
+{0.93 1.0} @Scale @C { KheUnGroupCorrelatedMonitors }
+removes it.
+# If @C { with_adjusting } is @C { true }, in addition to the grouping,
+# some resource monitors are @I adjusted (detached or otherwise adjusted),
+# following the plan from Section {@NumberOf general_solvers.grouping.demand}.
+@PP
+The rest of this section explains @C { KheGroupCorrelatedMonitors }
+in detail.  Here are three points that apply throughout what follows.
+They won't be mentioned again because it would get too tedious.
+First, grouping does not care whether a monitor is attached or
+detached, and so it groups both kinds.  It is quite safe to attach
+and detach monitors while they are grouped.  Second, the groupings
+described below are the larger ones, denoted @M { S sub i } in
+Section {@NumberOf general_solvers.grouping.correlation}.  The
+further division into the @M { S sub ij } based on equal parents
+is always done as well.  Third, if an @M { S sub ij } contains just
+one monitor, adding a group monitor would accomplish nothing useful
+and is not done.
+# (Adjusting, on the other hand, ignores detached monitors.)
+@PP
+@BI { Grouping correlated event monitors. }
+@C { KheGroupCorrelatedMonitors } begins by partitioning the events
+of @C { soln }'s instance into classes, placing events into the same
+class when following the fixed assignment paths out of their meets
+proves that their meets must run at the same times.  It then groups
+event monitors as follows.
+@PP
+@I { Split events and distribute split events monitors. } For each
+class, it groups together the split events and distribute split
+events monitors that monitor the events of that class.  It gives
+sub-tag @C { KHE_SUBTAG_SPLIT_EVENTS } to any group monitors it
+creates.  There is also a @C { KHE_SUBTAG_DISTRIBUTE_SPLIT_EVENTS }
+subtag, but it is not used.
+@PP
+@I { Assign time monitors. }  For each class, it groups the assign
+time monitors that monitor the events of that class, giving sub-tag
+@C { KHE_SUBTAG_ASSIGN_TIME } to any group monitors.
+@PP
+@I { Prefer times monitors. }  Within each class, it groups those
+prefer times monitors that monitor events of that class whose
+constraints request the same set of times, giving sub-tag
+@C { KHE_SUBTAG_PREFER_TIMES } to any group monitors.
+@PP
+@I { Spread events monitors. }  For each spread events monitor, it
+finds the set of classes that hold the events it monitors.  It
+groups spread events monitors whose sets of classes are equal,
+giving sub-tag @C { KHE_SUBTAG_SPREAD_EVENTS } to any group
+monitors.  Strictly speaking, only monitors whose constraints
+request the same time groups with the same limits should be grouped,
+but that check is not currently being made.
+@PP
+@I { Link events monitors. }  It does nothing with these monitors,
+because they are usually handled structurally, by @C { KheLayerTreeMake }
+(Section {@NumberOf time_structural.construction}).
+@PP
+@I { Order events monitors. }  For each order events monitor, it
+finds the sequence of two classes that hold the two events it monitors.
+(If these classes are the same, there is probably a conflict between
+an order events monitor and a link events monitor.  The order events
+monitor remains ungrouped in that case.)  It groups order events
+monitors whose sequences of classes are equal, giving sub-tag
+@C { KHE_SUBTAG_ORDER_EVENTS } to any group monitors.  Strictly speaking,
+only monitors whose constraints request the same event separations
+should be grouped, but that check is not currently being made.
+@PP
+@BI { Grouping correlated event resource monitors. }
+Next, @C { KheGroupCorrelatedMonitors } partitions the event
+resources of @C { soln }'s instance into classes, placing event
+resources into the same class when following the fixed assignment
+paths out of their tasks proves that they must be assigned the same
+resources.  It then groups event resource monitors as follows.
+@PP
+@I { Assign resource monitors. }  For each class, it groups the
+assign resource monitors of that class's event resources, giving
+sub-tag @C { KHE_SUBTAG_ASSIGN_RESOURCE } to any group monitors.
+@PP
+@I { Prefer resources monitors. }  Within each class, it groups those
+prefer resources monitors that monitor the event resources of that
+class whose constraints request the same set of resources, giving
+sub-tag @C { KHE_SUBTAG_PREFER_RESOURCES } to any group monitors.
+@PP
+@I { Avoid split assignments monitors. }  There seems to be no
+useful correlation grouping of these monitors, so nothing is done with
+them.  They may be handled structurally, in which case they will
+have provably zero fixed cost and will be already detached.
+@PP
+@I { Limit resources monitors. }  These occur in nurse rostering
+instances and in practice place limits on the number of nurses (of
+a particular type, perhaps) assigned to a given shift.  There seems
+to be no useful correlation grouping of such monitors, so nothing
+is done with them.
+# There are three cases here.
+# First, these monitors are not grouped at all when option
+# @C { es_group_limit_resources_off } is @C { true }.  Second, when
+# @C { options } is able to supply both a common frame (option
+# @C { gs_common_frame }) and an event timetable monitor (option
+# @C { gs_event_timetable_monitor }), then limit resources monitors
+# are grouped `by frame', as explained next.  Otherwise, and
+# thirdly, they are grouped `by event'.
+# @PP
+# Grouping by frame means that for each time group @M { g } of the
+# common frame, all limit resources monitors of the same resource
+# type that monitor tasks running during @M { g } are grouped.
+# Grouping by event means that for each event, all limit resource
+# monitors of the same resource type that monitor tasks of that
+# event are grouped.
+# @PP
+# This arrangement is arguably deficient.  The issue is that
+# one task may be monitored by more than one limit resources
+# monitor, and then those monitors should probably be grouped;
+# but the current grouping goes beyond that and needs revising.
+@PP
+@BI { Grouping correlated resource monitors. }
+Students who follow the same curriculum have the same timetable.  So
+for each resource type @C { rt } whose resources are all preassigned,
+according to @C { KheResourceTypeDemandIsAllPreassigned(rt) }
+(Section {@NumberOf resource_types}), the resource monitors of
+@C { rt }'s resources are grouped by @C { KheGroupCorrelatedMonitors }
+as follows.
+@PP
+@I { Avoid clashes monitors. }  It groups those avoid clashes monitors
+derived from the same constraint whose resources attend the same
+events, giving sub-tag
+{0.95 1.0} @Scale @C { KHE_SUBTAG_AVOID_CLASHES } to any group monitors.
+@PP
+@I { Avoid unavailable times monitors. }  It groups avoid unavailable
+times monitors derived from the same constraint whose resources attend
+the same events, giving any group monitors sub-tag
+@C { KHE_SUBTAG_AVOID_UNAVAILABLE_TIMES }.
+@PP
+@I { Limit idle times monitors }.  It groups limit idle times monitors
+derived from the same constraint whose resources attend the same events,
+giving sub-tag @C { KHE_SUBTAG_LIMIT_IDLE_TIMES } to any group monitors.
+@PP
+@I { Cluster busy times monitors. }  It groups cluster busy times monitors
+derived from the same constraint whose resources attend the same events,
+giving any group monitors sub-tag @C { KHE_SUBTAG_CLUSTER_BUSY_TIMES }.
+@PP
+@I { Limit busy times monitors. }  IKheGroupCorrelatedMonitorst groups limit busy times monitors
+derived from the same constraint whose resources attend the same events,
+giving sub-tag @C { KHE_SUBTAG_LIMIT_BUSY_TIMES } to any group monitors.
+@PP
+@I { Limit workload monitors. }  It groups limit workload monitors
+derived from the same constraint whose resources attend the same events,
+giving sub-tag @C { KHE_SUBTAG_LIMIT_WORKLOAD } to any group monitors.
+@PP
+@I { Limit active intervals monitors. }  It groups limit active intervals
+monitors derived from the same constraint whose resources attend the same
+events, giving sub-tag @C { KHE_SUBTAG_LIMIT_ACTIVE_INTERVALS } to any
+group monitors.
+@PP
+Fixed assignments between meets are taken into account when deciding
+whether two resources attend the same events.  As far as resource
+monitors are concerned, it is when the resource is busy that matters,
+not which meets it attends.
+@PP
+@BI { Grouping correlated demand monitors. }  @C { KheGroupCorrelatedMonitors }
+groups demand monitors as follows.  A limit monitor holding them can
+be created separately (Section {@NumberOf general_solvers.grouping.focus}).
+@PP
+@I { Ordinary demand monitors. }  For each set of meets such that
+the fixed assignment paths out of those meets end at the same meet,
+it groups the demand monitors of those meets' tasks, giving sub-tag
+@C { KHE_SUBTAG_ORDINARY_DEMAND } to any group monitors.  The reasoning
+is that the only practical way to repair an ordinary demand defect
+is to change the assignment of its meet (or some other clashing meet),
+which will affect all the demand monitors grouped with it here.
+@PP
+Actually the situation is a little more nuanced.  What has just
+been said is correct for time assignment, when moves of unfixed
+meets are the only repairs available.  During resource assignment
+it is usual to use the global tixel matching only as a limit monitor
+(or not at all), making other groupings of demand monitors irrelevant.
+This leaves undetermined the grouping to use if repairs that combine
+changes to both time and resource assignments are ever tried.
+@PP
+@I { Workload demand monitors. }  These remain ungrouped.  Workload
+demand defects appear only indirectly, as competitors of ordinary
+demand defects.
+# As
+# explained in Section {@NumberOf general_solvers.grouping.demand},
+# workload demand defects appear only indirectly, as competitors
+# of ordinary demand defects.
+# @PP
+# @BI { Adjusting resource monitors. }
+# @C { KheGroupCorrelatedMonitors } detaches or otherwise adjusts
+# attached resource monitors (whether they are grouped or not) which
+# are correlated with demand monitors, following the plan from
+# Section {@NumberOf general_solvers.grouping.demand}.  Awkwardly,
+# this depends on the state of the global tixel matching.  In practice
+# there are three cases:
+# @NumberedList
+#
+# @LI {
+# There is a global tixel matching, its demand monitors are attached,
+# and they contribute to the cost of the solution.  This is the usual
+# case during time assignment, because it penalizes running six Science
+# classes simultaneously when there are only five Science laboratories.
+# One way to get it is to include item @C { gta } in a do-it-yourself
+# solver (Section {@NumberOf general_solvers.general}).
+# }
+#
+# @LI {
+# There is a global tixel matching, and its demand monitors are attached, but
+# they are not descendants of the solution (considered as a group monitor)
+# and so do not contribute to the cost of the solution.  This case arises,
+# for example, when the global tixel matching is used to implement the
+# resource assignment invariant (Section {@NumberOf resource_solvers.invt})
+# during resource assignment.  One way to get it is to include item
+# @C { gtb } in a do-it-yourself solver.
+# }
+#
+# @LI {
+# There is no global tixel matching, or there is one but its demand
+# monitors are detached.  This case arises when the user decides to
+# not use the global tixel matching.  It may be the right decision
+# when all events have preassigned times, as in nurse rostering.
+# One way to get it is to include neither @C { gta } nor @C { gtb }
+# in do-it-yourself solvers.
+# }
+#
+# @EndList
+# Adjusting is wanted only in the first case, but there is no easy way
+# to distinguish between these cases automatically.  This is why
+# @C { KheGroupCorrelatedMonitors } has a @C { with_adjust } parameter:
+# it relies on the caller to tell it whether adjusting is wanted.
+# @PP
+# When @C { with_adjust } is @C { true }, then,
+# @C { KheGroupCorrelatedMonitors } does the following:
+# @BulletList
+#
+# @LI @OneRow {
+# It detaches all attached avoid clashes monitors.
+# }
+#
+# @LI @OneRow {
+# For each attached workload demand monitor whose originating monitor
+# @C { m } is an attached avoid unavailable times monitor, it detaches
+# @C { m }.
+# }
+#
+# @LI @OneRow {
+# For each attached workload demand monitor whose originating monitor
+# @C { m } is an attached limit busy times monitor, if @C { m }'s
+# lower limit is 0 it detaches @C { m }, otherwise it sets @C { m }'s
+# @C { Ceiling } attribute to its @C { Maximum } attribute, by calling
+# @C { KheLimitBusyTimesMonitorSetCeiling }.
+# }
+#
+# @LI @OneRow {
+# For each attached workload demand monitor whose originating monitor
+# @C { m } is an attached limit workload monitor, it sets @C { m }'s
+# @C { Ceiling } attribute to the cycle length minus the number of workload
+# demand monitors for @C { m }'s resource (regardless of origin), or 0 if
+# this is negative, by calling @C { KheLimitWorkloadMonitorSetCeiling }.
+# }
+#
+# @EndList
+# Section {@NumberOf general_solvers.grouping.demand} explains all this.
+@End @SubSection
+
+@EndSubSections
+@End @Section
+
+@Section
+    @Title { Matchings }
+    @Tag { general_solvers.matchings }
+@Begin
+@LP
+The KHE platform implements bipartite matching
+(Chapter {@NumberOf matchings}), but leaves the details of setting
+it up in practice to the user.  This section fills in those details.
+@BeginSubSections
+
+@SubSection
+    @Title { Introduction }
+    @Tag { general_solvers.matchings.intro }
+@Begin
+@LP
+Creating and deleting the matching is a simple as calling
+@ID @C {
+void KheMatchingBegin(KHE_SOLN soln, bool integrated);
+void KheMatchingEnd(KHE_SOLN soln);
+}
+@C { KheMatchingBegin } calls @C { KheSolnMatchingBegin }, then adds
+suitable ordinary and workload demand nodes
+(Section {@NumberOf general_solvers.matchings.demand_nodes}), as well
+as detaching or otherwise adjusting some monitors to avoid double
+counting (Section {@NumberOf general_solvers.matchings.double}).
+@C { KheMatchingEnd } undoes what @C { KheMatchingBegin } does,
+including calling @C { KheSolnMatchingEnd }.
+# but it too does other things.
+# Parameter @C { weight } is the
+# weight to give to each demand monitor, although it influences some
+# other things as well, that we will come to later.  Its value is
+# usually @C { KheCost(1, 0) }, that is, 1 (hard).
+# Parameter @I { integrated }
+# is @C { true } when an integrated matching is wanted, and @C { false }
+# when a separate matching is wanted.  We'll explain these terms now.
+# @PP
+# It is possible to use these functions without knowing any more
+# about them than the distinction between separate and integrated
+# matching, to be described next.  However this section explains
+# what the functions do in full detail.
+# @BeginSubSections
+#
+# @SubSection
+#     @Title { Separate matching and integrated matching }
+#     @Tag { general_solvers.matchings.integrated }
+# @Begin
+# @LP
+# @PP
+# By default, KHE runs without the matching.  One use for adding
+# it is to uncover problems before solving begins (not enough
+# Science laboratories, and so on).  The HSEval web site can do this,
+# for example.  When using the matching for solving, there are two
+@PP
+Setting @C { integrated } to @C { false } produces a
+@I { separate matching }, which means that the matching is kept
+separate from the regular calculation of solution cost.  This is
+achieved by attaching all demand monitors (so that they are included
+in the matching graph and kept up to date as the solution changes)
+but not making them descendants of the solution (so that they don't
+contribute to its cost).  Do-it-yourself solvers
+(Section {@NumberOf general_solvers.yourself}) have item @C { gts }
+for this.  Solvers can still take the matching into account despite
+the separateness, by calling @C { KheSolnMatchingDefectCount } and
+@C { KheSolnMatchingDefect } (Section {@NumberOf matchings.failure}),
+which return the unmatched demand nodes.
+@PP
+An example of separate matching is the @I { resource assignment invariant },
+which states that as resource assignment proceeds the number of unmatched
+demand nodes must not increase.  The details don't concern us here (see
+Section {@NumberOf resource_solvers.invt}); our point is that this
+approach allows the matching to influence the solve while keeping it
+separate from the regular calculation of solution cost.
+@PP
+Setting parameter @C { integrated } to @C { true } produces an
+@I { integrated matching }, which means that the cost of the matching
+is included in the cost of the solution.  This is achieved by attaching
+all demand monitors as for separate matching, but also making them
+descendants of the solution.  Each unmatched demand node contributes a
+cost to the solution cost; there is no need to call
+@C { KheSolnMatchingDefectCount }.  Do-it-yourself solvers
+(Section {@NumberOf general_solvers.yourself}) have item @C { gti }
+for this.
+@PP
+The main advantage of integrated matching is that it allows any
+solver to benefit from the matching without accessing it explicitly.
+But there are problems.  One is that the weight of each demand node,
+considered as a monitor, suddenly matters.  Finding a suitable weight
+can be awkward, especially considering that every demand node has to
+have the same weight.  @C { KheMatchingBegin } chooses
+@C { KheCost(1, 0) } (that is, hard cost 1) as the weight, although
+the implementation has been written to allow this value to be passed
+as a parameter if that turns out to be needed in the future.  We
+will refer to this important weight as @M { W } from here on.
+@PP
+The other main problem is @I { double counting }, where the matching
+reports some defect and some other monitor reports it too, effectively
+doubling its weight, making it more important than it really is.  This
+may not matter much when @M { W } is a hard weight, but anyway
+@C { KheMatchingBegin } tries to eliminate double counting,
+as explained in Section {@NumberOf general_solvers.matchings.double}.
+@PP
+Double counting resembles correlated monitors
+(Section {@NumberOf general_solvers.grouping.correlation}), in
+involving two monitors that monitor the same thing.  But there
+is a vital difference.  Two correlated monitors are part of the
+official cost of the solution; both have a right to be there.  An
+integrated matching is not part of the official cost, so the aim
+changes from merely recognizing the correlation to minimizing
+the distance from the official cost while retaining the advantages
+of detecting matching defects.
+# integration requires the user
+# to select a single value which becomes the cost of each unmatched
+# demand node (set by calling @C { KheSolnMatchingSetWeight }).
+# @C { KheMatchingBegin } sets this to the value of its @C { weight }
+# parameter, but then, when constructing the matching, it ignores
+# monitors whose combined weight
+# @PP
+# To understand these problems, we define what we will call the
+# @I { integrated matching ideal }.  This is a state of affairs,
+# not always achievable in practice, in which the reported solution
+# cost can be justified as being truthful, while at the same time
+# including the matching cost.  For example, if there are six Science
+# classes running simultaneously but only five Science laboratories,
+# then even before rooms are assigned we can justify the matching
+# cost by saying that in every solution derived from this one, there
+# must be either a Science class without a room, or a Science
+# laboratory room clash, and a cost equal to the smaller of the
+# costs of these two defects is inevitable.  The integrated matching
+# ideal tells no lies about cost, and gives earlier warning of defects
+# than a naive evaluation of constraints can do.  All problems are
+# departures from this ideal.
+# @PP
+# Our first problem is @I { invalidity }, where the matching
+# reports a non-existent defect.  If the demand nodes truly represent
+# demand, and the supply nodes truly represent supply, then this
+# will not happen.  But the matching assumes that every event has
+# either a preassigned time or an assign time constraint, every
+# task has either a preassigned resource or an assign resource
+# constraint, and every resource has an avoid clashes constraint.
+# If not, using it may be invalid.
+# @PP
+# Invalidity is a potential problem for separate as well as integrated
+# matching, but it is not hard to avoid, and @C { KheMatchingBegin }
+# @PP
+# Our next problem is @I { double counting }, where the matching
+# reports a defect, justifiably, but another monitor also reports
+# it.  The defect is counted twice, effectively doubling its weight.
+# @PP
+# Double counting is analysed below
+# (Section {@NumberOf general_solvers.grouping.demand}).  The solution
+# given there, and implemented by @C { KheMatchingBegin }, is to
+# detach non-demand monitors that double-count with demand
+# monitors.  It includes detaching avoid clashes monitors, but not
+# assign resource monitors.  If a resource could easily be assigned
+# to some task but a solver refrains from doing that for any reason,
+# the matching will not report a defect, but the assign resource
+# monitor will.  On the other hand, if a solver refrains from
+# assigning a resource because no suitable resource is available,
+# this defect will be double counted, once by the matching, and
+# again by the assign resource constraint.  So we fall short of
+# the integrated matching ideal in this case.
+# @PP
+# If there is no invalidity and no double counting, can anything else
+# go wrong?  Just one thing:  @I { incorrect weights } for the demand
+# monitors.  Choosing weights is a problem because the monitors that
+# get detached to avoid double counting have individual weights, but
+# the demand monitors that replace them have equal weights.  This is
+# because the matching algorithm tries to minimize the total number
+# of unmatched nodes, not their total weight.  Another algorithm,
+# @I { weighted bipartite matching }, can minimize total weight,
+# but the author has judged it to be too slow for solving.
+# @PP
+# The solution adopted by @C { KheMatchingBegin } is to take notice
+# only of monitors that have weight at least 1 (hard), and to replace
+# them with demand monitors that have weight exactly 1 (hard).  In
+# this way the weights of the demand monitors roughly equal the
+# weights of the detached monitors that they replace, given that
+# hard weights larger than 1 are rarely used.
+# @PP
+# For example, if assignment of @M { k } nurses to some shift
+# is desirable but not essential, there will be @M { k } tasks
+# with soft assign resource constraints, but those constraints
+# will not be noticed, so the matching will not have demand
+# nodes for those tasks.
+# @PP
+# Problems matter only if they lead solvers astray.  During time
+# assignment, for example, it may not matter if some resource
+# defect is double counted, but it does matter if no-one realizes
+# that six simultaneous Science classes will not work when there
+# are only five Science laboratories.  The significance of a
+# departure from the ideal is more important than its mere existence.
+@End @SubSection
+
+@SubSection
+    @Title { Demand nodes }
+    @Tag { general_solvers.matchings.demand_nodes }
+@Begin
+@LP
+Apart from calling @C { KheSolnMatchingBegin }, the main task
+of @C { KheMatchingBegin } is to create an appropriate set of
+demand nodes.  This section explains how this is done.
+@PP
+@C { KheMatchingBegin } ignores detached monitors and
+monitors of weight less than @M { W }:  it behaves as though
+they are not there at all.  This is important for integrated
+matching, which replaces some of the monitors it does
+not ignore with demand monitors of weight @M { W }.  It is
+less important for separate matching, but even there we do not
+want to place some minor monitor with soft weight 1 on the same
+footing as an important monitor with weight @M { W }.
+@PP
+An ordinary demand node represents a demand for one resource at one
+offset of one task.  A first thought is that @C { KheMatchingBegin }
+should create one of these for each offset of each task.  So it does,
+but with three exceptions.  The first two never occur in practice;
+the third does.
+@PP
+First, if some resource does not have an attached avoid clashes
+monitor with weight at least @M { W }, then part of the rationale
+for the matching is absent, the part that says that each supply node
+may match with at most one demand node.  So @C { KheMatchingBegin }
+omits demand nodes for tasks of the same resource type as any
+resource that does not have such an avoid clashes monitor.
+@PP
+Second, if some meet does not have either a preassigned time or
+an attached assign time monitor with weight at least @M { W },
+then that meet does not have to be assigned a time at all, and
+by omitting to assign a time one can avoid all clashes involving
+that meet.  So @C { KheMatchingBegin } omits all demand nodes for
+tasks from meets of this kind.
+@PP
+Third, if some task does not have either a preassigned resource
+or an attached assign resource monitor of weight at least @M { W },
+it does not have to be assigned a resource at all, and so
+@C { KheMatchingBegin } omits its demand nodes.  This case arises
+in nurse rostering, when a shift needs at least @M { a } and at
+most @M { b } nurses.  The last @M { b - a } tasks have no assign
+resource monitors.  Or if assignment is desirable but not
+essential, there may be attached assign resource monitors of
+weight less than @M { W }, which are ignored as usual.
+@PP
+In addition to ordinary demand nodes, @C { KheMatchingBegin } adds
+workload demand nodes, used to take account of avoid unavailable
+times monitors, limit busy times monitors, and limit workload
+monitors, collectively called @I { workload demand monitors } here.
+Again, only attached monitors of weight @M { W } or more are noticed.
+@PP
+# Here is a realistic example that reveals the complexities of the
+# situation.
+For example, suppose that the cycle has 40 times, and teacher
+@M { "Smith" } has a workload limit of 30 times and is unavailable
+at time @M { "Mon1" }.  Then ten workload demand nodes are wanted,
+one demanding supply tixel @M { ("Smith", "Mon1") }, and the other
+nine demanding @M { "Smith" } at one unconstrained time.  In this
+way, 10 of Smith's 40 supply nodes have to match with workload
+demand nodes, leaving 30 available for matching with ordinary
+demand nodes; and one of the workload demand nodes also has to
+match with @M { "Mon1" }, leaving @M { "Smith" } unavailable
+for regular work at that time.
+@PP
+It is important to include workload demand nodes, since otherwise
+the problems reported by the matching will be unrealistically few.
+They are the same for all matching types, and the same for separate
+and integrated matching, although when setting up for integrated
+matching we also have to avoid double counting, as discussed below
+(Section {@NumberOf general_solvers.matchings.double}).
+# @PP
+# @C { KheMatchingBegin } builds workload demand nodes in two steps.
+# First, it converts the workload demand monitors into a set of
+# @I { workload requirements }.  Then it converts the workload
+# requirements into workload demand monitors.
+@PP
+For the purposes of matchings only, a @I { workload requirement } is
+a requirement imposed on a resource saying that it should be occupied
+attending meets for at most a given number of the times of some time
+group.  We can represent a workload requirement concisely by the pair
+@M { n ``` T }, where the resource is implicit, @M { n } is the
+number of times, and @M { T } is the time group.  For example, if
+@C { r } is unavailable at time @C { Mon1 }, this would give rise to
+workload requirement @M { 0 ``` lbrace Mon1 rbrace }.
+@PP
+To make the workload demand nodes for a given resource @M { r },
+@C { KheMatchingBegin } first makes a set of workload requirements
+derived from the avoid unavailable times, limit busy times, and
+limit workload monitors of @C { r } (attached and of weight at
+least @M { W }, as usual).  It places these requirements into a
+tree structure that we will present shortly, and then generates
+@C { r }'s workload demand nodes in the course of a postorder
+traversal of this tree.
+@PP
+If @C { m } is an avoid unavailable times monitor, or a limit busy
+times monitor whose @C { Maximum } attribute is 0, then for each
+time @M { t } in @C { m }'s constraint's domain, @C { KheMatchingBegin }
+generates workload requirement @M { 0 ``` lbrace t rbrace }.  If
+@C { m } is a limit busy times monitor with @C { Maximum } greater
+than 0, then for each time group @M { T } in @C { m }'s constraint,
+@C { KheMatchingBegin } generates workload requirement
+@M { n ``` T }, where @M { n } is @C { Maximum }.  The @C { Minimum }
+attribute is ignored.
+@PP
+A limit workload monitor is like a limit busy times monitor
+whose time group contains all the times of the cycle, so one
+workload requirement is generated, with the entire cycle as
+time group.  The number of this requirement requires careful
+calculation, involving the workloads of all events.  The remainder
+of this section explains this calculation.
+@PP
+Let @M { k } be the integer eventually given to the workload
+requirement.  Initialize @M { k } to the @C { Maximum } attribute
+of the limit workload constraint.  For each event resource
+@M { er }, let @M { d(er) } be its duration and @M { w(er) }
+be its workload.  The basic idea is that if @C { r } is assigned
+to @M { er }, then @M { d(er) - w(er) } should be added to
+@M { k }.  For example, a resource with workload limit 30 that
+is assigned to an event resource with duration 3 and workload 2
+needs a workload requirement of 31, not 30.  And if @C { r } is
+assigned to an event with duration 6 but workload 12, then
+@M { k } needs to be decreased by 6.
+@PP
+In some cases, preassignments or domain restrictions make it
+certain that @C { r } will be assigned to some event, and in
+those cases the adjustment can be done safely in advance.  For
+example, if every staff member attends a weekly meeting with
+duration 1 and workload 0, then their workload requirements
+can all be increased by 1 to compensate.  Similarly, if @C { r }
+will definitely not be assigned to some event, then the event's
+duration and workload have no effect on @C { r }.
+@PP
+The residual problem cases are those event resources @M { er }
+whose workload and duration differ, which @C { r } may be assigned
+to but not necessarily.  In these cases, an inexact model is used
+which preserves the guarantee that the number of unmatched nodes
+is a lower bound on the final number, but the number is weaker
+(that is, smaller) than the ideal.
+@PP
+If @M { w(er) > d(er) }, then @M { er } is ignored.  This case can
+only make the problem harder, so ignoring it means that the number
+returned will be smaller than the ideal.  If @M { w(er) < d(er) },
+then @M { d(er) - w(er) } is added to @M { k }, just as though
+@C { r } was assigned to @M { er }.  If @C { r } is ultimately
+assigned to @M { er }, then this will be exact; if it is not,
+then again it will weaken the bound, by overestimating @C { r }'s
+available workload.
+@PP
+These tests are actually applied to clusters of events known to
+be running simultaneously, because of required link events
+constraints or preassignments and other time domain restrictions.
+Each resource can be assigned to at most one of the event
+resources of the events of a cluster, so only one of the events,
+the one whose modelling is least exact, needs to be taken account of.
+@PP
+Once a complete set of workload requirements for resource @C { r }
+has been assembled, the next step is to convert these requirements
+into workload demand nodes.  The following explanation of how this
+is done is adapted from @Cite { $kingston2008resource }.
+@PP
+When converting workload requirements into workload demand nodes,
+the relationships between the requirements' time groups affect the
+outcome.  In general, an exact conversion seems to be possible only
+when these time groups satisfy the @I { subset tree condition }:
+each pair of time groups is either disjoint, or else one is a
+subset of the other.
+@PP
+For example, suppose the cycle has five days of eight times each,
+and resource @M { r } is required to be occupied for at most thirty
+times altogether and at most seven on any one day, and to be
+unavailable at times @I { Fri6 }, @I { Fri7 }, and @I { Fri8 }.
+These requirements form a tree (in general, a forest):
+@CD @Diag treehsep { 0.6c } treevsep { 0.8c } margin { 0.3f } {
+@Tree
+{
+  @Box { 30 @I Times }
+  @FirstSub @Box { 7 @I Mon }
+  @NextSub @Box { 7 @I Tue }
+  @NextSub @Box { 7 @I Wed }
+  @NextSub @Box { 7 @I Thu }
+  @NextSub
+  {
+      @Box { 7 @I Fri }
+      @FirstSub @Box { 0 @I Fri6 }
+      @NextSub @Box { 0 @I Fri7 }
+      @NextSub @Box { 0 @I Fri8 }
+  }
+}
+}
+A postorder traversal of this tree may be used to deduce that workload
+demand nodes for @M { r } are needed for one @I Mon time, one @I Tue
+time, one @I Wed time, one @I Thu time, one @I Fri6 time, one @I Fri7
+time, one @I Fri8 time, and three arbitrary times.  In general, each
+tree node contributes a number of demand nodes equal to the size of
+its time group minus its number minus the number of demand nodes
+contributed by its proper descendants, or none if this number is negative.
+@PP
+The tree is built by inserting the workload requirements in decreasing
+order of the weight of the monitors that led to them, ignoring
+requirements that fail the subset tree condition.  For example, a
+failure would occur if, in addition to the above requirements, there
+were limits on the number of morning and afternoon times.  The
+constraints which give rise to such requirements are still monitored
+by other monitors, but their omission from the matching causes it to
+report fewer unmatchable nodes than the ideal.  Fortunately, such
+overlapping requirements do not seem to occur in practice, at least,
+not as hard constraints.
+@End @SubSection
+
+@SubSection
+    @Title { Avoiding double counting }
+    @Tag { general_solvers.matchings.double }
+@Begin
+@LP
+When an integrated matching is installed, several cases of double
+counting arise which can bias a solver.  Since it is important to
+preserve the matching, so that problems such as six simultaneous
+Science classes and only five Science laboratories are detected,
+@C { KheMatchingBegin } solves this problem by detaching the
+non-demand monitors that double count with the demand monitors, as
+far as possible.  Here now are the details.
+@PP
+The work described here is only done for integrated matchings.  As
+usual, only attached monitors of weight at least @M { W } are taken
+into account.  They double count with demand monitors of weight
+@M { W }, so detaching them produces solution costs which are
+roughly equal to the regular costs.  When @M { W } is
+@C { Khe(1, 0) } (the value used at present) and all monitors with
+hard costs have cost @C { Khe(1, 0) } (which is usual, many
+instances choosing to not distinguish different degrees of
+hardness), the resulting costs are exactly equal to the regular
+costs, except that they include the advance warnings that matchings
+give---a very desirable state of affairs.
+# If an integrated m
+# When an integrated matching is installed, there are many c
+# Demand monitors (Chapter {@NumberOf matchings}), representing demand
+# nodes in the global tixel matching, are a difficult case for
+# correlation grouping.  They often correlate with other monitors,
+# but not in a simple way.  This section discusses the problems they
+# raise and how KHE handles them.
+# @PP
+# Demand monitors correlate with avoid clashes monitors:  when there is
+# a clash, there will be both an avoid clashes defect and an ordinary
+# demand defect.  They also correlate with avoid unavailable times, limit
+# busy times, and limit workload monitors:  when there is a hard avoid
+# unavailable times defect, for example, there will also be a demand
+# defect.  There are several possible ways to handle these correlations,
+# which we'll consider now.
+# # This section explores several
+# # ways of handling these correlations, beginning with grouping.
+# @PP
+# @BI { Group the correlated monitors. }  Grouping is the ideal solution
+# for correlation problems, but it does not work here.  There are two
+# reasons for this.
+# @PP
+# First, although every avoid clashes defect has a correlated ordinary
+# demand defect, unless the resource involved is preassigned there is
+# no way to predict which monitors will be correlated, since that
+# depends on which resource is assigned to the demand monitors' tasks.
+# @PP
+# Second, grouping workload demand monitors with the resource monitors
+# they are derived from has a subtle flaw.  A demand defect is really
+# the whole set of demand monitors that compete for the insufficient
+# supply.  (These sets, called Hall sets, are quite unpredictable and
+# cannot themselves be grouped.)  A workload demand defect shows up,
+# not in the workload demand monitor itself, but in an ordinary demand
+# monitor that competes with it.  This is because the last demand tixel
+# to change its domain and require rematching is the one that misses out
+# on the available supply, and workload demand monitors never change their
+# domains.
+# # So this grouping still leaves two correlated defects
+# # ungrouped:  the group monitor and the unmatched ordinary demand monitor.
+# @PP
+# If grouping does not work, then one of the correlated monitors has
+# to be detached or otherwise ignored.  There are several ways to do this.
+# The following discussion sometimes assumes that the grouping is being
+# done in support of ejection chains, but in fact it applies to any
+# algorithm which pays serious attention to defects.
+# @PP
+# @BI { Detach demand monitors. }  This does not work, because no-one
+# notices that six Science meets are scheduled simultaneously when
+# there are only five Science laboratories, and the resulting time
+# assignment is useless.
+# @PP
+# @BI { Attach demand monitors but exclude them from continue group monitors. }
+# This prevents correlated monitors from appearing on defect lists,
+# but both costs continue to be added to the solution cost, so
+# removing the resource defect alone does@C { KheMatchingBegin }
+# generates workload requirement not produce an overall
+# improvement.  The chain ends in failure; the ejector cannot
+# see that repairing the resource defect could work.
+# @PP
+# @BI { Attach demand monitors but exclude them from the solution and
+# continue group monitors; add a limit monitor holding them. }  Then
+# other monitors will be repaired, but no chain which increases the total
+# number of demand defects will be accepted.  This has two problems.
+# @PP
+# First, it can waste time constructing chains which fall at the last
+# hurdle when it is discovered that they increase demand defects.  This
+# is particularly likely during time repair:  the six Science meets
+# problem could well occur and pass unnoticed as the chain is extended.
+# # Resource repair usually
+# # runs faster, and wasting time then does not matter so much.
+# @PP
+# Second, although it prevents demand defects from increasing, it
+# does not repair them.  This rules it out for time repair, which
+# is largely about repairing demand defects, but it may not matter
+# for resource repair.  Resource repair cannot reduce the number of
+# demand defects unless it moves meets:  merely assigning resources
+# reduces the domains of demand tixels, which cannot reduce demand
+# defects.  Even moving meets is unlikely to reduce demand defects
+# during resource repair, since many of those moves will have been
+# tried previously, during time repair.
+# @PP
+# @BI { Detach correlated resource monitors. }  Instead of detaching
+# demand monitors, detach the resource monitors they correlate with.
+# This is our preferred approach, and we will now go on to consider
+# how to carry it out for each kind of resource monitor.  The main
+# danger is @I { inexactness }:  if some detached resource monitor is
+# not modelled exactly by the demand monitors that replace it, then
+# some defects may be handled imperfectly.
+@PP
+@I { Attached avoid clashes monitors of weight at least @M { W }. }
+We simply detach these monitors, since each clash also appears as one
+unmatched demand node.
+# The only inexactness
+# is that avoid clashes monitors may have any weights, whereas demand
+# monitors have equal weight, usually 1 (hard).  But we have previously
+# decided to build matchings only when avoid clashes constraints with
+# weight 1 (hard) or more are present, so this does not
+# seem to be a problem in practice.
+@PP
+@I { Attached avoid unavailable times monitors of weight at
+least @M { W } }.  Again we detach these monitors, since each
+violation appears as one unmatched demand node.
+@PP
+@I { Attached limit busy times monitors that give rise to
+workload demand monitors. }  As far as upper limits are
+concerned we could again detach, but we have to consider
+lower limits as well.
+@PP
+The obvious solution is to break each limit busy times monitor into
+two, an underload monitor and an overload monitor, and detach the
+overload monitor but not the underload monitor.  KHE expresses this
+idea in a different way, chosen because it also solves the problem
+presented by limit workload monitors, to be discussed in their turn.
+@PP
+Limit busy times monitors have two attributes, @C { Minimum } and
+@C { Maximum }, such that less than @C { Minimum } busy times is an
+underload, and more than @C { Maximum } is an overload.  Add a third
+attribute, @C { Ceiling }, such that @C { Ceiling >= Maximum }, and
+specify that, with higher priority than the usual rule, when the
+number of busy times exceeds @C { Ceiling } the deviation is 0.
+@PP
+Function @C { KheLimitBusyTimesMonitorSetCeiling }
+(Section {@NumberOf monitoring.limitbusy}) may be called to set the
+ceiling.  Setting it to @C { INT_MAX } (the default value) produces
+the usual rule.  Setting it to @C { Maximum } is equivalent to
+detaching overload monitoring.
+@PP
+@I { Attached limit workload monitors that give rise to workload
+demand monitors. }  Limit workload monitors are similar to limit
+busy times monitors whose set of times is the entire cycle.
+However, the demand monitors derived from a limit workload
+monitor do not necessarily model even the upper limit exactly.
+This problem can be solved as follows.
+# (Section {@NumberOf matchings.workload.construct}).
+@PP
+Consider a resource with a limit workload monitor and some
+workload demand monitors derived from it, and suppose that
+all of these monitors are attached.  As the resource's workload
+increases, it crosses from a `white region' of zero cost into a
+`grey region' where the limit workload monitor has non-zero cost
+but the workload demand monitors do not, and then into a `black
+region' where both the limit workload monitor and the workload
+demand monitors have non-zero cost.  This black region is the problem.
+@PP
+The problem is solved by adding a @C { Ceiling } attribute to
+limit workload monitors, as for limit busy times monitors.
+Function @C { KheLimitWorkloadMonitorSetCeiling }
+(Section {@NumberOf monitoring_resource_monitors_workload})
+sets the ceiling.  As before, the default value
+is @C { INT_MAX }.  The appropriate alternative value is not
+@C { Maximum }, but rather a value which marks the start of
+the black region, so that the limit workload monitor's cost
+drops to zero as the workload crosses from the grey region
+to the black region.  In this way, all workload overloads
+are reported, but by only one kind of monitor at any one time.
+@PP
+There is one anomaly in this arrangement:  a repair that
+reduces workload from the black region to the grey region
+does not always decrease cost.  This is a pity but it is
+very much a second-order problem, given that the costs
+involved are all hard costs, so that in practice repairs
+are wanted that reduce them to zero.  What actually happens is
+that one repair puts a resource above the white zone, and this
+stimulates a choice of next repair which returns it to the white
+zone.  Repairs which move between the grey and black zones are
+possible but are not likely, so it does not matter much if their
+handling is imperfect.
+@PP
+The appropriate value for @C { Ceiling } is the number of times
+in the cycle minus the total number of workload demand monitors
+for the resource in question, regardless of their origin.  When
+the resource's workload exceeds this value, there will be at
+least one demand defect, and it is time for the limit workload
+monitor to bow out.
+@End @SubSection
+
+@EndSubSections
+@End @Section
+
+@Section
+    @Title { Generating files of tables and graphs }
+    @Tag { general_solvers.stats }
+@Begin
+@LP
+KHE offers a module for generating files containing tables and
+graphs.  Any number of files may be generated simultaneously,
+even in parallel, although an individual file cannot be generated
+in parallel.  One file may contain any number of tables and graphs,
+and these can be generated simultaneously, although not in parallel.
+@PP
+To begin and end a file, call
+@ID @C {
+KHE_FILE KheFileBegin(char *file_name, KHE_FILE_FORMAT fmt);
+void KheFileEnd(KHE_FILE kf);
+}
+This writes a file called @C { file_name } in sub-directory
+@C { stats } (which the user must have created previously) of the
+current directory.  The file is opened by @C { KheFileBegin } and
+closed by @C { KheFileEnd }.  @C { KheFileEnd } also reclaims all
+memory (taken from a specially created arena) used by all tables
+and graphs of that file.  Three file formats are supported:
+@ID @C {
+typedef enum {
+  KHE_FILE_PLAIN,
+  KHE_FILE_LOUT,
+  KHE_FILE_LOUT_STANDALONE,
+  KHE_FILE_LATEX
+} KHE_FILE_FORMAT;
+}
+These represent plain text, Lout, standalone Lout (i.e. ready
+for converstion to Encapsulated PostScript) and LaTeX.  Only
+the two Lout values support graphs.  To generate the actual
+tables and graphs, see the following subsections.
+@BeginSubSections
+
+@SubSection
+    @Title { Tables }
+    @Tag { general_solvers.stats.tables }
+@Begin
+@LP
+To generate tables, make matching pairs of calls to the following
+functions in between the calls to @C { KheFileBegin } and
+@C { KheFileEnd }:
+@ID {0.98 1.0} @Scale @C {
+KHE_TABLE KheTableBegin(KHE_FILE kf, int col_width, char *corner,
+  bool with_average_row, bool with_total_row, bool highlight_cost_minima,
+  bool highlight_time_minima, bool highlight_int_minima);
+void KheTableEnd(KHE_TABLE kt);
+}
+The table is begun by @C { KheTableBegin }, and finished, including
+being written out to file @C { kf }, by @C { KheTableEnd }.  Where
+the file format permits, a label will be associated with the table:
+the file name for the first table, the file name followed by an
+underscore and 2 for the second table, and so on.  The value
+of the table is created in between these two calls, by calling
+functions to be presented shortly.  Because the entire table is
+saved in memory until @C { KheTableEnd } is called, these other
+calls may occur in any order.  In particular it is equally
+acceptable to generate a table row by row or column by column.
+@PP
+Parameter @C { col_width } determines the width in characters of
+each column when the format is @C { KHE_FILE_PLAIN }; it is ignored
+by the other formats.  Parameter @C { corner } is printed in the
+top left-hand corner of the table.  It must be non-@C { NULL },
+but it can be the empty string.
+@PP
+Each entry in the table has a type, which may be either @I { string },
+@I { cost }, @I { time } (really just an arbitrary @C { float }), or
+@I { int }.  If @C { with_average_row } is @C { true }, the table ends
+with an extra row.  Each entry in this row contains the average of the
+non-blank, non-string entries above it, if they all have the same type;
+otherwise the entry is blank.  If @C { with_total_row } is @C { true },
+the effect is the same except that totals are printed, not averages.
+@PP
+If @C { highlight_cost_minima } is @C { true }, the minimum values
+of type @I cost in each row appear in bold font, or marked by an
+asterisk in plain text.  Parameters @C { highlight_time_minima }
+and @C { highlight_int_minima } are the same except that they
+highlight values of type @I time or @I { int }.
+@PP
+A caption can be added by calling
+@ID @C {
+void KheTableCaptionAdd(KHE_TABLE kt, char *fmt, ...);
+}
+at any time between @C { KheTableBegin } and @C { KheTableEnd },
+as often as desired.  This does what @C { printf } would do with the
+arguments after @C { file_name }.  The results of all calls are
+saved and printed as a caption by @C { KheTableEnd }.
+@PP
+In any given table, each row except the first (header) row must
+be declared, by calling
+@ID @C {
+void KheTableRowAdd(KHE_TABLE kt, char *row_label, bool rule_below);
+}
+The rows appear in the order of the calls.  Parameter @C { row_label }
+both identifies the row and appears in the first (header) column of
+the table.  If @C { rule_below } is @C { true }, the row will have a
+rule below it.  The header row always has a rule below it, and there is
+always a rule below the last row (not counting any average or total row).
+@PP
+In the same way, non-header columns are declared, in order, by calls to
+@ID @C {
+void KheTableColAdd(KHE_TABLE kt, char *col_label, bool rule_after);
+}
+where @C { col_label } both identifies the column and appears in the
+first (header) row of the table, and setting @C { rule_after } to
+@C { true } causes a rule to be printed after the column.
+@PP
+To add an entry to the table, call any one of these functions:
+@ID @C {
+void KheTableEntryAddString(KHE_TABLE kt, char *row_label,
+  char *col_label, char *str);
+void KheTableEntryAddCost(KHE_TABLE kt, char *row_label,
+  char *col_label, KHE_COST cost);
+void KheTableEntryAddTime(KHE_TABLE kt, char *row_label,
+  char *col_label, float time);
+void KheTableEntryAddInt(KHE_TABLE kt, char *row_label,
+  char *col_label, int val);
+}
+These add an entry to @C { kt } at row @C { row_label } and column
+@C { col_label }, aborting if these are unknown or an entry has
+already been added there.  If no entry is ever added at some
+position, the table will be blank there.  The entry's format depends
+on the call.  For example,
+@ID {0.98 1.0} @Scale @C {
+KheTableEntryAddCost(file_name, row_label, col_label, KheSolnCost(soln));
+}
+adds a solution cost to the table which will be formatted in
+the standard way.
+@PP
+Strings passed to these functions are copied where required,
+so mutating strings are not a concern.  There is no locking, so
+calls which create and add to tables should be single-threaded.
+@End @SubSection
+
+@SubSection
+    @Title { Graphs }
+    @Tag { general_solvers.stats.graphs }
+@Begin
+@LP
+To generate graphs in Lout format, make matching pairs of calls to
+the following functions in between the calls to @C { KheFileBegin }
+and @C { KheFileEnd }:
+@ID @C {
+KHE_GRAPH KheGraphBegin(KHE_FILE kf);
+void KheGraphEnd(KHE_GRAPH kg);
+}
+To set options which control the overall appearance of the graph, call
+@ID @C {
+void KheGraphSetWidth(KHE_GRAPH kg, float width);
+void KheGraphSetHeight(KHE_GRAPH kg, float height);
+void KheGraphSetXMax(KHE_GRAPH kg, float xmax);
+void KheGraphSetYMax(KHE_GRAPH kg, float ymax);
+void KheGraphSetAboveCaption(KHE_GRAPH kg, char *val);
+void KheGraphSetBelowCaption(KHE_GRAPH kg, char *val);
+void KheGraphSetLeftCaptionAndGap(KHE_GRAPH kg, char *val, char *gap);
+void KheGraphSetRightCaptionAndGap(KHE_GRAPH kg, char *val, char *gap);
+}
+These determine the width and height of the graph (in centimetres),
+the maximum x and y values, and the small captions above, below,
+to the left of, and to the right of the graph.  If calls to these
+functions are not made, the options remain unspecified, causing
+Lout's graph package to substitute default values for them in its
+usual way.  The caption values must be valid Lout source.
+@PP
+@C { KheGraphSetLeftCaptionAndGap } and @C { KheGraphSetRightCaptionAndGap }
+have the extra @C { gap } parameter.  This controls the gap
+between the caption and the graph.  For example,
+@ID @C {
+KheGraphSetLeftCaptionAndGap(kg, "Caption", "0c");
+}
+produces the minimum gap (0 cm), but a larger value is usually
+needed, to avoid unsightly overstriking.  The value of @C { gap }
+can also be @C { NULL }, in which case Lout's default value is used.
+@PP
+There is also
+@ID @C {
+void KheGraphSetKeyLabel(KHE_GRAPH kg, char *val);
+}
+which sets the `key label' of the graph.  This is the first line
+of the graph's key, described below.  Omitting to call this function
+is fine; it just means that this first line is omitted.
+@PP
+Any number of @I { datasets } may be displayed on one graph; each
+dataset is a sequence of points.  Often there is just one dataset.
+To create a dataset, call
+@ID {0.95 1.0} @Scale @C {
+KHE_DATASET KheDataSetAdd(KHE_GRAPH kg, KHE_DATASET_POINTS_TYPE points_type,
+  KHE_DATATSET_PAIRS_TYPE pairs_type, char *label);
+}
+where @C { points_type } has type
+@ID @C {
+typedef enum {
+  KHE_DATASET_POINTS_NONE,
+  KHE_DATASET_POINTS_CROSS,
+  KHE_DATASET_POINTS_SQUARE,
+  KHE_DATASET_POINTS_DIAMOND,
+  KHE_DATASET_POINTS_CIRCLE,
+  KHE_DATASET_POINTS_TRIANGLE,
+  KHE_DATASET_POINTS_PLUS,
+  KHE_DATASET_POINTS_FILLED_SQUARE,
+  KHE_DATASET_POINTS_FILLED_DIAMOND,
+  KHE_DATASET_POINTS_FILLED_CIRCLE,
+  KHE_DATASET_POINTS_FILLED_TRIANGLE
+} KHE_DATASET_POINTS_TYPE;
+}
+and says what to print at each data point (nothing, or a cross, etc.),
+and @C { pairs_type } has type
+@ID @C {
+typedef enum {
+  KHE_DATATSET_PAIRS_NONE,
+  KHE_DATATSET_PAIRS_SOLID,
+  KHE_DATATSET_PAIRS_DASHED,
+  KHE_DATATSET_PAIRS_DOTTED,
+  KHE_DATATSET_PAIRS_DOT_DASHED,
+  KHE_DATATSET_PAIRS_DOT_DOT_DASHED,
+  KHE_DATATSET_PAIRS_DOT_DOT_DOT_DASHED,
+  KHE_DATASET_PAIRS_YHISTO,
+  KHE_DATASET_PAIRS_SURFACE_YHISTO,
+  KHE_DATASET_PAIRS_FILLED_YHISTO,
+  KHE_DATASET_PAIRS_XHISTO,
+  KHE_DATASET_PAIRS_SURFACE_XHISTO,
+  KHE_DATASET_PAIRS_FILLED_XHISTO
+} KHE_DATASET_PAIRS_TYPE;
+}
+and says what connects each successive pair of points (nothing, a solid
+line, a dashed line, a histogram, etc.).  These are converted into
+values of the @C { points } and @C { pairs } options of the @F "@Data"
+symbol of Lout's Graph package.  The Lout User's Guide has examples of
+what is produced.
+@PP
+When the @C { label } parameter of @C { KheDataSetAdd } is non-@C { NULL },
+one line is added to the @I { key } of the graph, a small area in the top
+left-hand corner which indicates what each data set represents.  The line
+shows two points and what they are separated by, followed by the label.
+The first line of the key may be set separately, by calling
+@C { KheGraphSetKeyLabel } as described above.
+@PP
+Function
+@ID @C {
+void KhePointAdd(KHE_DATASET kd, float x, float y);
+}
+adds a point to a dataset.  The points are generated in the order
+received, so in practice, successive calls to @C { KhePointAdd }
+on the same dataset should have increasing x values.
+@PP
+Several datasets can be built simultaneously.  This can be useful
+for recording several quantities as a solver proceeds.
+@End @SubSection
+
+@EndSubSections
+@End @Section
+
+@Section
+    @Title { Exponential backoff }
+    @Tag { general_solvers.backoff }
+@Begin
+@LP
+One strategy for making solvers faster is to do a lot of what is
+useful, and not much of what isn't useful.  When something is
+always useful, it is best to simply do it.  When something might
+be useful but wastes a lot of time when it isn't, it is best to
+try it, observe whether it is useful, and do more or less of it
+accordingly.  Solvers that do this are said to be @I { adaptive }.
+@PP
+For example, suppose there is a choice of two or more methods of
+doing something.  In that case, information can be kept about how
+successful each method has been recently, and the choice can be
+weighted towards recently successful methods.
+@PP
+However, this section is concerned with a different situation,
+involving just one method.  Suppose there is a sequence of
+@I opportunities to apply this method, and that as each opportunity
+arrives, the solver can choose to apply the method or not.  Typically,
+the method will be a repair method:  repair is optional.  If the
+solver @I accepts the opportunity, the method is then run and either
+@I succeeds (does something useful) or @I fails (does nothing useful).
+Otherwise, the solver @I declines the opportunity.  So opportunities
+are classified as successful, failed, or declined.
+@PP
+@I { Exponential backoff } from computer network implementation is
+a form of adaptation suited to this situation.  It works as follows.
+If the solver applies the method and it is successful, then it forgets
+all history and will accept the next opportunity.  But if the solver
+applies the method and it fails, then it remembers the total number
+of failed opportunities @M { F } (including this one) since the
+last successful opportunity, and does not accept another
+opportunity until after it has declined @M { 2 sup {F-1} }
+opportunities.  Declined opportunities do not count as failures.
+@PP
+Here are some examples.  Each character is one opportunity; @C { S }
+is a successful opportunity (or the start of the sequence), @C { F }
+is a failed one, and @C { . } is a declined one.  Each successful
+opportunity makes a fresh start, so the examples all begin with
+@C { S } and contain only @C { F } and @C { . } thereafter:
+@ID @C {
+S
+SF.
+SF.F..
+SF.F..F....
+SF.F..F....F........
+}
+and so on.  Every complete trace of exponential backoff can be broken
+at each @C { S } into sub-traces like these.  Methods that always
+succeed are tried at every opportunity.  Methods that always fail
+are tried only about @M { log sub 2 n } times, where @M { n } is
+the total number of opportunities.
+@PP
+Other rules for which opportunities to accept could be used, rather
+than waiting until @M { 2 sup {F-1} } opportunities have been declined.
+For example, every opportunity could be accepted, which amounts to
+having no backoff at all.  The principles are the same, only the
+rule changes.
+@PP
+KHE offers three operations which together implement exponential backoff:
+@ID @C {
+KHE_BACKOFF KheBackoffBegin(KHE_BACKOFF_TYPE backoff_type, HA_ARENA a);
+bool KheBackoffAcceptOpportunity(KHE_BACKOFF bk);
+void KheBackoffResult(KHE_BACKOFF bk, bool success);
+}
+@C { KheBackoffBegin } creates a new backoff object in arena
+@C { a }, passing a @C { backoff_type } value of type
+@ID @C {
+typedef enum {
+  KHE_BACKOFF_NONE,
+  KHE_BACKOFF_EXPONENTIAL
+} KHE_BACKOFF_TYPE;
+}
+which determines which rule is used:  none or exponential.
+@C { KheBackoffAcceptOpportunity } is called when
+an opportunity arises, and returns @C { true } if that opportunity
+should be accepted.  In that case, the next call must be to
+@C { KheBackoffResult }, reporting whether or not the method was
+successful.  As usual, the backoff object's memory is reclaimed
+when the arena is deleted.
+@PP
+Suppose that the program pattern without exponential backoff is
+@ID -0.5px @Break @C {
+while( ... )
+{
+  ...
+  if( opportunity_has_arisen )
+    success = try_repair_method(soln);
+  ...
+}
+}
+Then the modified pattern for including exponential backoff is
+@ID -0.5px @Break @C {
+bk = KheBackoffBegin(KHE_BACKOFF_EXPONENTIAL);
+while( ... )
+{
+  ...
+  if( opportunity_has_arisen && KheBackoffAcceptOpportunity(bk) )
+  {
+    success = try_repair_method(soln);
+    KheBackoffResult(bk, success);
+  }
+  ...
+}
+}
+Each successful {0.95 1.0} @Scale @C { KheBackoffAcceptOpportunity }
+is followed by a call to {0.95 1.0} @Scale @C { KheBackoffResult }.
+@PP
+All backoff objects hold a few statistics, kept only for printing by
+@C { KheBackoffDebug } below, and a boolean flag which is @C { true }
+if the next call must be to @C { KheBackoffResult }.  When
+exponential backoff is requested, a backoff object also maintains
+two integers, @M { C } and @M { M }.  @M { C } is the number of
+declines since the last accept (or since the backoff object was
+created).  @M { M } is the maximum number of opprtunities that
+may be declined, defined by
+@ID @Math { M ``` = ```
+matrix atleft { blbrace }
+{
+  row col 0               col { @R "    if " F = 0 }
+  row col { 2 sup {F-1} } col { @R "    if " F >= 1 }
+}
+}
+where @M { F } is the number of failures since the last success
+(or since the backoff object was created).  The next call to
+@C { KheBackoffAcceptOpportunity } will return @C { true } if
+@M { C >= M }.  The implementation will not increase @M { M } if
+that would cause an overflow.  Overflow is very unlikely, since
+an enormous number of opportunities would have to occur first.
+@PP
+Function
+@ID @C {
+char *KheBackoffShowNextDecision(KHE_BACKOFF bk);
+}
+returns @C { "ACCEPT" } when the next call to
+@C { KheBackoffAcceptOpportunity } will return @C { true },
+and @C { "DECLINE" } when it will return @C { false }.  There is also
+@ID {0.95 1.0} @Scale @C {
+void KheBackoffDebug(KHE_BACKOFF bk, int verbosity, int indent, FILE *fp);
+}
+Verbosity 1 prints the current state, including a `@C { ! }' when
+the flag is set, on one line.  Verbosity 2 prints some statistics:
+the number of opportunities so far, and how many are successful,
+failed, and declined, in a multi-line format.  There is also
+@ID @C {
+void KheBackoffTest(FILE *fp);
+}
+which may be called to test this module.
+# A function for testing this module appears in @C { khe.h }.
+@End @Section
+
+@Section
+    @Title { Thread-safe random numbers }
+    @Tag { general_solvers.random }
+@Begin
+@LP
+Incredibly, C has no standard thread-safe way to generate random
+numbers.  There is @C { rand_r }, but that is obsolete; there is
+@C { random_r }, but that is a nonstandard glibc extension;
+there is @C { drand48 }, but that is not thread-safe; and there
+is @C { drand48_r }, but that is a GNU extension and is not
+portable.  This is according to the manual entries on the author's machine.
+@PP
+So KHE offers the @C { KHE_RANDOM_GENERATOR } type, representing
+a random number generator.  It does not use heap memory.  To
+declare a random number generator, do this:
+@ID @C {
+KHE_RANDOM_GENERATOR rgen;
+}
+If this is local to some function, then each call on that function
+(including calls in different threads) will have its own independent
+generator.  To initialize it, passing a seed, call
+@ID @C {
+void KheRandomGeneratorInit(KHE_RANDOM_GENERATOR *rgen, uint32_t seed);
+}
+It would make sense to pass a solution's diversifier as the seed:
+@ID @C {
+KheRandomGeneratorInit(&rgen, KheSolnDiversifier(soln));
+}
+so that different solutions get different random numbers.  To obtain
+one random number, call
+@ID @C {
+uint32_t KheRandomGeneratorNext(KHE_RANDOM_GENERATOR *rgen);
+}
+It returns a fairly random unsigned 32-bit integer, good enough for
+solvers, but not cryptography.  It may be more convenient to call
+@ID @C {
+int KheRandomGeneratorNextRange(KHE_RANDOM_GENERATOR *rgen,
+  int first, int last);
+}
+This uses a call to @C { KheRandomGeneratorNext } to find a random
+integer between @C { first } and @C { last } inclusive.  There is also
+@ID @C {
+bool KheRandomGeneratorNextBool(KHE_RANDOM_GENERATOR *rgen);
+}
+which uses a call to @C { KheRandomGeneratorNext } to find
+a random Boolean value.  Finally,
+@ID @C {
+void KheRandomGeneratorTest(uint32_t seed, int count,
+  int first, int last, int indent, FILE *fp);
+}
+initializes a random number generator using @C { seed }, then prints
+out @C { count } random numbers in the range @C { first } to @C { last }
+inclusive, onto file @C { fp }, indented @C { indent } spaces.
+@End @Section
+
+@Section
+    @Title { Intervals }
+    @Tag { general_solvers.intervals }
+@Begin
+@LP
+Include file @C { khe_solvers.h } includes this type definition:
+@ID @C {
+typedef struct khe_interval_rec {
+  int first;
+  int last;
+} KHE_INTERVAL;
+}
+It represents an @I { interval }, that is, a sequence of
+consecutive integers.  The first member is @C { first },
+and the last is @C { last }.
+@PP
+The usual use for intervals is to represent a set of consecutive
+time groups from the common frame.  Just their indexes are stored;
+the frame itself is held elsewhere.  However other uses for intervals
+are quite acceptable.
+@PP
+The condition @C { last >= first - 1 } must hold.  Values of
+@C { first } and @C { last } that violate it cause an abort.  But
+@C { last == first - 1 } is acceptable and denotes an empty interval.
+@PP
+When an interval is empty, @C { last } is determined by @C { first },
+but @C { first } is free to take on any value.  This raises the
+question of whether two empty intervals with different values for
+@C { first } are equal or not.  The answer to this question varies
+with the operation, as follows.
+@PP
+Most of the time, empty intervals are treated like empty sets of
+integers.  For example, all empty intervals are considered to be
+equal, even when their @C { first } attributes differ.  The few
+exceptions are flagged by the statement `empty intervals are not
+empty sets'.  They mainly handle cases where we want to start
+with an empty interval and grow it, and @C { first } is significant
+because it denotes the point that the interval grows from.
+@PP
+Function
+@ID @C {
+KHE_INTERVAL KheIntervalMake(int first, int last);
+}
+makes and returns a new interval with the given @C { first }
+and @C { last } attributes.  It checks the condition
+@C { last >= first - 1 } and aborts if it does not hold.
+No arena is needed, because @C { KHE_INTERVAL } is not a
+pointer type.  Functions
+@ID @C {
+int KheIntervalFirst(KHE_INTERVAL in);
+int KheIntervalLast(KHE_INTERVAL in);
+}
+return the @C { first } and @C { last } attributes of @C { in }.
+Two empty intervals can return different values for @C { first }
+and also for @C { last }.  These two functions are implemented
+by macros in @C { khe_solvers.h }.
+@PP
+Function
+@ID @C {
+int KheIntervalLength(KHE_INTERVAL in);
+}
+returns the length of @C { in }, possibly 0 when the interval
+is empty.  Function
+@ID @C {
+bool KheIntervalEmpty(KHE_INTERVAL in);
+}
+returns @C { true } when @C { in } is empty.  Function
+@ID @C {
+bool KheIntervalContains(KHE_INTERVAL in, int index);
+}
+returns @C { true } when @C { in } contains @C { index }.
+Functions
+@ID @C {
+bool KheIntervalEqual(KHE_INTERVAL in1, KHE_INTERVAL in2);
+bool KheIntervalSubset(KHE_INTERVAL in1, KHE_INTERVAL in2);
+bool KheIntervalDisjoint(KHE_INTERVAL in1, KHE_INTERVAL in2);
+}
+return @C { true } when @C { in1 } and @C { in2 } are equal,
+when @C { in1 } is a subset of @C { in2 }, and when @C { in1 }
+and @C { in2 } are disjoint (have an empty intersection).  Functions
+@ID {0.98 1.0} @Scale @C {
+KHE_INTERVAL KheIntervalUnion(KHE_INTERVAL in1, KHE_INTERVAL in2);
+KHE_INTERVAL KheIntervalIntersection(KHE_INTERVAL in1, KHE_INTERVAL in2);
+}
+return the union and intersection of @C { in1 } and @C { in2 }.
+If either of @C { in1 } and @C { in2 } is empty, the union is
+the other; otherwise the union includes all integers from
+@C { min(in1.first, in2.first) } to @C { max(in1.last, in2.last) }
+inclusive.  Some of these integers may not lie in either of
+@C { in1 } and @C { in2 }, in which case the result is not
+a true set union.  If @C { in1 } and @C { in2 } are disjoint, the
+intersection is empty; otherwise the intersection includes all integers
+from @C { max(in1.first, in2.first) } to @C { min(in1.last, in2.last) }
+inclusive.  In either case the result is a true set intersection.
+@PP
+Function
+@ID @C {
+int KheIntervalTypedCmp(KHE_INTERVAL in1, KHE_INTERVAL in2);
+}
+compares @C { in1 } and @C { in2 }, returning @C { -1 } if @C { in1 }
+is lexicographically less than @C { in2 }, @C { 1 } if it
+is lexicographically greater, and 0 if @C { in1 } and @C { in2 }
+are equal.  Empty intervals are not empty sets.  Function
+@ID @C {
+int KheIntervalCmp(const void *t1, const void *t2);
+}
+is an untyped version of @C { KheIntervalTypedCmp }, suited
+to @C { qsort } and @C { HaArraySort }.  Finally,
+@ID @C {
+char *KheIntervalShow(KHE_INTERVAL in, KHE_FRAME frame)
+}
+returns a display of @C { in } in static memory.  If
+@C { frame != NULL }, then @C { in } is taken to be two
+indexes into @C { frame }, and time group Ids are printed
+when the indexes are in range, rather than integers.
+@C { KheIntervalShow } also handles empty intervals,
+singleton intervals, and negative endpoints.
+@PP
+Finally, here are some functions that return intervals of interest
+to solvers:
+@ID @C {
+KHE_INTERVAL KheTimeInterval(KHE_TIME t, KHE_FRAME frame);
+KHE_INTERVAL KheTimeGroupInterval(KHE_TIME_GROUP tg, KHE_FRAME frame);
+KHE_INTERVAL KheTaskInterval(KHE_TASK task, KHE_FRAME frame);
+KHE_INTERVAL KheTaskSetInterval(KHE_TASK_SET ts, KHE_FRAME frame);
+}
+@C { KheTimeInterval } returns the interval of @C { frame }
+that covers @C { t }.  This will always have length 1.
+@C { KheTimeGroupInterval } returns the interval
+of @C { frame } that covers @C { tg }.  If @C { tg } is empty,
+this will be an empty interval.  @C { KheTaskInterval }
+returns the interval of @C { frame } that covers @C { task },
+including tasks assigned directly or indirectly to @C { task }.
+If none of these tasks lie in a meet with an assigned time,
+this will be an empty interval.  @C { KheTaskSetInterval }
+returns the interval of @C { frame } that covers the tasks
+of @C { ts }.  This will be empty if @C { ts } is empty or
+none of its tasks lie in a meet with an assigned time.
+@PP
+@BI { Interval cost tables. }  For the benefit of solvers,
+notably interval grouping
+(Section {@NumberOf resource_structural.task_grouping.interval_grouping}),
+there is a symbol table type with intervals for keys and costs for
+values.  Its operations are
+@ID @C {
+KHE_INTERVAL_COST_TABLE KheIntervalCostTableMake(HA_ARENA a);
+void KheIntervalCostTableClear(KHE_INTERVAL_COST_TABLE ict);
+void KheIntervalCostTableInsert(KHE_INTERVAL_COST_TABLE ict,
+  KHE_INTERVAL in, KHE_COST cost);
+bool KheIntervalCostTableRetrieve(KHE_INTERVAL_COST_TABLE ict,
+  KHE_INTERVAL in, KHE_COST *cost);
+void KheIntervalCostTableDebug(KHE_INTERVAL_COST_TABLE ict,
+  KHE_FRAME frame, int verbosity, int indent, FILE *fp);
+}
+@C { KheIntervalCostTableMake } makes a new table in arena
+@C { a }.  There is no way to delete it; it remains available
+until @C { a } is deleted or recycled.  @C { KheIntervalCostTableClear }
+clears the table back to its initial state (i.e. empty), recycling
+internal data structures through free lists in @C { ict }.
+@PP
+@C { KheIntervalCostTableInsert } adds a new entry whose key
+is @C { in } and whose value is @C { cost }, overwriting any
+existing entry for @C { in }.  Here @C { in } must have
+non-negative length (as usual), and @C { cost } must be
+non-negative as well.  The endpoints of @C { in } may
+be positive, zero, or negative.
+@PP
+@C { KheIntervalCostTableRetrieve }
+retrieves the value associated with @C { in } in @C { ict } and
+returns @C { true }, or else it returns @C { false } if no value
+is associated with @C { in }.
+@PP
+Finally, @C { KheIntervalCostTableDebug }
+produces a debug print of @C { ict } onto @C { fp } with the given
+verbosity and indent.  It uses @C { KheIntervalShow(in, frame) }
+to show the intervals.
+@End @Section
+
+@Section
+    @Title { Multiset generation }
+    @Tag { general_solvers.multiset }
+@Begin
+@LP
+This section describes a module which generates all multisets
+with certain properties.  This module is used by interval grouping
+(Section {@NumberOf resource_structural.task_grouping.interval_grouping}).
+@PP
+To begin with, callKheMultisetGeneratorSetupAdd
+@ID @C {
+KHE_MULTISET_GENERATOR KheMultisetGeneratorMake(HA_ARENA a);
+}
+to make a new generator.  Then call these functions
+to set @C { mg } up for one run of generation:
+@ID @C {
+void KheMultisetGeneratorSetupBegin(KHE_MULTISET_GENERATOR mg,
+  int element_sum);
+void KheMultisetGeneratorSetupAdd(KHE_MULTISET_GENERATOR mg,
+  int min_value, int max_value);
+void KheMultisetGeneratorSetupEnd(KHE_MULTISET_GENERATOR mg);
+}
+To do one setup, make one call to
+@C { KheMultisetGeneratorSetupBegin }, then any number of calls
+to @C { KheMultisetGeneratorSetupAdd }, then one call to
+@C { KheMultisetGeneratorSetupEnd }.
+@PP
+The call to @C { KheMultisetGeneratorSetupBegin } clears @C { mg }
+out, ready for a new setup.  In every multiset generated, the sum
+of the elements will be @C { element_sum }.
+@PP
+For each @C { i }, the @C { i }th call to @C { KheMultisetGeneratorSetupAdd }
+says that the @C { i }th element of each multiset must
+have an integer value @C { x } satisfying
+@C { min_value <= x <= max_value }.
+The number of elements is
+the number of calls to
+@C { KheMultisetGeneratorSetupAdd }.
+@PP
+@C { KheMultisetGeneratorSetupEnd } ends the setup, readying @C { mg }
+for generating.
+@PP
+To generate, call
+@ID @C {
+bool KheMultisetGeneratorNext(KHE_MULTISET_GENERATOR mg);
+}
+repeatedly until it returns @C { false }, signifying that the
+generation has ended.  To access the @C { j }th element of
+the current multiset, call
+@ID @C {
+int KheMultisetGeneratorNextValue(KHE_MULTISET_GENERATOR mg, int j);
+}
+where @C { j } lies between 0 inclusive and the number of calls
+to @C { KheMultisetGeneratorSetupAdd } exclusive.  If you have
+forgotten how many times you called @C { KheMultisetGeneratorSetupAdd },
+you can retrieve this number by calling
+@ID @C {
+int KheMultisetGeneratorSetupAddCount(KHE_MULTISET_GENERATOR mg);
+}
+There is also
+@ID @C {
+void KheMulisetGeneratorTest(HA_ARENA a);
+}
+which makes a multiset generator and tests it, printing its results
+to @C { stdout }.
+@End @Section
+
+@EndSections
+@End @Chapter

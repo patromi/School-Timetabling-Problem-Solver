@@ -1,0 +1,103 @@
+KHE diary for 2009
+------------------
+
+16 November 2009
+
+    Have embarked on a new package called KHE, which will combine
+    various ideas under one umbrella:
+
+    * It will be a timetabling solver in the same way that KMT
+      is a type systems solver, containing several assignment
+      algorithms including the new time assignment algorithm
+      and the old resource assignment algorithms;
+
+    * It will support all the features of both the KTS and the
+      XML formats, so that it can be used as the solve engine
+      for data in both formats.
+
+    Ultimately I intend to retrofit KHE into KTS.  Done the
+    basic construction and query operations for instances,
+    time groups, times, resource types, resource groups,
+    resources, event groups, events, event resources, and
+    five kinds of constraints so far.
+
+17 November 2009
+
+    Have added construction and query of all kinds of constraints
+    to KHE now, except the two new constraints that relate to
+    split events, and linked them to the entities they apply to.
+    Have defined KHE_SOLN, KHE_SOLN_EVENT, and KHE_SOLN_RESOURCE
+    types as the main containers for solutions, and their basic
+    operations.  But this is where it starts to get serious.
+
+27 November 2009
+
+    Spent most of the last week updating HSEval to allow for split
+    events.  This included updating KTS's XML download function to
+    produce the new format.  Done and on the web yesterday.  Have
+    been writing a spec for the serious parts of KHE, including
+    time and resource domains and layers.  (Full document is now
+    about 35 pages, but mostly simple.)  All documented and header
+    files brought up to date, so apparently ready to implement.
+
+30 November 2009
+
+    Made some adjustments to the spec, have a skeleton implementation
+    of everything compiled, linked, and checked.  Now the clever stuff.
+
+1 December 2009
+
+    Sorted out shifted time domains and implemented them.  Slow to
+    build but that does not matter; very fast to access.  Also set
+    up khe_soln_layer.c and worked on various solution operations,
+    including copying, solution event splitting and merging, and
+    assignment.  Going steadily.
+
+13 December 2009
+
+    Took a week off, back at work today.  Decided to allow solution
+    resources to lie in multiple solution events, have been sorting
+    out the consequences of that today.  All documented and basically
+    implemented, although it needs an audit now.
+
+15 December 2009
+
+    Revised time domains and implemented them today.  Previously, the
+    time domain was a clumsy intersection of two sets, now it is a
+    single time group in the straightforward manner, although the
+    initialization is more complex.
+
+    KheEventSetTimeDomains is written but needs a careful audit.
+
+16 December 2009
+
+    Auditing everything.  Up to solutions, and specifically layers,
+    and have decided to change layer indexes on the fly so as to
+    have no gaps, but not done yet.
+
+17 December 2009
+
+    Still auditing.  Deep into khe_soln_event.c, and have implemented
+    the operations to create and delete solution events.  Still quite
+    a lot to do there, and for layers and solution resources, but all
+    going steadily.
+
+22 December 2009
+
+    Have now reached a point where all functions that were planned to
+    exist are implemented and compiling cleanly (though nothing is
+    tested yet).  So the basic system, including the solution invariant,
+    is implemented.  What needs to be done now is the soft constraint
+    propagation (global tixel matching etc.).
+
+23 December 2009
+
+    Added archives and solution groups, which more or less implies
+    that KHE will eventually model the decorative features of the XML
+    format as well as the features strictly needed for solving.  Sorted
+    out malloc() and multiple threads, made the array implementation
+    more efficient by using structs rather than pointers to structs,
+    and ensured that singleton times have enough lsets.
+
+    Code to read and write archives, instances, and solution groups is
+    the next logical step.  Can do some testing then.

@@ -1,0 +1,1351 @@
+@Appendix
+    @Title { Implementation Notes }
+    @Tag { impl }
+@Begin
+This chapter documents aspects of the implementation of KHE.  It
+is included mainly for the author's own reference; it is not needed
+for using KHE.
+@BeginSubAppendices
+
+@SubAppendix
+    @Title { Source file organization }
+    @Tag { impl.organizing }
+@Begin
+@LP
+The KHE platform is organized in object-oriented style, with one
+C source file for each major type.  A type's internals are visible
+only within its file; all access to them is via functions.  Headers
+for some of these functions appear in @C { khe_platform.h }, making
+them available to the end user.  Headers for others appear in
+@C { khe_interns.h }, making them available only to the platform.
+@PP
+Although this section applies to all source files, it is motivated
+by the problems of organizing the source files of types defining
+parts of solutions.  Some of these are quite large.  For example,
+file @C { khe_meet.c }, which holds the internals of type
+@C { KHE_MEET }, is about 5000 lines long.
+@PP
+There is a canonical order for the types representing parts of
+solutions:  @C { KHE_SOLN }, @C { KHE_MEET }, @C { KHE_MEET_BOUND },
+@C { KHE_TASK }, @C { KHE_TASK_BOUND }, @C { KHE_MARK }, @C { KHE_PATH },
+@C { KHE_NODE }, @C { KHE_LAYER }, @C { KHE_ZONE }.
+# , @C { KHE_TASKI NG }.
+The intention of defining this order is that these types should be
+handled in this order whenever appropriate---in this Guide for example.
+@PP
+Source files are organized internally by dividing them into
+@I { submodules }, which are segments of the files separated by
+comments.  Each submodule handles one aspect of the type.  Here
+is a generic list of the submodules appearing in any one file,
+in their order of appearance:
+@ID @OneRow @I lines @Break {
+Type declaration
+Simple attributes (back pointers, visit numbers, etc.)
+Creation and deletion
+Relations with objects of the same type (copy, split, etc.)
+Relations with objects of different types
+File reading and writing
+Debug
+}
+Simple attributes are easily handled attributes that are not closely
+related to any following categories.  They may appear in separate
+submodules, or be grouped into one submodule.  Each relation is one
+submodule (counting opposite operations, such as split and merge, as part
+of one relation), except that a large relation may be broken into several
+submodules.  Relations with different types appear in the canonical order
+defined above.
+# For example, the full list of submodules for meets is
+# @ID @OneRow @I lines @Break {
+# Type declaration
+# Back pointers
+# Visit numbers
+# Other simple attributes
+# Matchings (private)
+# Creation and deletion
+# Copy
+# Domain calculations (private)
+# Split and merge
+# Assignment (basic functions)
+# Assignment (helper functions)
+# Assignment (queries)
+# Assignment (fixing and unfixing)
+# Cycle meets and time assignment
+# Meet domains and bounds
+# Meet domains and bounds (automatic domains)
+# Tasks
+# Nodes
+# Zones
+# File reading and writing
+# Debug
+# }
+@PP
+An attempt has been made to keep the submodules in the same order as
+their functions are presented in this Guide, except for debugging.
+Some submodules have no defined position according to this rule,
+because they are present only to support other submodules, and
+offer no functions to the end user.  Those are placed where they
+seem to fit best.
+@End @SubAppendix
+
+@SubAppendix
+    @Title { Relations between objects }
+    @Tag { impl.relation }
+@Begin
+@LP
+This section explains how KHE maintains relations between objects.
+Not every relation is maintained as explained here, but it is the
+author's aim to achieve that in time.
+@PP
+The most common relation, by far, is the @I { one-to-many }
+relation, in which one object is related to any number of
+objects of the same or another type:  one node contains any
+number of meets, one meet contains any number of tasks, one
+meet is assigned any number of meets, and so on.
+@PP
+Let @C { KHE_A } be the type of the entity that there is one of,
+and @C { KHE_B } be the type of the entity that there are many of.
+KHE implements the relation by placing one attribute, of type
+@C { ARRAY_KHE_B }, in @C { KHE_A }, holding the many @C { KHE_B }
+objects related to @C { KHE_A }, and two in @C { KHE_B }:
+@ID @C {
+KHE_A	a;
+int	a_index;
+}
+holding the one @C { KHE_A } object related to this object, and
+this object's index in that object's array.  Any attributes of
+the relation, such as the offset attribute of the meet assignment
+relation, appear alongside these two.  In the @C { KHE_A } class
+file, functions
+@ID @C {
+void KheAAddB(KHE_A a, KHE_B b);
+void KheADeleteB(KHE_A a, KHE_B b);
+}
+are defined which add and delete elements of the relation, as
+well as the usual @C { KheABCount } and @C { KheAB } functions
+which iterate over the array.  In the @C { KHE_B } class file,
+functions
+@ID @C {
+KHE_A KheBA(KHE_B b);
+void KheBSetA(KHE_B b, KHE_A a);
+int KheBAIndex(KHE_B b);
+void KheBSetAIndex(KHE_B b, int a_index);
+}
+get and set the @C { a } and @C { a_index } attributes of @C { b },
+supporting constant time deletions.  Instead of searching for @C { b }
+in @C { a }'s array, @C { a_index } is used to find it directly.
+It is overwritten by the entity at the end of the array, whose
+index is then changed.  This assumes that the order of the array's
+elements may be arbitrary, as is usually the case.  The setter
+functions are private to the platform.
+@PP
+This plan allows a @C { KHE_B } object to be unrelated to any
+@C { KHE_A } object (just set its @C { a } attribute to @C { NULL }),
+but does not support @I { many-to-many } relations, where a
+@C { KHE_B } object may be related to any number of @C { KHE_A }
+objects.  On the rare occasions when KHE needs this kind of relation,
+it adapts the familiar edge lists implementation of graphs:  it
+defines a type @C { KHE_A_REL_B } representing one element of the
+many-to-many relation, and installs one one-to-many relation from
+@C { KHE_A } to @C { KHE_A_REL_B }, and another from @C { KHE_B }
+to @C { KHE_A_REL_B }.  This gives @C { KHE_A_REL_B } attributes
+@ID @C {
+KHE_A	a;
+int	a_index;
+KHE_B	b;
+int	b_index;
+}
+and places it in arrays in both @C { entity_a } and @C { entity_b }.
+Now the operations for adding and deleting an element of the relation
+must add or delete two one-to-many relations, as well as creating
+or deleting one @C { KHE_A_REL_B } object, which is done using a
+free list to save time.
+@End @SubAppendix
+
+@SubAppendix
+    @Title { Kernel operations }
+    @Tag { impl.kernel }
+@Begin
+@LP
+The promises made in connection with marks and paths, that all
+operations that change a solution can be undone (except changes to
+visit numbers), and that undoing a deletion recreates the object at its
+original address, have significant implications for the implementation.
+@PP
+The KHE platform has an inner layer called the @I { solution kernel },
+or just the @I { kernel }, consisting of a set of private operations,
+called @I { kernel operations }, which change a solution.  Each
+kernel operation has a name of the form @C { KheEntityKernelOp },
+where @C { Entity } is the data type and @C { Op } is the operation.
+It is the kernel operations that are stored in paths.  All operations
+(except operations on visit numbers) change the solution only by
+calling kernel operations, so if those are correctly done, undone,
+and redone, all operations will be correctly done, undone, and redone.
+@PP
+For the record, here is the complete list of kernel operations:
+@ID @OneRow {
+@C {
+KheMeetKernelSetBack
+KheMeetKernelAdd
+KheMeetKernelDelete
+KheMeetKernelSplit
+KheMeetKernelMerge
+KheMeetKernelMove
+KheMeetKernelAssignFix
+KheMeetKernelAssignUnFix
+KheMeetKernelAddMeetBound
+KheMeetKernelDeleteMeetBound
+KheMeetKernelSetAutoDomain
+
+KheMeetBoundKernelAdd
+KheMeetBoundKernelDelete
+KheMeetBoundKernelAddTimeGroup
+KheMeetBoundKernelDeleteTimeGroup
+
+KheLayerKernelSetBack
+KheLayerKernelAdd
+KheLayerKernelDelete
+KheLayerKernelAddChildNode
+KheLayerKernelDeleteChildNode
+KheLayerKernelAddResource
+KheLayerKernelDeleteResource
+}
+|0.5c
+@C {
+KheTaskKernelSetBack
+KheTaskKernelAdd
+KheTaskKernelDelete
+KheTaskKernelSplit
+KheTaskKernelMerge
+KheTaskKernelMove
+KheTaskKernelAssignFix
+KheTaskKernelAssignUnFix
+KheTaskKernelAddTaskBound
+KheTaskKernelDeleteTaskBound
+
+
+KheTaskBoundKernelAdd
+KheTaskBoundKernelDelete
+
+KheNodeKernelSetBack
+KheNodeKernelAdd
+KheNodeKernelDelete
+KheNodeKernelAddParent
+KheNodeKernelDeleteParent
+KheNodeKernelSwapChildNodesAndLayers
+KheNodeKernelAddMeet
+KheNodeKernelDeleteMeet
+
+KheZoneKernelSetBack
+KheZoneKernelAdd
+KheZoneKernelDelete
+KheZoneKernelAddMeetOffset
+KheZoneKernelDeleteMeetOffset
+}
+}
+Each @C { KheEntityKernelOp } function has a companion
+@C { KheEntityKernelOpUndo } function.  @C { KheEntityKernelOp }
+carries out its operation and adds itself to the solution's path, if
+present.  @C { KheEntityKernelOpUndo } undoes what @C { KheEntityKernelOp }
+did, only without removing itself from the solution's path, since
+it is called by a function that has already done that.
+@PP
+A redo must be identical to the original operation, because both can be
+inverted by calling @C { KheEntityKernelOpUndo } and removing one record
+from the solution path.  So there are no @C { KheEntityKernelOpRedo }
+functions; @C { KheEntityKernelOp } functions are called instead.
+@PP
+Some operations come in opposing pairs (split and merge, fix and
+unfix, and so on), such that doing one is the same as undoing the
+other, except that a do or redo adds a record to the solution's path,
+whereas an undo does not.  In these cases the implementation contains
+one private function called @C { KheEntityDoOp1 } and another called
+@C { KheEntityDoOp2 }, where @C { Op1 } and @C { Op2 } are opposing
+pairs.  These functions carry out the two operations without touching
+the solution's path.  Then @C { KheEntityKernelOp1 },
+@C { KheEntityKernelOp2 }, @C { KheEntityKernelOp1Undo }, and
+@C { KheEntityKernelOp2Undo } are each implemented by one call on
+@C { KheEntityDoOp1 } or @C { KheEntityDoOp2 }, plus an addition
+to the solution's path if the operation is not @C { Undo }.
+@PP
+Operations that create and delete objects are awkward, as it turns
+out, so the rest of this section is devoted to them.  The meet split
+and merge operations are particularly awkward, so we will start with
+the regular creation and deletion operations, generically named
+@C { KheEntityMake } and @C { KheEntityDelete }, and treat meet
+splitting and merging afterwards.
+@PP
+Solution objects are recycled through free lists held in the enclosing
+solution.  When a new object is needed, it is taken from the free list,
+or from the solution's arena if the free list is empty.  When an
+object is no longer needed, it is added to the free list.  When the
+solution is deleted, and only then, the objects on the free list are
+deleted as part of the deletion of the arena.  Free lists not only
+save time in handling the objects, they also save time in handling
+any extensible arrays within those objects:  those arrays remain
+initialized while the object is on the free list.
+@PP
+An operation which obtains a new object from a memory allocator or
+free list cannot be a kernel operation, because then a redo would not
+re-create the object at its previous memory location.  An operation
+which returns an object to a memory allocator or free list cannot be
+a kernel operation, because an undo would not re-create the object at
+its previous memory location.  So only the part of @C { KheEntityMake }
+which initializes the object and links it into the solution is the
+kernel operation, and only the part of @C { KheEntityDelete } which
+unlinks the object from the solution is the kernel operation.  This
+leads to this picture of the life cycle of a kernel object:
+@CD @I @Diag vstrut { yes } margin { 0.15c } {
+//0.5c
+AA:: @Ellipse outlinestyle { dotted } hsize { 2.0c } @I { nonexist }
+&2c
+BB:: @Ellipse hsize { 2.0c } @I { freelist }
+&2c
+CC:: @Ellipse hsize { 2.0c } @I { unlinked }
+&2c
+DD:: @Ellipse hsize { 2.0c } @I { linked }
+//0.5c
+@CCurveArrow bias { 0.5c } from { AA } to { BB }
+  ylabel { @C { KheEntityDoMake } }
+# @CCurveArrow bias { 0.5c } from { BB } to { AA } ylabelprox { below }
+  # ylabel { @C { KheEntityUnMake } }
+@CCurveArrow bias { 0.5c } from { BB } to { CC }
+  ylabel { @C { KheEntityDoGet } }
+@CCurveArrow bias { 0.5c } from { CC } to { BB } ylabelprox { below }
+  ylabel { @C { KheEntityUnGet } }
+@CCurveArrow bias { 0.5c } from { CC } to { DD }
+  ylabel { @C { KheEntityDoAdd } }
+@CCurveArrow bias { 0.5c } from { DD } to { CC } ylabelprox { below }
+  ylabel { @C { KheEntityUnAdd } }
+}
+State @I nonexist means that the object does not exist; @I freelist
+means that it exists on a free list; @I unlinked means that it exists,
+not on a free list, not linked to the solution, but referenced from
+somewhere on some path; and @I linked means that it exists and is
+linked to the solution.
+@PP
+@C { KheEntityDoMake } obtains a fresh object from the memory
+allocator and initializes its private arrays.  There is no
+corresponding @C { KheEntityUnMake } operation, because memory
+is freed only by deleting arenas, not directly.
+# does the opposite, returning the memory consumed by the object and
+# its private arrays to the memory allocator.
+@PP
+@C { KheEntityDoGet } obtains a fresh object from the free list, or
+from @C { KheEntityDoMake } if the free list is empty.  Either way,
+the object's arrays are initialized, although not necessarily empty.
+Objects returned by @C { KheEntityDoMake } do not actually enter the
+free list.  @C { KheEntityUnGet } does the opposite, adding the object
+it is given to the free list.
+# It does not call @C { KheEntityUnMake }.
+@PP
+@C { KheEntityDoAdd } initializes the unlinked object it is given,
+assuming that its private arrays are initialized, although not
+necessarily empty (it clears them), and links it into the solution.
+@C { KheEntityUnAdd } does the opposite, unlinking the object it
+is given from the solution.
+@PP
+The kernel operations @C { KheEntityKernelAdd } and
+@C { KheEntityKernelDelete } and their @C { Undo } companions are each
+implemented by one call to @C { KheEntityDoAdd } or @C { KheEntityUnAdd },
+plus an addition to the solution path if the function is not an undo.
+@C { KheEntityKernelAdd } and @C { KheEntityKernelDelete } form an
+opposing pair, as defined above, except that @C { KheEntityKernelDelete }
+may include a call to @C { KheEntityUnGet } as explained below.
+@PP
+The public function that creates a kernel object, @C { KheEntityMake },
+is @C { KheEntityDoGet } followed by @C { KheEntityKernelAdd }.  The
+public function that deletes one, @C { KheEntityDelete }, begins with
+kernel operations that help to unlink the object (unassignments and so
+on), then ends with @C { KheEntityKernelDelete }.
+# @PP
+# These functions do not call @C { KheEntityUnMake }, since kernel
+# objects are returned to the memory allocator only when the entire
+# solution is deleted.  The function for deleting a solution first
+# calls user functions which delete all kernel objects and paths.
+# This places all kernel objects on the free list.  It then traverses
+# that list, passing each object to @C { KheEntityUnMake }.
+@PP
+An object can be referenced from the solution and from paths, and there
+is no simple rule saying when to call @C { KheEntityUnGet } to add it
+to the free list.  To solve this problem, an integer reference count
+field is placed in each kernel object, counting the number of references
+to the object.  Not all references are counted.  References from paths
+at points where the object is added or deleted are counted.  For example,
+in a path's record of a meet split or merge, the reference to the second
+meet is counted, but not the first.  So reference counts increase when
+paths grow or are copied, and decrease when paths shrink or are deleted.
+Also, @C { KheEntityDoAdd } adds 1 to the count, and @C { KheEntityUnAdd }
+subtracts 1.  This summarizes references from the solution generally in
+one unit of the count.
+@PP
+When the reference count falls to zero, @C { KheEntityUnGet } is called
+to return the object to the free list.  This could happen during a call
+to @C { KheEntityUnAdd }, or when a path shrinks:  during a call to
+@C { KhePathDelete }, or while undoing, which shrinks the solution's
+main path.
+@PP
+An @I unlinked object could have come from the free list, and so
+could contain no useful information.  It would be a mistake for
+@C { KheEntityDoAdd } to assume that the object it is given has
+passed through @C { KheEntityUnAdd } and retains useful information
+from when it was previously linked.  Instead, @C { KheEntityDoAdd }
+must initialize every field of the object it is given, assuming that its
+arrays are initialized, but not that they contain useful information.
+@PP
+An example of getting this wrong would be to try to preserve the list
+of tasks of a meet in its @C { tasks } array when it is unlinked, in
+a mistaken attempt to ensure that they remain available for when the
+meet is recreated.  What really happens is that before deleting the
+meet, @C { KheMeetDelete } deletes its tasks, so records of those task
+deletions appear on the solution path just before the meet deletion.
+When an undo recreates the meet, it immediately goes on to recreate the
+tasks, without any need for their preservation in the dormant meet.
+@PP
+A meet split is similar to a creation of the second meet, and a
+meet merge is similar to a deletion of the second meet.  The main
+new problem is that tasks need to be split and merged too.  So
+separate kernel operations are defined for splitting the meet
+itself and for splitting one of its tasks, and conversely for
+merging two meets and for merging two of their tasks.  The
+user operation for meet splitting does a kernel meet split
+followed by a sequence of kernel task splits, and the user
+operation for meet merging does the opposite.
+@PP
+The key advantage of doing it this way is that tasks are stored
+explicitly in paths, and their reference counters take account
+of this.  So the usual method of handling the allocation and
+deallocation of entities generally, described above, applies
+without change to the tasks created and deleted by meet splitting
+and merging.
+@PP
+Meet bounds are related to meets in much the same way as tasks
+are.  Once again, the kernel meet split operation does not make
+meet bounds for the split-off meet; instead, they are made by
+separate kernel meet bound creation operations, and thus will
+be undone before a meet split is undone.  Task bounds are
+handled similarly.
+@PP
+Paths have negligible time cost compared with the operations they
+record; and their space cost is moderate, provided they are not used
+to record wandering methods like tabu search.  Reference counting as
+implemented here also costs very little:  in time, a few simple steps,
+only carried out when creating or deleting a kernel object, not each time
+the object is referenced; and in space, one integer per kernel object.
+@End @SubAppendix
+
+@SubAppendix
+    @Title { Monitor updating }
+    @Tag { impl.monitor_updating }
+@Begin
+@LP
+When the user executes an operation that changes the state of a
+solution, KHE works out the revised cost.  For efficiency, this
+must be done incrementally.  This section explains how it is
+done---but just for information:  the functions defined here
+cannot be called by the user.
+@PP
+The monitors are linked into a network that allows state changing
+operations to flow naturally to where they need to go.  Only
+attached monitors are linked in; detached ones are removed, so
+that no time is wasted on them.  The full list of basic operations
+that affect cost is
+@ID @Tbl
+  aformat { @Cell ml { 0i } A | @Cell B | @Cell mr { 0i } C }
+{
+@Rowa
+    A { @C {
+KheMeetMake
+KheMeetDelete
+KheMeetSplit
+} }
+    B { @C {
+KheMeetMerge
+KheMeetAssign
+KheMeetUnAssign
+} }
+    C { @C {
+KheTaskMake
+KheTaskDelete
+KheTaskAssign
+KheTaskUnAssign
+} }
+}
+Six originate in @C { KHE_MEET } objects, four in
+@C { KHE_TASK } objects.  From there their impulses flow
+to objects of three private types:
+@CD @OneRow 0.95 @Scale @Diag linklabelbreak { ragged -4px } {
+@Tbl
+    indent { ctr }
+    aformat { @Cell ml { 0i } mr { 6c } A | @Cell mr { 0i } B }
+{
+@Rowa
+    ma { 3c }
+    A { SE::  @Box @C { KHE_MEET } }
+    B { ES::  @Box @C { KHE_EVENT_IN_SOLN } }
+@Rowa
+    mv { 2c }
+    A { SR::  @Box @C { KHE_TASK } }
+    B { ERS:: @Box @C { KHE_EVENT_RESOURCE_IN_SOLN } }
+@Rowa
+    B { RS::  @Box @C { KHE_RESOURCE_IN_SOLN } }
+}
+//
+@Arrow from { SE@NW ++ {0 1c} } to { SE }
+  xlabel { @C {
+KheMeetMake
+KheMeetDelete
+KheMeetSplit
+KheMeetMerge
+KheMeetAssign
+KheMeetUnAssign
+  } }
+@Arrow from { SE } to { SR }
+  ylabel { @C {
+Split
+Merge
+AssignTime
+UnAssignTime
+  } }
+@Arrow from { SE } to { ES }
+  ylabel { @C {
+Add
+Delete
+Split
+Merge
+AssignTime
+UnAssignTime
+  } }
+@Arrow from { SR } to { ERS }
+  ylabel { @C {
+Add
+Delete
+Split
+Merge
+AssignResource
+UnAssignResource
+  } }
+@Arrow from { SR } to { RS }
+  ylabelmargin { 0i }
+  ylabelprox { below }
+  ylabeladjust { 0.2c 0.5c }
+  ylabel { @C {
+Split
+Merge
+AssignTime
+UnAssignTime
+AssignResource
+UnAssignResource
+  } }
+@Arrow from { SR@SW -- {0 1c} } to { SR }
+  xlabelprox { below }
+  xlabel { @C {
+KheTaskMake
+KheTaskDelete
+KheTaskAssign
+KheTaskUnAssign
+} }
+}
+@C { KHE_EVENT_IN_SOLN } holds information about one event in a
+solution:  the meets derived from it (where
+@C { KheEventMeet } gets its values from), a list of `event
+resource in solution' objects, one for each of its event resources,
+and a list of monitors, possibly including a timetable
+(timetables are monitors).  @C { KHE_EVENT_RESOURCE_IN_SOLN }
+holds information about one event resource in a solution:  the
+tasks derived from it, and a list of monitors.
+@C { KHE_RESOURCE_IN_SOLN } holds information about one resource
+in a solution:  the tasks it is currently assigned to,
+and a list of monitors, usually including a timetable.
+@PP
+The connections are fairly self-evident.  For example, if
+@C { KheMeetMake } is called to make a meet derived from a given
+instance event, then that event's event in solution object needs
+to know this, and the @C { Add } operation (full name
+@C { KheEventInSolnAddMeet }) informs it.  @C { KheMeetAssign }
+only generates an @C { AssignTime } call when the assignment links
+the meet, directly or indirectly, to a cycle meet, assigning a time
+to it.  Event resource in solution objects are not told about time
+assignments and unassignments.  Calls only pass from a task object
+@C { task } to a resource in solution object when @C { task } is
+assigned a resource.
+@PP
+The connections leading out of @C { KHE_EVENT_IN_SOLN } are as follows:
+@CD @OneRow @Diag linklabelbreak { ragged -4px } {
+@Tbl
+    # indent { ctr }
+    aformat { @Cell ml { 0i } mr { 3c } A | @Cell mr { 0i } B }
+{
+@Rowa
+    ma { 0.0c }
+    A { ES::  @Box @C { KHE_EVENT_IN_SOLN } }
+@Rowa
+    ma { 1.5c }
+    B { SEM:: @Box @C { KHE_SPLIT_EVENTS_MONITOR } }
+@Rowa
+    B { DSEM:: @Box @C { KHE_DISTRIBUTE_SPLIT_EVENTS_MONITOR } }
+@Rowa
+    B { ATM::  @Box @C { KHE_ASSIGN_TIME_MONITOR } }
+@Rowa
+    B { PTM::  @Box @C { KHE_PREFER_TIMES_MONITOR } }
+@Rowa
+    B { ETT:: @Box @C { KHE_EVENT_TIMETABLE_MONITOR } }
+@Rowa
+    B { SPEM:: @Box @C { KHE_SPREAD_EVENTS_MONITOR } }
+@Rowa
+    B { OEM:: @Box @C { KHE_ORDER_EVENTS_MONITOR } }
+    mb { 0.0c }
+}
+//
+@VHArrow from { ES@SE -- {0.5c 0} } to { SEM }
+  xlabel { @C {
+Add
+Delete
+Split
+Merge
+  } }
+@VHArrow from { ES@SE -- {0.5c 0} } to { DSEM }
+@VHArrow from { ES@SW ++ {0.5c 0} } to { ATM }
+  xlabel { @C {
+Add
+Delete
+Split
+Merge
+AssignTime
+UnAssignTime
+  } }
+@VHArrow from { ES@SW ++ {0.5c 0} } to { PTM }
+@VHArrow from { ES@SW ++ {0.5c 0} } to { ETT }
+@VHArrow from { ES@SW ++ {0.5c 0} } to { SPEM }
+@VHArrow from { ES@SW ++ {0.5c 0} } to { OEM }
+}
+Split events and distribute split events monitors do not need to
+know about time assignment and unassignment.  Based on the calls
+they receive, they keep track of meet durations and
+report cost accordingly.  Assign time and prefer times monitors
+are even simpler; they report cost depending on whether the
+meets reported to them are assigned times or not.
+@PP
+Event timetables are used by link events constraints, which need
+to know the times when the event's meets are running,
+ignoring clashes, which is just what timetables offer.
+@PP
+A spread events monitor is connected to the event in solution
+objects corresponding to each of the events it is interested in.
+It keeps track of how many meets from those events
+collectively have starting times in each of its time groups, and
+calculates deviations accordingly.  Spread events monitors are
+not attached to timetables because, although their monitoring is
+similar, there are significant differences:  spread events
+monitor time groups come with upper and lower limits, making
+them not sharable in general, and the quantity of interest is the
+number of distinct meets that intersect each time group,
+not the number of busy times calculated by the time group monitors
+attached to timetables.
+@PP
+An order events monitor is connected to the two event in solution
+objects corresponding to the two events it is interested in.
+These keep track of the events' meets, including their number,
+and the monitor itself keeps track of the number of unassigned
+meets.  So determining whether both events have at least one
+meet, and whether there are no unassigned meets, take constant
+time.  If both conditions are satisfied, the monitor traverses
+both sets of meets to calculate the deviation and cost when a
+meet is added, deleted, or assigned a time.  (In practice,
+events subject to order events constraints do not split, so this
+too takes constant time.)  The other operations are faster:
+unassigning a time produces cost 0, and splitting and merging
+do not change the cost.
+# @PP
+# It might seem that spread events monitors could usefully be
+# attached to timetables rather than directly to event in solution
+# objects, especially since they analyse by time groups, which
+# timetables supply in the form of time group monitors (see below).
+# However, a closer look shows two significant differences:  spread
+# events monitor time groups come with upper and lower limits,
+# making them not sharable in general, and the quantity of interest
+# is the number of distinct meets that intersect each time
+# group (either in their starting times or at all), which is quite
+# different from the number of busy times calculated by time group
+# monitors.  In the end it seemed best to keep spread events monitors
+# completely separate.
+@PP
+The connections leading out of @C { KHE_EVENT_RESOURCE_IN_SOLN } are
+@CD @OneRow @Diag linklabelbreak { ragged -4px } {
+@Tbl
+    indent { ctr }
+    aformat { @Cell ml { 0i } mr { 1.5c } A | @Cell mr { 0i } B }
+{
+@Rowa
+    ma { 0.0c }
+    A { ERS::  @Box @C { KHE_EVENT_RESOURCE_IN_SOLN } }
+@Rowa
+    ma { 2.5c }
+    B { ARM:: @Box @C { KHE_ASSIGN_RESOURCE_MONITOR } }
+@Rowa
+    B { PRM:: @Box @C { KHE_PREFER_RESOURCES_MONITOR } }
+@Rowa
+    B { ASAM::  @Box @C { KHE_AVOID_SPLIT_ASSIGNMENTS_MONITOR } }
+@Rowa
+    B { LRM::  @Box @C { KHE_LIMIT_RESOURCES_MONITOR } }
+    mb { 0.0c }
+}
+//
+@VHArrow from { ERS } to { ARM }
+  xlabel { @C {
+Add
+Delete
+Split
+Merge
+AssignResource
+UnAssignResource
+  } }
+@VHArrow from { ERS } to { PRM }
+@VHArrow from { ERS } to { ASAM }
+@VHArrow from { ERS } to { LRM }
+}
+None of these monitors cares about time assignments and unassignments.
+Assign resource monitors and prefer resources monitors are very simple,
+reporting cost depending on whether the tasks passed to them are
+assigned or not.
+@PP
+An avoid split assignments monitor is connected to one event resource
+in solution object for each event resource in its point of application.
+It keeps track of a multiset of resources, one element for each assignment
+to each task it is monitoring, and its cost depends on the
+number of distinct resources in that multiset.
+@PP
+A limit resources monitor is connected to one event resource in
+solution object for each event resource it monitors.  It keeps count
+of the number of assignments of resources from its resource group.
+@PP
+The connections leading out of @C { KHE_RESOURCE_IN_SOLN } are
+@CD @OneRow @Diag linklabelbreak { ragged -4px } {
+@Tbl
+    indent { ctr }
+    aformat { @Cell ml { 0i } mr { 1.5c } A | @Cell mr { 0i } B }
+{
+@Rowa
+    ma { 0.0c }
+    A { RS::  @Box @C { KHE_RESOURCE_IN_SOLN } }
+@Rowa
+    ma { 1.2c }
+    B { LWM:: @Box @C { KHE_LIMIT_WORKLOAD_MONITOR } }
+@Rowa
+    B { RTT:: @Box @C { KHE_RESOURCE_TIMETABLE_MONITOR } }
+    mb { 0.0c }
+}
+//
+@VHArrow from { RS@SE -- {0.5c 0} } to { LWM }
+  xlabel { @C {
+AssignResource
+UnAssignResource
+  } }
+@VHArrow from { RS@SW ++ {0.5c 0} } to { RTT }
+  xlabel { @C {
+Split
+Merge
+AssignTime
+UnAssignTime
+AssignResource
+UnAssignResource
+  } }
+}
+Limit workload constraints do not need to know about time assignments,
+evidently, but they also do not need to know about splits and merges,
+since these do not change the total workload.
+@PP
+Calculating workloads is then very simple.  Each meet
+receives a workload when it is created, and when a resource is
+assigned, the workload limit monitors attached to its resource in
+solution object are updated, and pass revised costs to the solution.
+@PP
+@C { KHE_RESOURCE_TIMETABLE_MONITOR } receives many kinds of calls.
+However, since it maintains a timetable containing tasks with
+assigned times, all these can be mapped to just two incoming
+operations, which we call @C { AddTaskAtTime } and
+@C { DeleteTaskAtTime }.  For example, a split maps to one
+@C { DeleteTaskAtTime } and two @C { AddTaskAtTime }
+calls.  The outgoing operations are
+@CD @OneRow @Diag linklabelbreak { ragged -4px } {
+@Tbl
+    indent { ctr }
+    aformat { @Cell ml { 0i } mr { 1.5c } A | @Cell mr { 0i } B }
+{
+@Rowa
+    ma { 0.0c }
+    A { RTT:: @Box { 0.8c @Wide {} & @C { KHE_RESOURCE_TIMETABLE_MONITOR } & 0.8c @Wide {} } }
+@Rowa
+    ma { 0.6c }
+    B { ACM:: @Box @C { KHE_AVOID_CLASHES_MONITOR } }
+#@Rowa
+#    B { LEM:: @Box @C { KHE_LINK_EVENTS_MONITOR } }
+@Rowa
+    B { TGM:: @Box @C { KHE_TIME_GROUP_MONITOR } }
+    mb { 0.0c }
+}
+//
+@VHArrow from { RTT@SE -- {0.5c 0} } to { ACM }
+  xlabel { @C {
+ChangeClashCount
+Flush
+  } }
+@VHArrow from { RTT@SW ++ {0.5c 0} } to { TGM }
+  xlabel { @C {
+AssignTimeNonClash
+UnAssignTimeNonClash
+Flush
+  } }
+# @VHArrow from { RTT@SW ++ {0.5c 0} } to { LEM }
+}
+An avoid clashes monitor is notified whenever the number of meets
+at any one time increases to more than 1 or decreases from more than 1
+(operation @C { ChangeClashCount } above).  It uses these notifications
+to maintain its deviation.  It updates the solution when a @C { Flush }
+is received from the timetable at the end of the operation.
+@PP
+The other monitors are attached to the timetable at each time they are
+interested in, and are notified when one of those times becomes busy
+(when its number of meets increases from 0 to 1) and when it
+becomes free (when its number of meets decreases from 1 to 0),
+by operations @C { AssignTimeNonClash } and @C { UnAssignTimeNonClash }
+above.
+#@PP
+#A link events monitor is interested in all the times of all the
+#timetables of the events in its point of application.  It is
+#notified when any of these times becomes busy or free, and
+#uses that information to maintain, for each time, the number
+#of its events that are busy at each time.  Its deviation, also
+#maintained incrementally, is the number of times where some of
+#its events, but not all of them, are running.
+# @FootNote {
+# KHE offers a simple way to ensure that a link events constraint is
+# never violated, assuming that all the events to be linked have the
+# same duration.  Let the events to be linked be
+# @M { e sub 1 , e sub 2 ,..., e sub n }, and
+# suppose that their common duration is @M { d }.
+# At the start of the solve, split each @M { e sub i } into @M { m }
+# meets @M { s sub i1 , s sub i2 ,..., s sub im } of durations
+# (in order) @M { d sub 1 , d sub 2 ,..., d sub m }, whose sum is
+# @M { d }.  The choice of @M { m } and the @M { d sub j } will be
+# informed by the split events and distribute split events constraints
+# applicable to the @M { e sub i }, and is a separate matter.
+# Suppose that @M { m } distinct @I { lead er meets }
+# @M { l sub 1 , l sub 2 ,..., l sub m } can be found such that:
+# @BulletList
+#
+# @LI {
+# For all @M { j }, the duration of @M { l sub j } is at least
+# @M { d sub j };
+# }
+#
+# @LI {
+# For all @M { j }, if @M { l sub j = s sub ij } for some @M { i },
+# then all the other @M { s sub ij } are assigned to @M { l sub j }
+# at the same offset (0 in this case);
+# }
+#
+# @LI {
+# For all @M { j }, if @M { l sub j != s sub ij } for any @M { i },
+# then @M { l sub j } is not equal to any meet of any
+# @M { e sub i }, and all the @M { s sub ij } are assigned to
+# @M { l sub j } at the same offset (not necessarily 0).
+# }
+#
+# @EndList
+# Then, as long as the assignments in those @M { s sub ij } that are
+# not lead ers remain in place, even if no times are assigned it is
+# already clear that no violations of the link events constraint are
+# possible, because the assignment of a time to a lead er meet of
+# duration @M { d sub j } assigns the same time to one meet of
+# duration @M { d sub j } of every @M { e sub i }.  In these cases, the
+# link events monitors concerned should be detached.  They are expensive
+# to keep up to date, yet only ever report cost 0.
+# @PP
+# @I { Not yet implemented. }  To support this style of solving,
+# KHE offers @I { link locking }.  The user may request that a
+# given link events monitor be link locked.  This causes KHE to
+# verify that the current state of the assignments of the solution
+# events of the events being monitored is as described above,
+# including identifying a set of lead er meets.  It
+# then locks all the assignments in the non-lead ers (i.e. makes it a
+# fatal error to attempt to remove them), and detaches the link events
+# monitor, so that no time will be wasted on it.
+# Although a link
+# lock can be removed at any time, link locking and unlocking are
+# fairly slow operations.  Applying one link lock to each link events
+# monitor at the start of the solve is fine, but frequent locking
+# and unlocking during the solve, although legal, is not recommended.
+# }
+@PP
+A time group monitor monitors one time group within one timetable.
+It is attached to its timetable at the times of its time group, so
+is notified when one of those times becomes busy or free.  It keeps
+track of the number of busy and idle times in its time group.
+As an optimization, the number of idle times is calculated only when
+at least one limit idle times monitor is attached to the time group
+monitor; otherwise the number is taken to be 0.
+# A bit vector @M { V },
+# holding the positions of the busy times in the time group being monitored,
+# is maintained.  When the monitor is flushed, the number of idle times
+# of @M { V } is calculated as follows.  If @M { V } is empty, there are
+# no idle times.  Otherwise, the number of idle times is
+# @ID @Math { max(V) - min(V) + 1 - "|" V "|" }
+# The first three terms give the total number of times from the
+# first busy time to the last inclusive; every non-busy time
+# within that range is an idle time and conversely.
+# @PP
+# @M { "|" V "|" } is just the number of busy times, always
+# maintained by the time group monitor, so it is readily available.
+# The calculation of @M { min(V) } and @M { max(V) } on a bit
+# vector is a well-known problem which never seems to attract
+# adequate hardware support.  KHE's bit vector module calculates
+# @M { min(V) } by a linear search for the first non-zero word
+# of the bit vector, followed by a linear search for the first
+# non-zero byte of that word, and finishing with a lookup in a
+# 256-word table, indexed by that byte, which returns the position
+# of the first non-zero bit of that byte.  The same method,
+# searching in the other direction, finds @M { max(V) }.
+@PP
+Old and new values for the number of busy and idle times are
+stored, and when a flush is received they are propagated
+onwards via operation @C { ChangeBusyAndIdle }:
+@CD @OneRow @Diag linklabelbreak { ragged -4px } {
+@Tbl
+    # indent { ctr }
+    aformat { @Cell ml { 0i } mr { 1.5c } A | @Cell mr { 0i } B }
+{
+@Rowa
+    ma { 0.0c }
+    A { TGM:: @Box @C { KHE_TIME_GROUP_MONITOR } }
+@Rowa
+    ma { 1.0c }
+    B { AUTM:: @Box @C { KHE_AVOID_UNAVAILABLE_TIMES_MONITOR } }
+@Rowa
+    B { LITM:: @Box @C { KHE_LIMIT_IDLE_TIMES_MONITOR } }
+@Rowa
+    B { CBTM:: @Box @C { KHE_CLUSTER_BUSY_TIMES_MONITOR } }
+@Rowa
+    B { LBTM:: @Box @C { KHE_LIMIT_BUSY_TIMES_MONITOR } }
+@Rowa
+    B { LAIM:: @Box @C { KHE_LIMIT_ACTIVE_INTERVALS_MONITOR } }
+    mb { 0.0c }
+}
+//
+@VHArrow from { TGM } to { AUTM }
+  xlabel { @C {
+AddBusyAndIdle
+DeleteBusyAndIdle
+ChangeBusyAndIdle
+  } }
+@VHArrow from { TGM } to { LITM }
+@VHArrow from { TGM } to { CBTM }
+@VHArrow from { TGM } to { LBTM }
+@VHArrow from { TGM } to { LAIM }
+}
+When a monitor is attached, function @C { AddBusyAndIdle } is called
+instead, and when a monitor is detached, function @C { DeleteBusyAndIdle }
+is called instead.
+@PP
+An unavailable times monitor is connected to a time group monitor
+monitoring the unavailable times.  It receives an updated number
+of busy times from @C { ChangeBusyAndIdle } and reports any
+change of cost to the solution.
+@PP
+A limit idle times monitor is connected to the time group
+monitors corresponding to the time groups of its constraint.
+It receives updated idle counts from each of them, and based
+on them it maintains its deviation.
+@PP
+A cluster busy times monitor is connected to the time
+group monitors corresponding to the time groups of its
+constraint.  It is interested in whether the busy counts it
+receives from them change from zero to non-zero, or conversely.
+@PP
+A limit busy times monitor is connected to the time
+group monitors corresponding to the time groups of its
+constraint.  It receives updated busy counts from each of
+them, and based on them it maintains its deviation.
+@PP
+A limit active intervals monitor is connected to the time
+group monitors corresponding to the time groups of its
+constraint.  It is interested in whether the busy counts it
+receives from them change from zero to non-zero, or conversely.
+Using a data structure holding the current set of active intervals,
+it maintains its deviation by tracking changes in their lengths
+(Appendix {@NumberOf impl.limit.active}).
+@End @SubAppendix
+
+@SubAppendix
+    @Title { Monitor attachment and unattachment }
+    @Tag { impl.monitor_attachment }
+@Begin
+@LP
+Monitor attachment and unattachment are constrained by some basic
+facts:  they can occur at any time while a solver is running;
+unattachment is intended to save time, which means that an
+unattached monitor must be genuinely unlinked from the solution;
+and an unattached monitor has cost 0.  Also, it is convenient to
+bring a monitor into existence in the unattached state and then
+attach it, because there is a lot of shared code between creation
+and attachment.
+@PP
+When a monitor is unattached, it is in the @I { unattached state }.
+Its cost is 0 by definition, and its @C { attached } flag is
+@C { false }.  Any other attributes that change as the solution
+changes are in principle undefined, because an unattached monitor,
+including these attributes, is usually out of date.  However a
+monitor's invariant is free to assign particular values to any of
+these attributes in the unattached state, if that is convenient.
+@PP
+A monitor becomes attached in two steps.  The first step is to convert
+the unattached state into the @I { unlinked state }, which is the
+appropriate state for the monitor when it is formally attached but not
+yet linked in to the constraint propagation network.  Its @C { attached }
+flag is @C { true }, and its attributes that change as the solution
+changes (including its cost) have well-defined values, and its cost
+has been reported to its parents.  The second step is to call on each
+relevant part of the constraint propagation network, informing it that
+the monitor is now attached and wants to receive updates.  Each such
+part will call back with an initial update, that the monitor uses to
+bring itself fully up to date.
+@PP
+It is true that one could take a different approach, in which the
+monitor's state is not well-defined, and cost is not reported to
+parents, until after the monitor is fully linked in to the
+constraint propagation network.  However, linking to part of the
+solution or to a monitor often has the same effect on the monitor
+as a change of state in that part of the solution or monitor, and
+the approach taken here brings out that commonality.
+@PP
+Returning now to our two-step approach, we give some examples of
+unlinked states.  To keep above the details we confine ourselves
+to the @I { unlinked cost }:  the monitor's cost in the unlinked
+state.  This is often 0, but not always.  Here are a few examples.
+@PP
+The unlinked cost of an assign resource monitor is 0, because it
+is not linked to any event resources, and so it cannot be aware
+of any unassigned ones.
+@PP
+The unlinked cost of a limit busy times monitor is 0, because its
+cost is summed over its time groups, and initially it is linked
+to none.
+@PP
+The main causes of non-zero unlinked costs are minimum limits.
+Consider a limit workload monitor with a minimum limit.  When it
+is unlinked, it has no evidence that its resource is assigned
+any work at all, and so its unlinked deviation is the cost
+of being assigned nothing.
+@PP
+In general, the process of attachment of monitor @C { m } looks
+like this:
+@ID @C {
+m->attached = true;
+if( unlinked_cost > 0 )
+{
+  m->cost = unlinked_cost;
+  report to parents the cost change from 0 to m->cost;
+}
+add the links from the solution and other monitors to m;
+}
+As previously explained, the last step produces callbacks to
+@C { m } that further change its state, and so possibly its cost.
+Unattachment reverses what attachment did:
+@DP
+@RID @C {
+remove the links from the solution and other monitors to m;
+assert(m->cost == unlinked_cost);
+if( unlinked_cost > 0 )
+{
+  report to parents the cost change from m->cost to 0;
+  m->cost = 0;
+}
+m->attached = false;
+}
+@End @SubAppendix
+
+@SubAppendix
+    @Title { The limit active intervals monitor }
+    @Tag { impl.limit.active }
+@Begin
+@LP
+Monitors can be quite lengthy to implement, given the many
+state-changing operations they need to accept.  However
+they are usually straightforward, once one understands the
+basic structure of taking a state change in, producing a
+new cost, and reporting it if it changed.
+@PP
+The limit active intervals monitor has a much longer and more
+complex implementation than the other monitors.  Finding an
+efficient and coherent implementation was challenging, so this
+section documents that implementation in detail.
+@PP
+The basic data structure is a sequence of @I { time group info }
+objects, one for each time group, holding four fields:  a pointer
+to the time group monitor for that time group, a polarity, and
+@I { state } and @I { interval } fields.  A time group info object
+will be referred to here simply as a time group.
+@PP
+The state field contains the time group's state.  The user is
+encouraged to believe that there are two states, active and
+inactive, but in fact there are three:  active, inactive,
+and @I { open }, meaning that the monitor cannot assume
+that the time group is either active or inactive.
+@PP
+As Jeff Kingston's paper on history @Cite { $kingston2018history }
+explains, a limit active intervals monitor is actually a
+@I { projection } of a larger monitor spanning the full cycle.
+Its @C { history_before } attribute says how many active time
+groups there are immediately preceding the current monitor, and
+its @C { history_after } attribute says how many time groups (in
+any state) there are following it.  The time group sequence is
+extended at each end to accommodate these @I virtual time groups:
+@CD strut @Font @Diag {
+//0.6f
+@Box paint { lightgrey } clabel { @F history_before } clabelprox { NW }
+  2.5c @Wide { @I a }
+& MM:: @Box blabel { @F 0 } blabelprox { SW } 4c @Wide { @I ai &3c @I aio } &
+@Box paint { lightgrey } clabel { @F history_after } clabelprox { NW }
+  3.5c @Wide { @I o }
+//0.6f
+@Line pathstyle { dashed } xlabel { @F { cutoff_index } } xindent { -0.2f }
+  from { MM@N ++ { 1.0f 1.0f } } to { MM@S ++ {1.0f -1.0f} }
+}
+This diagram illustrates several points.  The @I real (non-virtual)
+time groups are represented by the white box.  The first has index
+0.  But some indexes outside this range are permitted:  down to
+@C { -history_before }, and up to @C { count + history_after - 1 },
+where @C { count } is the number of real time groups.  Actual
+objects are not present in the two extended parts of the range, but
+nevertheless the monitor's functions accept these indexes.  They
+behave as though each time group in the left part is active, and
+each time group in the right part is open.  In this way, the
+virtuality of these time groups is hidden, except that it is
+not possible to change their state.
+@PP
+One could simplify the implementation by creating objects for all time
+groups, but that would be a mistake.  It would be safe enough for
+{@F history_before}, but @F history_after could be very large, and
+creating all those extra time groups would waste time and memory.
+@PP
+A real time group can be active, inactive, or open.  It is
+open when it lies at or after the cutoff index and its busy count
+is zero.  Otherwise, it is either active or inactive, depending
+on its busy count and polarity in the usual way.  A virtual time
+group is active when it lies in the @F history_before range, and
+open when it lies in the @F history_after range, except that all
+time groups (real and virtual) are inactive when the monitor is
+not attached.
+@PP
+This definition exposes the similarity between cutoff indexes
+and history after:  both specify that some part of the cycle is
+not being solved, and hence that time groups there may be open.
+@PP
+There is an asymmetry in when a time group is open which needs
+explanation.  Consider a real time group at or after the cutoff
+index.  When it is busy (because of a preassignment, say, or
+task grouping), its activity or inactivity, depending on its
+polarity, is known, so considering it to be open, while possible,
+entails a loss of potentially valuable information.  But when it
+is not busy, its activity or inactivity is not known, so its state
+must be open, at least by default.
+@PP
+@C { KheLimitActiveIntervalsMonitorSetNotBusyState } mitigates
+this by allowing the user to specify that when a given time group
+is at or after the cutoff index and is not busy, its state is to
+be active or inactive rather than open.  It would perhaps be better
+to add to the platform an operation that declares that a certain
+resource will not be assigned anything at a certain time.  But
+such an operation would be a major undertaking and it is not likely
+that it will ever be added.
+@PP
+We've reached a key point:  we now know what time groups (real and
+virtual) there are, and how the state of each time group is defined.
+So we have a firm foundation to build intervals on.  In doing so we
+will forget that some time groups are virtual.  We will also forget
+why time groups have the states they have, and simply take those
+states as given.
+@PP
+An @I interval is a sequence of adjacent time groups.
+An @I { active interval }, or @I { a-interval }, is a maximal
+sequence of adjacent active time groups.  Maximum limits are
+checked by comparing the lengths of the a-intervals with the
+limit.  An @I { ao-interval } is a maximal sequence of
+adjacent time groups, each of which is either active or
+open.  Minimum limits are checked by comparing the
+lengths of the ao-intervals with the minimum limit.
+@PP
+Actually the rules just given have a flaw.  If an ao-interval is
+entirely open (if it contains no active time groups), then it is
+not defective, even if its length is less than the minimum limit.
+For now we will pretend that this flaw does not exist.  We'll
+return to it and handle it later.
+# Just one active time group is enough to make all well again.
+@PP
+An interval is represented by an object in the usual way,
+containing indexes defining its endpoints, and its cost.  One
+option would be to maintain a list of a-intervals when the monitor
+has a non-trivial maximum limit, and a list of ao-intervals when
+the monitor has a non-trivial minimum limit.  However, given that
+many monitors have both and that open time groups are uncommon,
+this seems too expensive.  What we actually do is maintain a list
+of ao-intervals only.
+@PP
+When a time group changes state for any reason, the sequence of
+ao-intervals is adjusted to take account of the change.  The
+relevant ao-intervals are easily reached, because each active and
+each open time group contains a pointer to its enclosing interval.
+It may be necessary to lengthen an adjacent interval, or merge two
+intervals that become adjacent, or even to delete an interval (when
+the changing time group was its only element).  Each interval that
+changes recalculates its cost and reports the change in cost to
+the monitor, which passes on the total change in cost.
+@PP
+New intervals come from a free list of interval objects in the
+monitor; deleted intervals return there.  So once a solve is
+well under way there is little or no memory allocation.
+@PP
+It is trivial for an ao-interval to check itself against a
+minimum limit, because it knows its own length.  (We are still
+ignoring the problem of ao-intervals with no active time
+groups.)  To check itself against a maximum limit, it might
+seem that it needs to find all the a-intervals within itself
+and check them against the limit.  This is potentially slow.
+Of particular concern are cases where there is a small cutoff
+index, and hence, potentially, a long ao-interval extending
+past it, with a-intervals (produced by preassignments, say)
+scattered along it.
+@PP
+Here, however, we use the fact that the cost of a limit active
+intervals monitor when there is a cutoff index is open to
+negotiation.  We include the following in its definition:
+@I { violations of limits by active intervals that begin at or
+after the cutoff index attract no cost }.  This is a plausible
+part of what it means to install a cutoff index; but its real
+reason for being there is efficiency.
+@PP
+Where then are the a-intervals whose costs we need to
+calculate?  They must begin before the cutoff index, so
+they must lie in ao-intervals that begin before the
+cutoff index.  They cannot be preceded by open time groups,
+because all open time groups lie at or after the cutoff index.
+So the a-intervals we need are exactly those whose first time
+group is the first time group of its enclosing ao-interval,
+which itself must begin before the cutoff index.
+@PP
+For each ao-interval, even at and after the cutoff index, let
+its @I { initial a-interval } be the a-interval (if any) whose
+first time group is the ao-interval's first time group.
+Record in each ao-interval the length of its initial a-interval,
+or 0 if there is no initial a-interval.  When the ao-interval's
+first time group is before the cutoff index, compare this with
+the maximum limit and generate a cost.
+@PP
+These initial a-interval lengths are easy to maintain as time
+groups change state and intervals are merged and split.  At the
+worst, when a time group changes from open to active just at the
+end of the initial a-interval, the time groups from there on must
+be scanned to see how much longer the initial a-interval has become.
+@PP
+Finally, we can now solve the problem of ao-intervals with no active
+time groups.  Since open time groups can only occur at or after the
+cutoff index, such intervals always begin at or after the cutoff
+index.  And we have just introduced a rule which requires all such
+intervals to have no cost.  Problem solved.
+@End @SubAppendix
+
+@SubAppendix
+    @Title { An arena and arena set plan }
+    @Tag { impl.arena.plan }
+@Begin
+@LP
+Arenas and arena sets can be used to allocate and free memory
+very efficiently.  However, if their advantages are to be
+realized, a carefully worked out plan for them is needed.
+@PP
+Some basic facts constrain this plan.  Although arenas are
+cheap to create, still their number should be minimized,
+since from one point of view every arena creation is an
+unproductive use of time and memory; and it calls @C { malloc }
+and thus may produce contention.  Accordingly, all objects that
+are known to have the same lifetime should share an arena.  For
+example, any significant solver will allocate memory while it is
+running, but after it ends its effect will be confined to changes
+in the solution it worked on.  So it makes sense for all memory
+allocated by a solver to be kept in a single arena, and for that
+arena to be deleted or recycled as one of the final steps of that
+solver.  Again, the objects making up one solution will all be
+deleted together (except the solution object itself, which may
+need to survive as a placeholder), so they should lie in one arena.
+@PP
+To maximize the re-use of memory, two rules are needed.  First,
+there should be as few arena sets as possible, since then there
+will be as few idle arenas as possible.  The minimum number of
+arena sets is one per thread, because arena sets have no locking and
+cannot be shared between threads.  It would be possible to have
+locked arena sets and create just one global arena set that all
+arenas come from, but that approach has not been followed, because
+even though there would be very little contention for this arena
+set, still we prefer to avoid all unnecessary locking.
+@PP
+When a thread ends, its arena set is deleted, after moving its
+arenas across into the arena set of the parent thread, the one
+that will be continuing.  Care is needed here when the thread's
+arena set is stored in other objects that are continuing, as
+KHE stores it in solution objects.
+@PP
+KHE stores the arena set in solution objects but nowhere else.
+When the thread ends, the arena set field of every solution that
+is being kept is set to the parent thread's arena set, leaving
+no trace of the thread arena set in any continuing object.
+@PP
+The second rule for maximizing re-use of memory is that every arena
+should be taken from an arena set and returned to an arena set when
+it is no longer needed:  @C { HaArenaMake } and @C { HaArenaDelete }
+should not be called directly.  The main issue here is ensuring
+that an arena set is available at every point in the program.
+For the implementer of KHE, and for users who write their own
+multi-threaded programs, this takes some care; but for most users
+of KHE, it is trivial, because KHE supplies a suitable arena set
+with every solution, that the user can obtain arenas from via
+functions @C { KheSolnArenaBegin } and @C { KheSolnArenaEnd }
+(Section {@NumberOf solutions.top.arenas}).
+@PP
+We also need to consider modules which assist solvers, such as the
+priority queue or weighted bipartite matching modules.  Such modules
+might not wish to get their memory from @C { KheSolnArenaBegin }
+and @C { KheSolnArenaEnd }, because they want to be independent
+of KHE solution objects and rely only on Ha, or because they
+can use the same arena as the solver that calls them, saving
+arena creations.  These modules typically accept an arena
+parameter, and offer no operation to delete themselves, that
+being done when the arena they are passed is deleted.
+@PP
+The remainder of this section analyses an issue that has puzzled
+the author.  In general, it arises when it is not known whether
+a program is going to break into multiple threads or not.
+@PP
+When a solution is created afresh, it is clear that it is
+going to be solved, and it can be passed the arena set of
+the thread it is being solved by.  Different solutions may
+thus have different arena sets.  But when a solution is read,
+the read is part of a single thread that reads many solutions,
+and all solutions would naturally share a single arena set
+(and do so in the current implementation).
+@PP
+Now consider reading some solutions and resuming solving them in
+parallel.  KHE offers no functions for doing this, but there is
+nothing to prevent it, except that there will be a contention
+problem in their shared arena set.
+@PP
+However, there is a way out.  There is no contention within
+individual arenas, because each solution occupies a separate
+arena (in fact two, owing to the placeholder issue).  So the
+answer is to create one new arena set for each solution and
+install it by calling @C { KheSolnSetArenaSet }.  Then parallel
+solving can proceed without problems.  Solutions can even be
+deleted in parallel:  the arenas freed by deletions will be
+recycled into the new arena sets, not into the old one.
+@End @SubAppendix
+
+@EndSubAppendices
+@End @Appendix

@@ -1,0 +1,1198 @@
+@Appendix
+    @Title { Modules Packaged with KHE }
+    @Tag { modules }
+@Begin
+This chapter documents several modules packaged with KHE and used
+by it behind the scenes.  By including their header files the user
+may also use these modules.
+@BeginSubAppendices
+
+@Include { ha }
+@Include { hw }
+
+@SubAppendix
+    @Title { Sets of integers }
+    @Tag { modules.set }
+@Begin
+
+@BeginSubSubAppendices
+@SubSubAppendix
+    @Title { Variable-length bitsets }
+    @Tag { modules.lset }
+@Begin
+@LP
+KHE comes with a C module called LSet for managing variable-length sets
+of smallish unsigned integers implemented as bit vectors.  The module
+consists of header file @C { khe_lset.h } and implementation file
+@C { khe_lset.c }.  These are stored and compiled with KHE, but they
+can also be used separately.  KHE formerly used LSet extensively behind
+the scenes (all its time groups, resource groups, and event groups were
+represented both as arrays of elements and LSets of element index numbers),
+although now SSets (Appendix {@NumberOf modules.sset}) are used instead.
+LSet may be useful when writing helper functions and solvers.  To use it,
+simply include @C { khe_lset.h }.  Including @C { khe_solvers.h } does
+not automatically include @C { khe_lset.h } as well.
+@PP
+File @C { khe_lset.h } begins with these two type definitions:
+@ID @C {
+typedef struct lset_rec *LSET;
+typedef HA_ARRAY(LSET) ARRAY_LSET;
+}
+The first defines the type of an LSet, and the second defines an
+array of LSets, as usual.
+@PP
+Internally, an LSet is represented by a pointer to a @C { struct }
+containing a length followed by the bit vector itself.  When an
+element needs to be added that would overflow the currently
+allocated memory, the whole LSet is freed and a new one is returned.
+This is not particularly convenient for the user of LSet but it
+is the most efficient way.
+@PP
+Functions
+@ID @C {
+LSET LSetNew(void);
+void LSetFree(LSET s);
+}
+create a new, empty LSet and free an LSet;
+@ID @C {
+LSET LSetCopy(LSET s);
+}
+creates a fresh new LSet with the same value as @C { s }.  Function
+@ID @C {
+void LSetShift(LSET s, LSET *res, unsigned int k,
+  unsigned int max_nonzero);
+}
+takes two existing LSets, @C { s } and @C { *res }, and replaces
+the current value of @C { *res } by @C { s } with @C { k } added
+to each of its elements, except that elements which would thereby
+have value greater than @C { max_nonzero } are omitted.  The old
+@C { *res } will be freed and a new one allocated if necessary.
+This arcane function is used behind the scenes to calculate shifted
+time domains.  Function
+@ID @C {
+void LSetClear(LSET s);
+}
+clears @C { s } back to the empty set, and
+@ID @C {
+void LSetInsert(LSET *s, unsigned int i);
+void LSetDelete(LSET s, unsigned int i);
+}
+insert element @C { i } (changing nothing if @C { i } is already
+present) and delete it (changing nothing if @C { i } is already
+absent).  The value of @C { i } is arbitrary but very large
+values are obviously undesirable, since the bit vectors then
+become very large.
+@ID @C {
+void LSetAssign(LSET *target, LSET source);
+}
+replaces the current value of @C { *target } with the
+value of @C { source }, reallocating @C { *target } if
+necessary.  The value is a copy, there is no sharing anywhere
+in the LSet module.
+@PP
+The next three functions implement the set operations of
+union, intersection, and difference, replacing their first
+parameter's value with the result of the operation:
+@ID @C {
+void LSetUnion(LSET *target, LSET source);
+void LSetIntersection(LSET target, LSET source);
+void LSetDifference(LSET target, LSET source);
+}
+The usual Boolean operations are available on LSets:
+@ID @C {
+bool LSetEmpty(LSET s);
+bool LSetEqual(LSET s1, LSET s2);
+bool LSetSubset(LSET s1, LSET s2);
+bool LSetDisjoint(LSET s1, LSET s2);
+bool LSetContains(LSET s, unsigned int i);
+}
+These return @C { true } when @C { s } is empty,
+when @C { s1 } and @C { s2 } are equal, when
+@C { s1 } is a subset of @C { s2 }, when
+@C { s1 } and @C { s2 } are disjoint, and when
+@C { s } contains @C { i }.  Functions
+@ID @C {
+unsigned int LSetMin(LSET s);
+unsigned int LSetMax(LSET s);
+}
+return the smallest and largest elements of @C { s } respectively,
+using an efficient table lookup on the first or last non-zero byte.
+Both functions abort if @C { s } is empty.  Function
+@ID @C {
+int LSetLexicalCmp(LSET s1, LSET s2);
+}
+returns a negative, zero, or positive result depending on whether
+@C { s1 } is lexicographically less than, equal to, or greater
+than @C { s2 }.  Function
+@ID @C {
+void LSetExpand(LSET s, ARRAY_SHORT *add_to)
+}
+assumes that @C { *add_to } is an initialized array, and adds
+the elements of @C { s } to the array in increasing order by
+repeated calls to @C { HaArrayAddLast }.  Function
+@ID @C {
+char *LSetShow(LSET s);
+}
+returns a display of @C { s } in static memory (so it is not
+thread-safe, but it does keep four separate buffers, allowing
+it to be called several times in one line of debug output).
+Finally,
+@ID @C {
+void LSetTest(FILE *fp);
+}
+tests the module and prints its results onto file @C { fp }.
+@End @SubSubAppendix
+
+@SubSubAppendix
+    @Title { Sorted sets }
+    @Tag { modules.sorted }
+@Begin
+@LP
+Many of KHE's object collections are represented by a set of sorted
+integers, which are indexes into arrays of objects.  Sets of times are
+represented using @I { shiftable sets } (Appendix {@NumberOf modules.sset}),
+for efficient calculation of time group neighbourhoods.  Other collections
+are represented by an extensible array of integers, sorted into
+increasing order.  These @I { KHE sets } are described here.
+@PP
+The KHE set module consists of header file @C { khe_set.h } and
+implementation file @C { khe_set.c }.  These are stored and compiled
+with the KHE platform, but they can also be used separately.  To use KHE
+sets, simply include @C { khe_set.h }.  Including @C { khe_platform.h }
+or @C { khe_solvers.h } does not automatically include @C { khe_set.h }.
+@PP
+File @C { khe_set.h } contains this definition of type @C { KHE_SET },
+representing one KHE set:
+@ID @C {
+typedef struct khe_set_rec { ... } KHE_SET;
+}
+We've omitted the contents, but that is just an extensible array of
+integer indexes, stored in increasing order.  KHE sets are sets, not
+multisets---there are no duplicates among the items.
+@PP
+Type @C { KHE_SET } is a struct, not a pointer to a struct, because
+@C { KHE_SET } is intended as an aid to implementing other modules,
+and values of type @C { KHE_SET } are expected to be private fields
+of these other modules' structs.  Structs are better than pointers
+to structs in these cases, because they save memory and avoid one
+level of indirection.
+@PP
+To pass a @C { KHE_SET } as a parameter it is always best to pass
+its address, not the struct itself.  The following functions appear
+to violate this rule, but they are in fact macros which insert the
+address-of operators for you.  For example, the function given as
+@ID @C {
+void KheSetUnion(KHE_SET to_s, KHE_SET from_s);
+}
+below is really macro
+@ID {0.98 1.0} @Scale @C {
+#define KheSetUnion(to_s, from_s) KheSetImplUnion(&(to_s), &(from_s))
+}
+and thus passes its @C { KHE_SET } parameters by reference.
+@PP
+To initialize KHE set @C { s } to an empty set, using memory
+from arena @C { a }, call
+@ID @C {
+void KheSetInit(KHE_SET s, HA_ARENA a);
+}
+To make a new KHE set @C { to_s } in arena @C { a } by copying
+another set @C { from_s }, call
+@ID @C {
+void KheSetCopy(KHE_SET to_s, KHE_SET from_s, HA_ARENA a);
+}
+To copy the elements of @C { from_s } to an existing set
+@C { to_s }, first clearing @C { to_s }, call
+@ID @C {
+void KheSetCopyElements(KHE_SET to_s, KHE_SET from_s);
+}
+To clear @C { s }, call
+@ID @C {
+void KheSetClear(KHE_SET s);
+}
+To insert @C { item } into @C { s }, call
+@ID @C {
+void KheSetInsert(KHE_SET s, int item);
+}
+This does nothing if @C { item } is already present.  To delete
+@C { item } from @C { s }, call
+@ID @C {
+void KheSetDelete(KHE_SET s, int item);
+}
+This does nothing if @C { item } is not present.  To delete
+the last (largest) element, assuming there is one, call
+@ID @C {
+void KheSetDeleteLast(KHE_SET s);
+}
+There are operations to replace @C { to_s } by its union, intersection,
+and difference from @C { from_s }:
+@ID @C {
+void KheSetUnion(KHE_SET to_s, KHE_SET from_s);
+void KheSetIntersect(KHE_SET to_s, KHE_SET from_s);
+void KheSetDifference(KHE_SET to_s, KHE_SET from_s);
+}
+and operations to return the cardinality of the union, intersection,
+difference, and symmetric difference, without changing @C { to_s }:
+@ID @C {
+int KheSetUnionCount(KHE_SET to_s, KHE_SET from_s);
+int KheSetIntersectCount(KHE_SET to_s, KHE_SET from_s);
+int KheSetDifferenceCount(KHE_SET to_s, KHE_SET from_s);
+int KheSetSymmetricDifferenceCount(KHE_SET to_s, KHE_SET from_s);
+}
+For finding the number of elements, the @C { i }th element, and
+the last element, there are
+@ID @C {
+int KheSetCount(KHE_SET s);
+int KheSetGet(KHE_SET s, int i);
+int KheSetGetLast(KHE_SET s);
+}
+Then there are the Boolean queries
+@ID @C {
+bool KheSetEmpty(KHE_SET s);
+bool KheSetEqual(KHE_SET s1, KHE_SET s2);
+bool KheSetSubset(KHE_SET s1, KHE_SET s2);
+bool KheSetDisjoint(KHE_SET s1, KHE_SET s2);
+bool KheSetContains(KHE_SET s, int item);
+}
+which return @C { true } when @C { s } is empty, when
+@C { s1 } is equal to, a subset of, and disjoint from @C { s2 },
+and when @C { s } contains @C { item }.  For sorting an array
+of sets to bring equal sets together there is
+@ID @C {
+int KheSetTypedCmp(KHE_SET s1, KHE_SET s2);
+}
+Also offered are
+@ID @C {
+int KheSetMin(KHE_SET s);
+int KheSetMax(KHE_SET s);
+}
+which return the minimum (first) and maximum (last) elements of
+@C { s }.
+@PP
+For iterating over sets there are the iterator macros
+@ID @C {
+KheSetForEach(KHE_SET s, int t, int i)
+KheSetForEachReverse(KHE_SET s, int t, int i)
+}
+These work like @C { HaArrayForEach } and @C { HaArrayForEachReverse },
+repeatedly setting @C { t } to the @C { i }th item of @C { s }, as
+@C { i } increases or decreases.  Finally,
+@ID @C {
+char *KheSetShow(KHE_SET s);
+}
+returns a string representation of @C { s }.  The result lies in
+static memory and will be overwritten by the next call to
+@C { KheSetShow }.  More precisely, @C { KheSetShow } holds
+four static memory buffers, each 200 characters long.  Any
+result which should be longer than 200 characters is safely
+truncated to 200 characters (including the final @C { '\0' }).
+The fifth call to @C { KheSetShow } re-uses the buffer used by
+the first call, the sixth call re-uses the buffer used by the
+second call, and so on.
+@PP
+There are tables whose entries have sets for keys and generic pointers
+for values.  These are implemented by tries, so the integer elements
+of the sets should not be very large.
+@FootNote {
+The first level of the trie is indexed by the first element, the second
+level is indexed by the second element minus the first element, the
+third level by the third element minus the second, and so on.  This
+helps to keep the trie arrays short.  KHE sets may contain arbitrary
+integers, but KHE sets used as table indexes may only contain
+non-negative integers.
+}
+To create a new table using memory from a given arena, and to insert
+and retrieve in it, call
+@ID @C {
+KHE_SET_TABLE KheSetTableMake(HA_ARENA a);
+void KheSetTableInsert(KHE_SET_TABLE st, KHE_SET s, void *val);
+bool KheSetTableRetrieve(KHE_SET_TABLE st, KHE_SET s, void *val);
+}
+One can obtain a debug print of a table from
+@ID @C {
+void KheSetTableDebug(KHE_SET_TABLE st, int indent, FILE *fp);
+}
+At present these are the only table operations offered.
+@End @SubSubAppendix
+
+@SubSubAppendix
+    @Title { Shiftable sets }
+    @Tag { modules.sset }
+@Begin
+@LP
+KHE has a C module called SSet for managing @I { shiftable sets }
+of integers.  These are sets which hold an integer @I { shift }
+which is added to each value, allowing shifted copies to be
+created very efficiently, as needed when implementing time group
+neighbourhoods.  A shifted copy may also be @I { sliced }, that
+is, trimmed at each end to produce a subset of the original set.
+@PP
+The module consists of header file @C { sset.h } and implementation
+file @C { sset.c }.  These are stored and compiled with KHE, but
+they can also be used separately.  To use SSet, simply include
+@C { sset.h }.  Including @C { khe_solvers.h } does not automatically
+include @C { sset.h } as well.
+@PP
+File @C { sset.h } contains this definition of type
+@C { SSET }, representing one shiftable set:
+@ID @C {
+typedef struct sset_rec { ... } SSET;
+}
+We've omitted the contents, but they include an array of items,
+the shift, and a few other things.  The items are stored as
+themselves (as integers) in increasing order.  SSets are sets,
+not multisets---there are no duplicates among the items.
+@PP
+Type @C { SSET } is a struct, not a pointer to a struct, because
+@C { SSET } is intended as an aid to implementing other modules,
+and values of type @C { SSET } are expected to be private fields
+of these other modules' structs.  Structs are better than pointers
+to structs in these cases, because they save memory and avoid one
+level of indirection.
+@PP
+To pass an @C { SSET } as a parameter it is always best to pass
+its address, not the struct itself.  The following functions appear
+to violate this rule, but they are in fact macros which insert the
+address-of operators for you.  For example, the function given as
+@ID @C {
+void SSetUnion(SSET to_ss, SSET from_ss);
+}
+below is really macro
+@ID @C {
+#define SSetUnion(to_ss, from_ss) SSetImplUnion(&(to_ss), &(from_ss))
+}
+and thus passes its SSet parameters by reference.
+@PP
+Each SSet object contains a @C { finalized } flag which, when
+set, prohibits further changes to the value of the set (although
+the set can be re-initialized).  This has been included to prevent
+the user from changing a set after slicing it, since that could
+change and indeed invalidate its slices.
+@PP
+Each SSet object also contains a @C { slice } flag which is @C { true }
+when the SSet is a shifted version, and perhaps a slice, of another
+set.  This is used only when freeing an SSet:  when an SSet is freed,
+the memory used to hold its items is freed only when the @C { slice }
+flag is @C { false }, avoiding freeing that memory multiple times.
+Of course, freeing an SSet invalidates all its shifted and sliced
+versions.  In the KHE application they are held nearby and freed
+at the same time.
+@PP
+To initialize (or re-initialize) an SSet to an unfinalized
+empty set with shift 0, call
+@ID @C {
+void SSetInit(SSET ss, HA_ARENA a);
+}
+Memory for the SSet will be taken from arena @C { a }.  As usual
+with arenas, there is no operation to free this memory; instead,
+it will be freed when the arena is deleted.  To change the value
+of an unfinalized SSet, use these functions:
+@ID @C {
+void SSetClear(SSET ss);
+void SSetInsert(SSET ss, int item);
+void SSetDelete(SSET ss, int item);
+void SSetUnion(SSET to_ss, SSET from_ss);
+void SSetIntersect(SSET to_ss, SSET from_ss);
+void SSetDifference(SSET to_ss, SSET from_ss);
+}
+These clear @C { ss } back to the empty set, insert @C { item } (or do
+nothing if @C { item } is already present), delete @C { item } (or do
+nothing if @C { item } is not present), and change the value of
+@C { to_ss } to its union, intersection, or difference with @C { from_ss }.
+When @C { to_ss } and @C { from_ss } are the exact same object,
+@C { SSetUnion } and @C { SSetIntersect } do nothing, which is the
+mathematically correct thing to do, but @C { SSetDifference } aborts,
+as a sanity measure.
+@PP
+Once these changes are complete, a call to
+@ID @C {
+void SSetFinalize(SSET ss);
+}
+finalizes @C { ss }.  This causes later attempts to change it to
+abort with an error message.  Function
+@ID @C {
+bool SSetIsFinalized(SSET ss);
+}
+returns @C { true } when @C { ss } has been finalized.
+@PP
+Function
+@ID @C {
+void SSetInitShifted(SSET to_ss, SSET from_ss, int shift);
+}
+initializes (or re-initializes) @C { to_ss } to a finalized SSet holding
+the items of @C { from_ss } with @C { shift } added to each item.  The
+shift is stored separately, allowing @C { to_ss } to share @C { from_ss }'s
+item memory.  Here @C { from_ss } must be finalized.  Function
+@ID @C {
+void SSetInitShiftedAndSliced(SSET to_ss, SSET from_ss, int shift,
+  int lower_lim, int upper_lim);
+}
+first carries out the same shift, but then it trims @C { to_ss } at each
+end, removing all items with value less than @C { lower_lim }, and all
+items with value larger than @C { upper_lim }.  Again, @C { from_ss }
+must be finalized and the item memory is shared with @C { from_ss }.
+#@PP
+#To free the memory consumed by @C { ss }, call
+#@ID @C {
+#void SSetFree(SSET ss);
+#}
+#This does not free the struct, which would be disastrous since it
+#usually lies within the struct of another module.  Instead, it
+#frees the memory used to hold the items, but only if @C { ss } is
+#not a slice, ensuring that this memory cannot be freed multiple
+#times, which would also be disastrous.
+@PP
+The following functions perform queries on SSets without changing
+their values:
+@ID @C {
+int SSetCount(SSET ss);
+int SSetGet(SSET ss, int i);
+int SSetMin(SSET ss);
+int SSetMax(SSET ss);
+}
+They return the cardinality of @C { ss }; its @C { i }th
+element, counting from 0 as usual, with the items stored
+and thus returned in increasing order; its first (smallest)
+element; and its last (largest) element.  The last three
+functions are tiny macros and do not check that the calls
+are valid.
+@PP
+The following more complex queries are also offered:
+@ID @C {
+bool SSetEmpty(SSET ss);
+bool SSetEqual(SSET ss1, SSET ss2);
+bool SSetSubset(SSET ss1, SSET ss2);
+bool SSetDisjoint(SSET ss1, SSET ss2);
+bool SSetContains(SSET ss, int item);
+}
+These return @C { true } when @C { ss } is empty, when
+@C { ss1 } is equal to, a subset of, or disjoint from
+@C { ss2 }, and when @C { ss } contains @C { item }.
+@PP
+The current shift is returned by
+@ID @C {
+int SSetShift(SSET ss);
+}
+However, calling this is unlikely to be a good idea, because it goes
+behind the abstraction.
+@PP
+For convenience, iterator macros are defined which expand
+to @C { for } loops:
+@ID @C {
+SSetForEach(SSET ss, int *item, int *i)
+SSetForEachReverse(SSET ss, int *item, int *i)
+}
+These iterate over the items of @C { ss }, setting @C { *item }
+and @C { *i } to each item and its index in turn.  For example,
+to sum the elements one would write
+@ID @C {
+int total, item, i;
+total = 0;
+SSetForEach(ss, &item, &i)
+  total += item;
+}
+@C { SSetForEachReverse } is like @C { SSetForEach } except
+that it iterates in reverse order.
+@PP
+Function
+@ID @C {
+char *SSetShow(SSET ss);
+}
+returns a string stored in static memory showing the value of
+@C { ss }, for example @C { "{0, 3-5}" }.  When the set is
+finalized an asterisk is appended to the string.  A long
+result is neatly elided to fit into the 200-character buffer
+set aside to hold it.  Actually there are four such buffers,
+and @C { SSetShow } may be called up to four times before one
+of its previous results is overwritten.
+@PP
+Function
+@ID @C {
+void SSetTest(FILE *fp);
+}
+carries out a fixed set of tests on this module, writing its
+results to @C { fp }.
+@PP
+The SSet module also offers tables indexed by SSets, as follows:
+@ID @C {
+SSET_TABLE SSetTableMake(HA_ARENA a);
+void SSetTableInsert(SSET_TABLE st, SSET ss, void *val);
+bool SSetTableRetrieve(SSET_TABLE st, SSET ss, void **val);
+void SSetTableDebug(SSET_TABLE st, int indent, FILE *fp);
+void SSetTableTest(FILE *fp);
+}
+# void SSetTableFree(SSET_TABLE st);
+@C { SSetTableMake } returns a new, empty table.  @C { SSetTableFree }
+frees the memory used by @C { st }.  @C { SSetTableInsert } inserts
+an entry with key @C { ss } (actually @C { &ss }, and there is no
+copying of the SSet) and value @C { val } into @C { st }.  It aborts
+with an error message if an entry with an equal key is already
+present.  It would be disastrous to change @C { ss } after it has
+been inserted into a table, but @C { SSetTableInsert } does not
+actually require @C { ss } to be finalized.
+@C { SSetTableRetrieve } retrieves the entry with key @C { ss } from
+@C { st }, setting @C { *val } to its value and returning @C { true }
+on success, and setting @C { *val } to @C { NULL } and returning
+@C { false } on failure.  Finally, @C { SSetTableDebug } produces a
+debug print of @C { st } onto @C { fp } with the given indent, and
+@C { SSetTableTest } tests the table code, with output to @C { fp }.
+@PP
+The table is implemented by a trie structure; each item is used to
+index an extensible array.  Actually, for items after the first,
+the difference between the item and the previous item (always
+non-negative because items are held in increasing order) is used.
+Sets whose items are large integers should not be stored in these
+tables, because they will lead to excessively long arrays.
+@End @SubSubAppendix
+
+@EndSubSubAppendices
+@End @SubAppendix
+
+@SubAppendix
+    @Title { Priority queues }
+    @Tag { modules.priqueue }
+@Begin
+@LP
+When a solver needs to visit things in priority order, it is easiest
+to just put them in an array and sort them.  Occasionally, however,
+their priorities change as solving proceeds, and then, since resorting
+after every change is not efficient, a priority queue is needed.
+@PP
+KHE comes with a C priority queue module called PriQueue, consisting
+of header file @C { khe_priqueue.h } and implementation file
+@C { khe_priqueue.c }.  These are stored and compiled with KHE,
+but can also be used separately.  To use PriQueue, simply include
+@C { khe_priqueue.h }.  Including @C { khe.h } does not automatically
+include @C { khe_priqueue.h } as well.  The implementation uses a
+Floyd-Williams heap with back indexes.  Each operation takes
+@M { O(log(n)) } time at most.
+@PP
+File @C { khe_priqueue.h } begins with these type definitions:
+@ID @C {
+typedef struct khe_priqueue_rec *KHE_PRIQUEUE;
+
+typedef int64_t (*KHE_PRIQUEUE_KEY_FN)(void *entry);
+typedef int (*KHE_PRIQUEUE_INDEX_GET_FN)(void *entry);
+typedef void (*KHE_PRIQUEUE_INDEX_SET_FN)(void *entry, int index);
+}
+The first defines the type of a PriQueue as a pointer to a
+private record in the usual way.  The others define the types
+of callback functions stored within the PriQueue and called
+by it.
+@PP
+An @I entry is one element of a priority queue.  PriQueue is
+generic:  its entries are represented by void pointers and
+may have any type consistent with that.  Each entry has a
+@I { key }, which is its priority in the priority queue,
+and an @I { index }, which is used internally by PriQueue
+to point to its position in the priority queue.  A typical
+entry type would look like this:
+@ID @C {
+typedef struct my_entry_rec {
+  int64_t	key;			/* PriQueue key */
+  int		index;			/* PriQueue index */
+  ...
+} *MY_ENTRY;
+}
+where @C { ... } stands for other fields.  PriQueue needs
+to retrieve the key, and to retrieve and set the index,
+which is what the three callback functions are for.  Here
+they are for type @C { MY_ENTRY }:
+@IndentedList
+
+@LI @C {
+int64_t MyEntryKey(void *entry)
+{
+  return ((MY_ENTRY) entry)->key;
+}
+}
+
+@LI @C {
+int MyEntryIndex(void *entry)
+{
+  return ((MY_ENTRY) entry)->index;
+}
+}
+
+@LI @C {
+void MyEntrySetIndex(void *entry, int index)
+{
+  ((MY_ENTRY) entry)->index = index;
+}
+}
+
+@EndList
+PriQueue sets the value of an entry's index field to a positive
+integer during an insertion, and to zero during a deletion.
+Accordingly, the user should initialize it to zero, and then
+it can be used to determine whether the entry is currently
+in a priority queue or not.
+@PP
+To create a new PriQueue, call
+@ID @C {
+KHE_PRIQUEUE KhePriQueueMake(KHE_PRIQUEUE_KEY_FN key,
+  KHE_PRIQUEUE_INDEX_GET_FN index_get,
+  KHE_PRIQUEUE_INDEX_SET_FN index_set, HA_ARENA a);
+}
+For the example above, the call would be
+@ID @C {
+KhePriQueueMake(&MyEntryKey, &MyEntryIndex, &MyEntrySetIndex, a);
+}
+Initially the queue is empty.  There is no operation to delete a
+priority queue; instead, it is deleted when arena @C { a } is deleted.
+# @ID @C {
+# void KhePriQueueDelete(KHE_PRIQUEUE p);
+# }
+To test whether a priority queue is empty or not, call
+@ID @C {
+bool KhePriQueueEmpty(KHE_PRIQUEUE p);
+}
+To insert an entry, call
+@ID @C {
+void KhePriQueueInsert(KHE_PRIQUEUE p, void *entry);
+}
+making sure that the entry's key is defined beforehand;
+the index need not be, since it will be set by PriQueue.
+Functions
+@ID @C {
+void *KhePriQueueFindMin(KHE_PRIQUEUE p);
+void *KhePriQueueDeleteMin(KHE_PRIQUEUE p);
+}
+return an entry with minimum key, assuming that @C { p }
+is not empty, and @C { KhePriQueueDeleteMin } removes the
+entry from the queue at the same time.  Function
+@ID @C {
+void KhePriQueueDeleteEntry(KHE_PRIQUEUE p, void *entry);
+}
+deletes @C { entry } from @C { p }; it must lie in @C { p }.
+There is also
+@ID @C {
+void KhePriQueueClear(KHE_PRIQUEUE p);
+}
+which calls @C { KhePriQueueDeleteEntry } repeatedly until
+@C { p } is empty, choosing at each step the entry that is
+easiest to delete (the last one in the Floyd-Williams heap).
+@PP
+To update the priority of an entry, first change its key
+and then call
+@ID @C {
+void KhePriQueueNotifyKeyChange(KHE_PRIQUEUE p, void *entry);
+}
+to inform @C { p } that it has changed.  This will change
+@C { entry }'s order in the queue, moving it forwards or
+backwards as required.  Finally,
+@ID @C {
+void KhePriQueueTest(FILE *fp);
+}
+tests the module and prints its results onto file @C { fp }.
+@End @SubAppendix
+
+@SubAppendix
+    @Title { XML handling with KML }
+    @Tag { kml }
+@Begin
+@LP
+KML is a C module for reading and writing XML.  It consists of a
+header file called @C { kml.h }, and implementation files called
+@C { kml.c } and @C { kml_read.c }.  These are stored and compiled
+with the KHE platform, and @C { khe_platform.h } includes @C { kml.h }.
+They can also be abstracted from it and used separately, although
+they do use the @F Ha memory module (Appendix {@NumberOf ha}).
+@PP
+KHE uses KML to read and write XML.  The KHE user encounters KML in
+exactly one place:  when reading an archive, an object of type
+@C { KML_ERROR } is returned if there is a problem.
+@BeginSubSubAppendices
+
+@SubSubAppendix
+    @Title { Representing XML in memory }
+    @Tag { kml.ops }
+@Begin
+@LP
+Type @C { KML_ELT } represents one node in an XML tree structure,
+including its label, attributes, and children.  The operations
+for querying a @C { KML_ELT } object are
+@ID @C {
+int KmlLineNum(KML_ELT elt);
+int KmlColNum(KML_ELT elt);
+char *KmlLabel(KML_ELT elt);
+KML_ELT KmlParent(KML_ELT elt);
+char *KmlText(KML_ELT elt);
+}
+@C { KmlLineNum } and @C { KmlColNum } return a line number and
+column number stored in the element, presumably recording its
+position in some input file somewhere.  @C { KmlLabel } returns the
+label of the element, and @C { KmlParent } returns its parent element
+in the tree structure, or @C { NULL } if none.  @C { KmlText } returns
+the text content of @C { elt }, or @C { NULL } if none.
+@PP
+For querying the attributes of @C { elt } the operations are
+@ID @C {
+int KmlAttributeCount(KML_ELT elt);
+char *KmlAttributeName(KML_ELT elt, int index);
+char *KmlAttributeValue(KML_ELT elt, int index);
+bool KmlContainsAttributePos(KML_ELT elt, char *name, int *index);
+bool KmlContainsAttribute(KML_ELT elt, char *name, char **value);
+}
+@C { KmlAttributeCount } returns the number of @C { elt }'s attributes,
+and @C { KmlAttributeName } and @C { KmlAttributeValue } return its
+@C { index }'th attribute's name and value.  The first attribute has
+index 0.  Negative indexes are allowed:  @C { -1 } means the last
+attribute, @C { -2 } the second last, and so on.
+@C { KmlContainsAttributePos } returns @C { true } if @C { elt } contains
+an attribute with the given name, setting @C { *index } to its index if
+so; otherwise it returns @C { false } and sets @C { *index } to @C { -1 }.
+@C { KmlContainsAttribute } has the same return value, but it sets
+@C { *value } to the attribute's value if found, and to @C { NULL }
+otherwise.
+@PP
+For querying the children of @C { elt } the operations are
+@ID @C {
+int KmlChildCount(KML_ELT elt);
+KML_ELT KmlChild(KML_ELT elt, int index);
+bool KmlContainsChildPos(KML_ELT elt, char *label, int *index);
+bool KmlContainsChild(KML_ELT elt, char *label, KML_ELT *child_elt);
+}
+@C { KmlChildCount } returns the number of children, and
+@C { KmlChild } returns the @C { index }'th child, again counting
+from 0 with negative indices allowed.  @C { KmlContainsChildPos }
+returns @C { true } if @C { elt } contains a child with the given
+label, setting @C { *index } to the index of the first such child if so;
+otherwise it returns @C { false } and sets @C { *index } to @C { -1 }.
+@C { KmlContainsChild } has the same return value, but it sets
+@C { *child_elt } to the first such child if found, and to @C { NULL }
+otherwise.
+@PP
+There are operations for constructing @C { KML_ELT } objects
+directly:
+@ID @C {
+KML_ELT KmlMakeElt(int line_num, int col_num, char *label, HA_ARENA a);
+void KmlAddAttribute(KML_ELT elt, char *name, char *value);
+void KmlAddChild(KML_ELT elt, KML_ELT child);
+void KmlDeleteChild(KML_ELT elt, KML_ELT child);
+void KmlAddText(KML_ELT elt, char *text);
+void KmlAddFmtText(KML_ELT elt, char *fmt, ...);
+}
+@C { KmlMakeElt } creates a new element with the given line number,
+column number, and label, using memory from arena @C { a };
+@C { KmlAddAttribute } adds an attribute; @C { KmlAddChild } adds a
+child;  @C { KmlDeleteChild } deletes a child; and @C { KmlAddText }
+and @C { KmlAddFmtText } add text, either as given or formatted using
+@C { sprintf } (with no risk of overflow).  They may be called
+repeatedly on one @C { elt }, in which case the successive texts are
+concatenated.  All these functions store copies, kept in arena
+@C { a }, of the strings they are passed, not the original strings.
+@PP
+As usual throughout KHE, there is no operation for freeing the
+memory used by an element.  Instead, it is freed when arena @C { a }
+is deleted.  Typically, a whole tree is built in one arena, so
+that it can be freed very efficiently by deleting the arena.
+@PP
+It is not safe to retrieve a string from an element, delete the
+enclosing arena, and then attempt to use the string.  Such strings
+must be copied into a longer-lived arena.  KHE's operations all do
+this, so there is no danger when KHE converts elements into archives,
+instances, etc.
+@End @SubSubAppendix
+
+@SubSubAppendix
+    @Title { Error handling and format checking }
+    @Tag { kml.error }
+@Begin
+@LP
+KML does not print any error messages; instead it reports an
+error by returning an object of type @C { KML_ERROR }, containing
+the line number and column number of the point of error, plus a
+message explaining what the problem was:
+@ID @C {
+int KmlErrorLineNum(KML_ERROR ke);
+int KmlErrorColNum(KML_ERROR ke);
+char *KmlErrorString(KML_ERROR ke);
+}
+These objects can form the basis of error messages printed by the
+user.
+@PP
+KML's operations for reading a file check only for well-formedness,
+not for conformance to a legal document type definition, nor for
+high-level semantic constraints.  During the conversion from
+@C { KML_ELT } to the user's own data structure, other errors
+may be uncovered, and it is convenient to be able to report those
+as objects of type @C { KML_ERROR } also.  Accordingly, operation
+@ID @C {
+KML_ERROR KmlErrorMake(HA_ARENA a, int line_num, int col_num,
+  char *fmt, ...);
+}
+is provided.  It creates a new object of type @C { KML_ERROR }
+in arena @C { a }, initializes it with the given line number,
+column number, and formatted text (as for @C { printf }), and
+returns it.  There is also
+@ID {0.96 1.0} @Scale @C {
+KML_ERROR KmlVErrorMake(HA_ARENA a, int line_num, int col_num,
+  char *fmt, va_list ap);
+}
+which is to @C { KmlErrorMake } what @C { vprintf } is to @C { printf },
+and
+@ID @C {
+bool KmlError(KML_ERROR *ke, HA_ARENA a, int line_num, int col_num,
+  char *fmt, ...);
+}
+which is like @C { KmlErrorMake } except that it sets @C { *ke }
+to the object it makes, and always returns @C { false }.  This is
+convenient for uses such as
+@ID @C {
+if( bad_thing_discovered )
+  return KmlError(ke, a, line_num, col_num, "bad %s thing", str);
+}
+which bails out of a function that returns a boolean indicating
+whether all is well.  There is also
+@ID @C {
+KML_ERROR KmlErrorCopy(KML_ERROR ke, HA_ARENA a);
+}
+which returns a fresh copy of @C { ke } in arena @C { a }.
+@PP
+To check whether a @C { KML_ELT } object conforms to a document
+type definition, call:
+@ID @C {
+bool KmlCheck(KML_ELT elt, char *fmt, KML_ERROR *ke);
+}
+If @C { elt } conforms to the definition expressed by @C { fmt },
+then @C { true } is returned; otherwise, @C { false } is returned
+and @C { *ke } is set to an object recording the nature of the
+error, including a line and column number taken from either @C { elt }
+itself or one of its children, as appropriate.
+@PP
+Parameter @C { fmt } describes the attributes and children of
+@C { elt }---not the label of @C { elt }, which will have already
+been checked by the time @C { elt } is examined, nor the children's
+children, which may be checked by the user during a recursive
+traversal of @C { elt }'s children.  For example,
+@ID @F @Verbatim { "+Reference : #Value" }
+says that @C { elt } has an optional attribute whose name is
+@F { Reference }, and exactly one child whose label is @F { Value }
+and whose body must contain text denoting an integer (no children).
+The part before the colon specifies attributes, and
+the part after it (if there is a colon at all) specifies children.
+An initial @F { + } means optional, and an initial @F { * } means
+zero or more; neither means exactly one.  After that, an initial
+@F { $ } means text (no children), and an initial @F @Verbatim { # }
+means text representing an integer (again, no children); neither
+means that there may be children.  Here is a longer example:
+@ID @F @Verbatim { "Reference : +#Duration +Time +Resources" }
+The element must have exactly one attribute, @F { Reference }.  It
+has up to three children, an optional integer @F { Duration }, followed
+by an optional @C { Time }, and finally an optional @C { Resources }.
+As mentioned, the structure of the children may be checked by subsequent
+calls to @C { KmlCheck }.
+@End @SubSubAppendix
+
+@SubSubAppendix
+    @Title { Reading XML files }
+    @Tag { kml.read }
+@Begin
+@LP
+The simple way to read an XML file is to call
+@ID @C {
+bool KmlReadFile(FILE *fp, FILE *echo_fp, KML_ELT *res, KML_ERROR *ke,
+  HA_ARENA a);
+}
+@C { KmlReadFile } reads @C { fp }, which must be open for reading UTF-8.
+If @C { echo_fp != NULL }, it writes everything it reads to @C { echo_fp },
+as a debugging aid.  If there were no problems with the read, @C { *res }
+is set to a new @C { KML_ELT } object representing the XML that was found,
+and @C { true } is returned.  The operations of Appendix {@NumberOf kml.ops}
+may be used to traverse @C { *res }.  Otherwise, @C { *ke } is set to an
+error object (Appendix {@NumberOf kml.error}) describing the first error
+(reading stops there), and @C { false } is returned.
+@PP
+@C { KmlReadFile } skips over any prolog, then reads exactly one
+element (including its descendants) from @C { fp }, from the first
+tag in @C { fp } to the matching end tag, then skips over any epilog
+(trailing comments, etc.) which involves skipping white space as
+well to see if epilog elements are there.  After @C { KmlReadFile }
+ends, @C { fp } remains open, leaving it to the caller to either
+close it or keep reading from it.  At that point, either end of file
+will have been reached, or else the next character read will be the
+first character that could not be part of the epilog, pushed back
+using @C { ungetc }.
+@PP
+All memory consumed by @C { KmlReadFile }, including memory for
+@C { *res } and its descendants, and for @C { *ke } if needed,
+comes from arena @C { a }.  After everything useful has been
+extracted from @C { *res } and its descendants, @C { a } may
+be deleted or recycled as usual.
+@PP
+XML files can be large, and it may be better to read and process
+them one piece, or @I { segment }, at a time.  A segment is defined
+by an element called its @I { root }.  It consists of its root plus
+its root's descendants, excluding elements which are the roots of
+other segments, and their descendants.
+@PP
+There is a @I { root segment } whose root element is the overall root.
+So every element lies in one segment, the one defined by its nearest
+ancestor (possibly itself) that is the root of a segment.
+@PP
+Reading in segments requries several steps.  The first step is to call
+@ID @C {
+KML_READER KmlReaderMake(void *impl, HA_ARENA_SET as, HA_ARENA a);
+}
+This creates a @C { KML_READER } object in arena @C { a }.  The
+@C { impl } parameter is a pointer back to the user's data structures,
+and @C { as } is an arena set which is the source of any arenas,
+additional to @C { a }, that may be needed, of which more later.
+Functions
+@ID @C {
+void *KmlReaderImpl(KML_READER kr);
+HA_ARENA_SET KmlReaderArenaSet(KML_READER kr);
+HA_ARENA KmlReaderArena(KML_READER kr);
+}
+return the three attributes of @C { kr }.
+@PP
+While the file is being read (while function @C { KmlReaderReadFileSegmented }
+below is running), callbacks are made to user code, which might detect
+a semantic error which should abort the whole read.  For this there is
+@ID @C {
+void KmlReaderFail(KML_READER kr, KML_ERROR ke);
+}
+which uses a C long jump to return early from @C { KmlReaderReadFileSegmented }
+with error @C { ke }.
+@PP
+There is no operation to reclaim the memory consumed by a
+@C { KML_READER } object.  As usual, it is freed when its arena is deleted.
+@PP
+The second step is to make matching pairs of calls to these functions:
+@ID @C {
+void KmlReaderDeclareSegmentBegin(KML_READER kr, char *path_name,
+  KML_SEGMENT_FN segment_begin_fn);
+void KmlReaderDeclareSegmentEnd(KML_READER kr,
+  KML_SEGMENT_FN segment_end_fn);
+}
+These give the path names of the elements which are to be the roots
+of segments.  For example, suppose that the file structure is
+@ID @OneRow {0.9 1.0} @Scale lines @Break @F {
+HighSchoolTimetableArchive
+    +Instances
+        *Instance
+    +SolutionGroups
+        *SolutionGroup
+	    *Solution
+}
+where @F { + } means optional, @F { * } means zero or more, and
+indenting indicates nesting, and suppose that each @F { Instance },
+@F { SolutionGroup }, and @F { Solution } is to be one segment.
+Then the calls are
+@ID {0.98 1.0} @Scale @C {
+KmlReaderDeclareSegmentBegin(kr, "HighSchoolTimetableArchive", &fn1);
+  KmlReaderDeclareSegmentBegin(kr, "Instances/Instance", &fn2);
+  KmlReaderDeclareSegmentEnd(kr, &fn3);
+  KmlReaderDeclareSegmentBegin(kr, "SolutionGroups/SolutionGroup", &fn4);
+    KmlReaderDeclareSegmentBegin(kr, "Solution", &fn5);
+    KmlReaderDeclareSegmentEnd(kr, &fn6);
+  KmlReaderDeclareSegmentEnd(kr, &fn7);
+KmlReaderDeclareSegmentEnd(kr, &fn8);
+}
+using indenting to show the structure.  They mimic the structure of
+the file.  Each path name is a sequence of one or more element names
+separated by slashes, and is relative to the enclosing segment, except
+at the root.  As a special case, an element name may be @C { "*" },
+and then it will match with any name.
+@PP
+In cases like those for @C { Instance } and @C { Solution } above,
+where there are no inner segments, @C { segment_begin_fn } is called
+immediately before @C { segment_end_fn }, as will be explained below.
+In that case two callbacks are not needed, and so KML offers
+@ID @C {
+void KmlReaderDeclareSegment(KML_READER kr, char *path_name,
+  KML_SEGMENT_FN segment_fn);
+}
+to replace @C { KmlReaderDeclareSegmentBegin } and
+@C { KmlReaderDeclareSegmentEnd }:
+@ID {0.98 1.0} @Scale @C {
+KmlReaderDeclareSegmentBegin(kr, "HighSchoolTimetableArchive", &fn1);
+  KmlReaderDeclareSegment(kr, "Instances/Instance", &fn2);
+  KmlReaderDeclareSegmentBegin(kr, "SolutionGroups/SolutionGroup", &fn3);
+    KmlReaderDeclareSegment(kr, "Solution", &fn4);
+  KmlReaderDeclareSegmentEnd(kr, &fn5);
+KmlReaderDeclareSegmentEnd(kr, &fn6);
+}
+There is no substantial difference.
+@PP
+A path name can also be a sequence of path names separated by
+colons, like this:
+@ID @C {
+"HighSchoolTimetableArchive:EmployeeScheduleArchive"
+}
+Then elements indicated by all paths are the roots of
+segments, with the same inner segments.
+@PP
+The third step is to actually read the file, by calling
+@ID @C {
+bool KmlReaderReadFileSegmented(KML_READER kr, FILE *fp, FILE *echo_fp,
+  KML_ERROR *ke);
+}
+@C { KmlReaderReadFileSegmented } is similar to @C { KmlReadFile },
+except that no @C { KML_ELT } is returned.  It can be called multiple
+times on one @C { KML_READER }, although not in parallel.
+# , and there is an initial value for the root segment's
+# implementation pointer (see below for this).
+@PP
+As @C { KmlReaderReadFileSegmented } reads the file, it calls callback
+functions @C { segment_begin_fn } and @C { segment_end_fn } at the
+beginning and end of each segment.  In the syntax that the user
+would use to declare these functions, they are
+@ID @C {
+void segment_begin_fn(KML_SEGMENT ks)
+{
+   ... process ks ...
+}
+}
+This allows the user access to each segment, at the start
+of the segment and again at the end.
+@PP
+The call on @C { segment_begin_fn } does not occur at the moment
+its element begins in the input file.  That would not be useful,
+because none of the element's content is available then.  Instead,
+the callback is delayed until the first inner segment is about to
+begin, or if there are no inner segments, until the segment is
+about to end.  At that point, the segment's root contains data
+that can be processed into an initial value for the corresponding
+object on the user side.
+@PP
+The call on @C { segment_end_fn } occurs as the segment's root
+element is ending, and can be used to finalize the corresponding
+user data structure.
+# It is likely to delete the segment as well
+# (by calling @C { KmlSegmentFree(ks) } below), because once the
+# relevant data are transferred into the user data structure, the
+# segment itself is no longer needed.  KML itself does not refer
+# to @C { ks } after @C { segment_end_fn(ks) } returns.
+# @PP
+Either or both of @C { segment_begin_fn } and @C { segment_end_fn }
+may be @C { NULL }, and then the corresponding callback is omitted.
+@PP
+The final step is to write the callback functions.  Within each
+function, the user has access to segment @C { ks }, to which the
+following functions may be applied:
+@ID @C {
+KML_ELT KmlSegmentRoot(KML_SEGMENT ks);
+KML_READER KmlSegmentReader(KML_SEGMENT ks);
+HA_ARENA KmlSegmentArena(KML_SEGMENT ks);
+}
+@C { KmlSegmentRoot } returns the root of the segment.  From there
+one can explore the children, their children, and so on, insofar
+as they exist at the moment that the callback occurs.  One can
+never reach the elements of any inner segments in this way, not
+even from the callback at the end of the segment, because such
+elements are not made children of their (logical) parent elements
+in the usual way.  The same fact looked at from the other side
+means that the root element has no parent, so there is no way
+to reach elements in the enclosing segment.
+@PP
+@C { KmlSegmentReader } returns the @C { KML_READER } object passed
+to the enclosing call to @C { KmlReaderReadFileSegmented }.  This
+is useful for reaching user data structures via @C { KmlReaderImpl },
+ending the read early with failure via @C { KmlReaderFail }, and so on.
+@PP
+@C { KmlSegmentArena } returns the segment's arena.  This holds
+the segment object itself, its root element, and the root element's
+decendants.  Care is needed not to create objects, for example error
+objects, in a segment's arena that are intended to outlast the segment.
+An alternative arena that will outlast the segment is
+@C { KmlReaderArena(KmlSegmentReader(ks)) }.
+@PP
+The use of arenas in segmented file reading is somewhat complex,
+in that the root segment is a special case.  Its arena is the
+arena passed to @C { KmlReaderMake }.  That arena holds both
+the reader object and the root segment, and is not deleted by
+KML.  The user should delete or recycle it after the whole read
+is over.  Each of the other segments has its own arena, taken
+from the arena set @C { as } passed to @C { KmlReaderMake }
+(or created, as usual, if @C { as } is empty).  This arena is
+deleted, or rather recycled through @C { as }, immediately
+after the segment's @C { segment_end_fn } returns.  So the
+user must ensure that everything needed on the user side is
+extracted from the segment by that time.  It is almost certainly
+a disastrous error to store the segment passed in the callback
+function, or any of its elements, in user-side data structures.
+@End @SubSubAppendix
+
+@SubSubAppendix
+    @Title { Writing XML files }
+    @Tag { kml.write }
+@Begin
+@LP
+Writing an XML file begins with the creation of a @C { KML_FILE } object,
+by calling
+@ID @C {
+KML_FILE KmlMakeFile(FILE *fp, int initial_indent, int indent_step,
+  HA_ARENA a);
+}
+The result exists until @C { a } is deleted or recycled.
+Pointer type @C { KML_FILE }, defined in @C { kml.h }, represents an
+XML file open for writing (not reading).  It holds a file pointer
+and a few attributes describing the state of the write, including a
+current indent, used to produce neatly indented XML.  File @C { fp }
+must be open for writing UTF-8 characters; @C { initial_indent } is
+the initial indent, e.g. 0, and @C { indent_step } is the number
+of spaces to indent at each level, e.g. 2 or 4.
+@PP
+When reading an XML file using KML it is necessary to first read
+the file into a @C { KML_ELT } object, and then build the user data
+structure that is really wanted, while traversing the @C { KML_ELT }
+object.  The reverse procedure may be used for writing, by calling
+@ID @C {
+void KmlWrite(KML_ELT elt, KML_FILE kf);
+}
+@C { KmlWrite } writes @C { elt } and its attributes and children
+recursively to @C { kf }.  But it is also possible to write directly
+to a file while traversing the user's data structure, without using
+@C { KML_ELT } objects.  To do this, the operations are
+@ID @C {
+void KmlBegin(KML_FILE kf, char *label);
+void KmlAttribute(KML_FILE kf, char *name, char *value);
+void KmlPlainText(KML_FILE kf, char *text);
+void KmlFmtText(KML_FILE kf, char *fmt, ...);
+void KmlEnd(KML_FILE kf, char *label);
+}
+@C { KmlBegin } begins an object with the given label, and @C { KmlEnd }
+ends it.  KML does not check that the labels match, even though they
+must.  Immediately after calling @C { KmlBegin }, any number of calls to
+@C { KmlAttribute } are allowed; each adds one attribute, with the given
+name and value, to the object just begun.  After that, @C { KmlPlainText }
+may be called to add some text as the body of the object, or
+@C { KmlFmtText } to add some formatted text as the body (where @C { fmt }
+and the following parameters are suitable for passing on to @C { fprintf }).
+@C { KmlPlainText } prints the characters @F "&<>'\"" in their escape
+sequence forms (@F "&amp;" and so on); @C { KmlFmtText } does not, so it
+is best limited to tasks that cannot generate such characters (printing
+numbers, etc.).  Alternatively, any number of nested calls to
+@C { KmlBegin } ... @C { KmlEnd } may precede the matching @C { KmlEnd },
+to add children.
+@PP
+For convenience, three operations are offered which write an entire
+element in one call:
+@ID @C {
+void KmlEltAttribute(KML_FILE kf, char *label, char *name, char *value);
+void KmlEltPlainText(KML_FILE kf, char *label, char *text);
+void KmlEltFmtText(KML_FILE kf, char *label, char *fmt, ...);
+}
+These are simple combinations of the functions above, only writing on
+one line (except newlines in text).  @C { KmlEltAttribute } writes an
+object with the given label and attribute, but no body.
+@C { KmlEltPlainText } and @C { KmlEltFmtText } write an object with
+the given label, no attributes, and a plain or formatted text body.
+A few other such functions are available, for which see @C { kml.h }.
+#Also,
+#@ID @C {
+#void KmlEltAttributeEltPrintf(KML_FILE kf, char *label, char *name,
+#  char *value, char *label2, char *fmt, ...);
+#}
+#writes one element with one attribute, enclosing a second element with no
+#attributes, and a body of formatted text.  These operations are simple
+#combinations of the functions given above, except that they write
+#everything onto one line unless the formatted text has newline characters.
+@End @SubSubAppendix
+
+@EndSubSubAppendices
+@End @SubAppendix
+
+@EndSubAppendices
+@End @Appendix

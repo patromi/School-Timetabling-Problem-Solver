@@ -1,0 +1,33 @@
+KHE diary for 2015
+------------------
+
+12 Oct 2015
+
+  Got clean compile with the new version of gcc that came
+  with my new computer.  The only new errors were variables
+  set but not used; I managed to get rid of them all.
+
+  Investigated inconsistencies in the way that time groups,
+  resource groups, and event groups are implemented:
+
+  * resource groups and event groups have a *_group_type
+    attribute recording more comprehensively than is really
+    needed where the group came from, whereas time groups
+    only have the _PREDEFINED value for their kind, which
+    should not be exposed to the user anyway.
+
+  * time groups created during solving are added to the
+    solution for removal later, but this is not done for
+    resource groups and event groups.
+
+  Both of these problems are fixed now.
+
+12 Oct 2015.  Ensured we get an informative abort rather than a
+  crash when trying to write a reference to an entity with a null
+  Id.  Also revised HSEval, got localhost working, and did a few
+  tests.  It all seems to be working, but I won't publish the
+  new version for the time being.
+
+9 Dec 2015.  Publishing a new version today, which hopefully will
+  fix a bug reported by John Tass.  The function that copied
+  monitor links was copying one field twice and another not at all.

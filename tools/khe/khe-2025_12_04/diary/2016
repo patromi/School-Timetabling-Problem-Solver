@@ -1,0 +1,458 @@
+KHE diary for 2016
+------------------
+
+6 Feb 2016.  Releasing a new version today.  There have been
+  several bug fixes and several new versions lately, which I
+  have neglected to diarize.  Today's release is mainly about
+  tightening up the rules for when a solution can be written,
+  to require no inconsistency between assigned and preassigned
+  times and resources.
+
+21 Feb 2016.  Wrote code that will audit an instance and fix any
+  problems it finds.  This is in response to a report from George
+  Fonseca about cases in Australian instances where two events
+  linked by link events constraints have different split events
+  and distribute split events constraints, and the trouble that
+  causes.  I'm now finding and fixing all occurrences automatically.
+
+  Have to put up revised archive, write email to Gerhard and
+  George about it all.  Email is written, ready to send.
+
+
+Still to Do
+===========
+
+  Send email about the 21 Feb problem to Gerhard and George,
+  agree on a solution, and implement it.
+
+Diary of the NRConv project
+===========================
+
+11 Sep 2016.  Set up a skeleton source code directory with a makefile,
+  an empty main program, and a link to khe.  Designed and implemented
+  the command line flags and command line processing.  Now need to
+  implement ConvertComp1, ConvertComp2, and ConvertCurtois2014.
+
+13 Sep 2016.  Got an initial printout of a comp1 archive with one
+  instance in it, containing only some metadata, a resource type,
+  and some resource groups so far.  All seems to be working as
+  expected -- but was 2010-01-01 really a Friday?
+
+14 Sep 2016.  Done quite a lot.  Have decided to have one resource group
+  per contract; constraints derived from each contract can have that
+  resource group for their points of application.  AddEvents is just
+
+15 Sep 2016.  Generated event resources today, then started on the
+  constraints.  Quite a few are not needed at all, and I have done
+  most of the constraint types today.  So we are getting close to
+  the hard rump of the problem now.
+
+16 Sep 2016.  Tidied things up quite a lot today.  Now have separate
+  abstractions and source files for time of day, day of week, and
+  shift (including groups of shifts with equal start and end times).
+
+17 Sep 2016.  Added date.c, very successful.  Added ROLE type.
+  Just got clean compile including RetrieveTime, and checked
+  that the AddAvoidUnavailableTimesConstraints are correct.
+  So all good at the moment.  The code seems good enough to
+  be going on with.  Started limit busy times and cluster
+  busy times constraints.
+
+18 Sep 2016.  Started serious work on contracts and patterns,
+  which is the last big thing.  Done SingleAssignmentPerDay and
+  the two NumAssignments constraints so far.  Changed DATE to
+  DAY_OF_CYCLE, and pre-created all days of the cycle at the start.
+  Now need to add a KHE_TIME to each DAY_OF_CYCLE - or not.
+
+19 Sep 2016.  Added day_tg to doc, and used it to simplify
+  RetrieveDayTimeGroup and RetrieveTime.  Realized that I
+  really do need one time per shift, so carried out a major
+  reorganization for that.  Implemented WeekendDays properly.
+  Ready to resume where I was before this detour:  implementing
+  IdenticalShiftTypesDuringWeekend.  Started writing up how
+  to handle patterns in the paper.  All done except day off
+  patterns.
+
+21 Sep 2016.  I've been sorting out patterns; I've written up
+  just which ones can be modelled and which can't, and I
+  intend to make nrconv follow that analysis.  Finished the
+  identical weekends constraint, although it would be good
+  to reduce the number of time groups it uses and simplify
+  the ids it uses when possible (when contracts all have
+  the same weekends).  Also finished MaxConsecutiveWorkingDays
+  and MinConsecutiveWorkingDays.
+
+22 Sep 2016.  Rearranged things so that constraints from
+  different contracts are grouped together when they are
+  compatible.  Defined WEEKEND_OF_WEEK type.  Done some
+  miscellaneous tidying up.
+
+23 Sep 2016.  Started on yet another rearrangement, replacing
+  many data types by DAY (day of cycle) and DAY_SET (sequence
+  of DAY).  Written the DAY, DAY_SET, and SET_OF_DAY_SETS
+  classes and tested them successfully.  Used like this:
+
+      DAY_OF_CYCLE     into   DAY
+      DAYS_OF_CYCLE    into   DAY_SET
+      DAY_OF_WEEK      into   DAY_SET (all days with that dow)
+      DAYS_OF_WEEK     into   DAY_SET_SET (all days of week)
+      WEEKEND_OF_WEEK  into   SET_OF_DAY_SETS
+      WEEKENDS_OF_WEEK into   ARRAY_SET_OF_DAY_SET (not needed?)
+
+  Currently crashing through or crashing.  Have a clean compile,
+  needs a careful audit, especially around weekends.  Audited
+  down to the start of AddLimitAndClusterBusyTimesConstraints.
+
+25 Sep 2016.  Audited everything and wrote a new FindWeekends.
+  All working, new weekends code is great now.  Also added a
+  complete list of the first competition's constraints to the
+  paper.  It seems to pull things together well.  And wrote
+  but did not test MaxConsecutiveWorkingWeekends.
+
+25 Sep 2016.  MaxConsecutiveWorkingWeekends is working well.
+  My testing instance long01.xml does not use it, but I
+  changed it temporarily so that it did, and all is well.
+
+26 Sep 2016.  Added a new section to the paper, saying that we
+  are extending XHSTT in three ways (two AllowZeros, plus
+  negative time groups).  Rejigged the following parts, up
+  to the end of the pattern constraints section.
+
+27 Sep 2016.  Reviewed and rejigged the paper to use negative time
+  group inclusions.  Started working on the extended XHSTT, have
+  implemented what's needed in archives, instances, and the limit
+  busy times and cluster busy times constraints so far.
+
+28 Sep 2016.  Revised the new KHE constraint code, and did
+  both allow_zero cases in the monitor code.  Also added
+  the employee scheduling spec to HSEval.  That seems to
+  be all that's needed for HSEval.
+
+29 Sep 2016.  Audited the new documentation in HSEval, it's all
+  good.  Also audited the new code in KHE and completed the
+  implementation and documentation of negative time groups.
+  Fixed up problems with KmlRead.
+
+30 Sep 2016.  Worked over the paper again, wrote a pattern
+  class, now reading and interpreting patterns.  Also worked
+  on unwanted patterns, got it all done except ShiftsTimeGroup.
+
+1 Oct 2016.  Got ShiftsTimeGroup working, and used it for
+  UnwantedPatterns and NoNightShiftBeforeFreeWeekend.  Also
+  did MaxWorkingWeekendsInFourWeeks, very easy with all the
+  infrastructure I have now.  Did MinConsecutiveWorkingWeekends,
+  which completes the conversion of pattern constraints, which
+  in turn seems like it completes the comp1 conversion.  About
+  two weeks' part-time work.
+
+3 Oct 2016.  Revised paper ready to sent to Gerhard and Greet
+  again, with questions.  Made sure nrconv would abort if there
+  are any shift on or day on requests (these are still to do).
+  Wrote shell scripts for converting one zip file and convering
+  all zip files.  Converted long.zip, apparently without trouble.
+  Struck trouble later, however, because AlternativeSkillCategory
+  is used in some instances.  Documented a straightforward
+  implementation in the paper, not implemented yet.
+
+  Sorted through the numbering method and worked out what is
+  going on with cost and degree of violation.  All interesting
+  cases are now documented in the paper.
+
+5 Oct 2016.  Audited the paper and code and got it all into a
+  consistent state.  Started work on a SKILL data type, needed
+  to implement AlternativeSkillCategory.  All done except the
+  hard bit.
+
+6 Oct 2016.  Audited the prefer resources constraints being
+  generated by the new skills code.  Changed the names of the
+  resource groups involved to something more comprehensible.
+  It all seems to be working.
+
+  Then after a few more fiddles I got all the conversions for
+  all the data sets of the first international nurse rostering
+  competition working.  Three and a half weeks' work to here.
+
+  At first I was going to omit TwoFreeDaysAfterNightShifts,
+  because it is not used in the competition instances; but
+  I've done it now.  Still omitted however are day on and
+  shift on requests.
+
+7 Oct 2016.  Got HSeval read going, and adapted its output
+  to the EmployeeScheduling case, using KheArchiveModel.
+
+8 Oct 2016.  Set up a skeletal XESTT web site.  Have to
+  populate it with instances etc. now.  I've put the
+  nrconv source code, the draft paper, and the converted
+  comp1 instances there so far.
+
+10 Oct 2016.  Started work on comp2, have done mostly
+  boilerplate stuff so far.  No problems, but there is
+  a long way to go.
+
+11 Oct 2016.  Looked over some comments from Greet and
+  changed the paper in response.  Continued working on
+  boilerplate code for comp2, going steadily.
+
+12 Oct 2016.  Continued working on boilerplate code for
+  comp2, going steadily.
+
+13 Oct 2016.  Continued working on boilerplate code for comp2,
+  going steadily.  Finished generating events today.
+
+14 Oct 2016.  Started work on constraints today; I've done
+  everything except H3, S2, S3, S5, S6, and S7 so far.
+
+16 Oct 2016.  Done unwanted patterns, including the border
+  ones.  Reading nurse history info now too.
+
+17 Oct 2016.  Added history to unwanted patterns.  It's a
+  complicated thing to get right, but it seems to be working.
+
+18 Oct 2016.  Made a separate module out of constraint
+  grouping.  Hopefully it can be extended for use in comp2.
+
+19 Oct 2016.  Progressing well on unwanted patterns, with
+  and without history.  And I broke the back of the grouping
+  problem.
+
+20 Oct 2016.  Received comments from Gerhard and responded to
+  them.  Decided not to send to_gree_gerhard05.
+
+21 Oct 2016.  Responded to more comments from Gerhard and
+  Greet.  Polished up what I did over the last few days and
+  applied it to UnwantedPatterns, which turned out great.
+  Did some testing, could be less verbose but otherwise OK.
+  Then added MaxConsecutiveDaysOff in no time flat.
+
+22 Oct 2016.  Got MinConsecutiveWorkingDays going.  Looked
+  carefully at the documentation and decided that nothing
+  special was needed, so I just built the sequence of patterns
+  [0][123][0], [0][123][123][0], and so on and went for it.
+  Then did MinConsecutiveDaysOff and MinConsecutiveSameShiftDays.
+  Also reorganized the comp2 constraint functions to follow
+  the numbering (H1-4 and S1-7) fairly closely.
+
+24 Oct 2016.  Did MinAssignments, MaxAssignments, and
+  MaxWorkingWeekends, quite easy.  That finishes comp2,
+  except for solutions.  Started work on curtois2014.c,
+  am now successfully reading the file format.  Now need
+  to use comp1 (probably) as a template for doing the job.
+
+26 October 2016.  Working on curtois2014.c.  Added
+  AddCycleAndWeekdays, AddShifts, AddTimes, AddPatterns,
+  and AddResources.
+
+27 October 2016.  Designed, implemented, and tested caching of
+  instance time group neighbourhoods.  Used table indexed by
+  "base lset" in the instance, and changed KheTimeGroupNhoodMake
+  so that it consults the table before building a new nhood.
+  Conversion of the longest CQ nurse rostering instance is not
+  instantaneous but it is much, much better - about 5 seconds.
+
+  Added a reqd and weight to each role, used in the label and
+  when generating assign resources constraints.  Just as good
+  for comp1 and comp2, more or less essential for cq.  Got rid
+  of ROLE_TYPE.  Generated a workload in each event resource.
+  Finished AddEvents.
+
+28 October 2016.  Working on cq.c (was curtois2014.c).  Added
+  coverage constraints (a mixture of assign resources and prefer
+  resources constraints) and avoid clashes constraints.  Looked
+  carefully through the instance files and documentation, and set
+  up a framework for all the constraints I have to do.  Also did
+  SingleAssignmentPerDay, UnwantedPatterns, and MaxAndMinMinutesWorked,
+  and wrote some grouping code that will make most of the rest
+  of the constraints very easy indeed.
+
+29 October 2016.  Now finding better names for time groups,
+  given the set of times that are to go in them.  This was
+  needed for cq.c, which was producing ridiculously long
+  time group names.  Done lots of constraints, only 4 to go.
+  Sorted out label handling:  for every loop, including
+  iterating over groups, we need to extend the constraint
+  label to make it unique.  We also need one unique group
+  label for each group.
+
+31 October 2016.  Yesterday I unified simple_group.c and
+  constraint.c into group.c.  Today I replaced the va1 and
+  val2 fields with weight, min_limit, and max_limit fields.
+  Also got rid of the anomalous weight field in patterns,
+  and audited everything.
+
+1 November 2016.  Working on unifying shift off requests
+  across the models.  Done the TIMES_OFF module and used
+  it in comp1.c so far.
+
+  Then changed direction and did some writing in nrconv/doc,
+  explaining the platform plus converters view of nrconv.
+  Whether I will ever implement this I am not sure yet.
+
+2 November 2016.  Still working on unifying shift off requests
+  across the models.  Did comp2.c today.  Then switched to
+  working on the NRC platform.
+
+3 November 2016.  Got the higher reaches of the NRC platform
+  (archives, solution groups, and skeletons of instances and
+  solutions, and corresponding metadata) going today.  Simple
+  cut-down versions of the KHE modules.
+
+4 November 2016.  Spent the morning working on the documentation
+  of NRConv.  Did the high level stuff, plus days, day-sets, and
+  day-set sets.
+
+6 November 2016.  Implemented day_set_set.c, which got left out
+  somehow.  Documented workers, worker-sets, and worker-set sets,
+  added headers for their functions to nrc.h, and implemented all
+  those functions.
+
+7 November 2016.  Defined covers, cover-sets, shifts, shift-sets,
+  and shift-set sets.  Implemented covers, cover-sets, shifts,
+  shift-sets, and shift-set sets.  Also added alternative skill
+  penalty and time-offs to nrc_worker.c.
+
+8 November 2016.  Did some thinking about shift types but
+  decided against them.  Added patterns.
+
+9 November 2016.  Added history.  Documented patterns.
+
+16 November 2016.  Not sure where the last week went.  However,
+  I have just finished a really good bit of documentation, of
+  the NRC worker constraints.  I have to implement it now.
+
+17 November 2016.  Done the basic implementation of the new
+  worker constraint type, NRC_CONSTRAINT.  The main thing not
+  written is its conversion to XESTT, but that will not be hard.
+  Rejigged NRC_PATTERN and its doc to fit the new structure.
+
+21 November 2016.  Working on unifying everything and getting
+  the manual into good shape.  Have just finished a good pass
+  through nrc_instance.c and its documentation, and more.
+
+22 November 2016.  Made sure all objects are being added to the
+  instance and have an instance attribute.  Done for uniformity,
+  will also be handy if I need to delete instances later on.
+  Started work on adding debug functions.
+
+23 November 2016.  Finished all the debug functions today.
+
+24 November 2016.  Changed XESTT and KHE to use polarity throughout,
+  and documented the changes.  Not tested but should work first time.
+
+25 November 2016.  Returned to NRC, did various things but notably
+  roles, and used them to finish off NrcCoverConvert, which means
+  that NRC can now generate times, resources, and events.
+
+27 November 2016.  Have user-defined day names now.  Removed all
+  unnecessary names.  Implemented NrcWorkerSetResourceGroup and
+  (by cannibalising tg_name.c) NrcShiftSetTimeGroup, and am also
+  generating cover constraints now.
+
+28 November 2016.  Started work on generating worker constraints.
+  Done the grouping so far, and some other code.  Might be best
+  to extend KHE before going further.
+
+29 November 2016.  Adding AppliesToTimeGroup to cluster busy and
+  limit busy times constraints in KHE.  Am now reading, checking,
+  and storing these options.  The next step is to do monitors for
+  them.
+
+30 November 2016.  Done KheClusterBusyTimesConstraintAppliesToTimes,
+  mostly by code in KheClusterBusyTimesConstraintFinalize.  Also
+  did their limit busy times constraint equivalents.
+
+1 December 2016.  Finished AppliesToTimeGroup in KHE for both
+  cluster busy times and limit busy times constraints.  Easy.
+
+2 December 2016.  All done in NRC except code which generates
+  a specialized constraint for limiting consecutive active
+  time groups.
+
+3 December 2016.  Off-site backup today, going walking tomorrow.
+
+14 December 2016.  Starting work on nurse rostering again today
+  after time off for walking and refereeing papers.  Added
+  functions for building starting shift-sets to NRC, and changed
+  the "locality" parameter of NrcConstraintMake to "starting_ss".
+  Worked through the first few constraints of comp1.c
+
+15 December 2016.  Made some good progress on converting comp1.c
+  today.  It's basically all done except for the constraints.
+  Wrote NrcInstanceWeeklyStartingShiftSet, ready for use in
+  starting weekend constraints every week.
+
+16 December 2016.  Finished converting the constraints of comp1.c,
+  then got a clean compile of the whole file.  All very good, but
+  covers not added yet (see AddEvents and AddEvent for what to do).
+
+17 December 2016.  Added covers to comp1.c, but not sure whether
+  I've done it correctly.  Needs some testing!
+
+18 December 2016.  Working on comp2.c.  Decided that patterns need
+  to hold shift-type sets, not shift sets, and I've done that in
+  NRC today, and updated comp1.c as well.  Back at work on comp2.c
+  now, just finished SingleAssignmentPerDay.
+
+19 December 2016.  Continuing to work on comp2.c.  Got clean compile
+  except covers and skills are still to do, as is history.  Augmented
+  NRC to include limit workload constraints.  Now working on cq.c.
+
+20 December 2016.  Now have clean compile of the whole system with
+  everything superseded by NRC removed.
+
+21 December 2016.  Completely audited comp1.c today, checking it against
+  the docs and improving its organization as I went.  I've also added
+  a few handy helper functions to NRC along the way.  All good.
+
+22 December 2016.  Auditing comp2.c today.  Going well.  I've done a
+  good job of sorting out the messiness in how the various constraints
+  are defined.  Essentially the problem is that their limits are to be
+  found in various odd corners of the input files.  There is a good
+  comment about it at the top of the file.
+
+23 December 2016.  Sorted out what to do about history, let the
+  others know - but I will implement it whatever they say.
+
+24 December 2016.  Implemented NrcConstraintAddHistory and
+  reviewed the whole history thing - it seems fine.  Also
+  storing history the new way now in comp2.c.
+
+25 December 2016.  In between having Christmas, decided to add
+  NrcConstraintAddAllHistory, and implemented all history in
+  comp2.c except for UnwantedPattern, which I am in the middle
+  of implementing, within AddNursesHistory.
+
+26 December 2016.  Finished history in comp2.c, and did the
+  complete audit and tidying of cq.c, including adding all
+  the constraints that were not done before.  Yippee!
+
+27 December 2016.  Now generating assign resource and prefer resources
+  constraints, from within nrc_cover.c, which has turned out to be a
+  really good way to do it.  Also generating constraints for day off,
+  shift off, day on (not currently needed, but easy to add so I did),
+  and shift on.  Added the avoid clashes constraint.  Have clean compile.
+
+28 December 2016.  Audited worker constraint generation.  There was
+  quite a lot wrong with it, but it seems to be OK now.  Needs testing.
+  Also documented some examples of how to get worker constraints.
+
+  "Employee scheduling cluster consecutive busy times constraints"
+  blurb written in hseval/spec.c, as a way of seeing what to do.
+
+29 December 2016.  Changed the name of the new constraint to
+  LimitActiveIntervalsConstraint, basically because it was too
+  long before.  Started implementing it in KHE.  So far I have
+  done the boilerplate:  copied the code for cluster busy times
+  constraints and monitors.  Made a start on the new stuff:  I'm
+  creating, deleting, copying, splitting, and merging active intervals.
+
+30 December 2016.  File khe_limit_active_intervals_monitor.c is now
+  compiling cleanly and seems to have everything it needs.  Have to
+  audit it though.
+
+31 December 2016.  Audited khe_limit_active_intervals_monitor.c,
+  seems pretty good.  Added code to NRConv to generate limit active
+  intervals constraints.  Started testing, a few blips but going
+  pretty well so far - it's running through to the end without
+  crashing anyway.  Added NrcShiftSetEventGroup, and used it to
+  refine the event groups that assign resource and prefer resources
+  constraints apply to.
