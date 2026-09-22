@@ -7,12 +7,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     make \
     gcc \
+    curl \
+    ca-certificates \
+    tar \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /build
 COPY Makefile ./
-COPY khe-2025_12_04/ ./khe-2025_12_04/
 
+# Automatically downloads on-demand and builds KHE binaries
 RUN make build
 
 # Final lightweight runner image
@@ -25,6 +28,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=builder /build/bin/hseval /usr/local/bin/hseval
 COPY --from=builder /build/bin/khe /usr/local/bin/khe
 
-# Domyślnie uruchamia hseval z czytaniem z stdin
+# Domyślnie uruchamia hseval
 ENTRYPOINT ["hseval"]
 CMD ["-tc", "/dev/stdin"]
