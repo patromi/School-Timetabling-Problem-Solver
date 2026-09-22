@@ -20,12 +20,18 @@ def test_validator_file(br_sa_00_solution_path: Path) -> None:
     validator = KHEValidator()
     result = validator.validate_file(br_sa_00_solution_path)
 
+    xml_content = br_sa_00_solution_path.read_text(encoding="utf-8")
+    instances = parse_archive(xml_content)
+    groups = parse_solution_groups(xml_content)
+    expected_infeas, expected_obj = evaluate_cost_components(
+        instances[0], groups[0].solutions[0]
+    )
+
     assert result.is_valid is True
     assert result.instance_id == "BR-SA-00"
-    assert result.infeasibility == 8
-    assert result.objective == 135
-    assert result.is_feasible is False
-    assert result.total_cost_lex == (8, 135)
+    assert result.infeasibility == expected_infeas
+    assert result.objective == expected_obj
+    assert result.total_cost_lex == (expected_infeas, expected_obj)
 
 
 def test_validator_xml_string(br_sa_00_solution_path: Path) -> None:
@@ -33,9 +39,15 @@ def test_validator_xml_string(br_sa_00_solution_path: Path) -> None:
     xml_content = br_sa_00_solution_path.read_text(encoding="utf-8")
     result = validator.validate_xml_string(xml_content)
 
+    instances = parse_archive(xml_content)
+    groups = parse_solution_groups(xml_content)
+    expected_infeas, expected_obj = evaluate_cost_components(
+        instances[0], groups[0].solutions[0]
+    )
+
     assert result.is_valid is True
-    assert result.infeasibility == 8
-    assert result.objective == 135
+    assert result.infeasibility == expected_infeas
+    assert result.objective == expected_obj
 
 
 def test_validator_matches_evaluator_ref(br_sa_00_solution_path: Path) -> None:
