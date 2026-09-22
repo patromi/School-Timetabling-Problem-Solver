@@ -1,0 +1,2199 @@
+@Chapter
+    @Title { Ejection Chains 2:  Practice }
+    @Tag { eject2 }
+@Begin
+In this second ejection chains chapter, we focus on the practical
+side of getting ejectors to repair solutions.  The code presented
+in this chapter, and found in files @C { khe_se_focus.c } and
+@C { khe_se_solvers.c }, is more volatile than the code in
+@C { khe_se_ejector.c } defining ejector objects---more subject
+to change as new ideas come along.
+@BeginSections
+
+@Section
+    @Title { Top-level ejection chains functions }
+    @Tag { eject2.top }
+@Begin
+@LP
+KHE offers several top-level functions for repairing solutions using
+ejection chains:
+@ID @C {
+bool KheEjectionChainNodeRepairTimes(KHE_NODE parent_node,
+  KHE_OPTIONS options);
+bool KheEjectionChainLayerRepairTimes(KHE_LAYER layer,
+  KHE_OPTIONS options);
+bool KheEjectionChainRepairResources(KHE_TASKING tasking,
+  KHE_OPTIONS options);
+}
+These are all packaged up ready for the end user to call.
+@C { KheEjectionChainNodeRepairTimes } repairs the assignments of
+the meets of the descendants of the child nodes of @C { parent_node },
+and @C { KheEjectionChainLayerRepairTimes } repairs the assignments of
+the meets of the descendants of the child nodes of @C { layer }.  This
+is for repairing the time assignments of a layer immediately after
+they are made, without wasting time on earlier layers where repairs
+have already been tried and are very unlikely to succeed.
+@C { KheEjectionChainRepairResources } repairs the assignments of the
+tasks of @C { tasking }.
+@PP
+These top-level functions are all much the same.  They use the same
+augment functions, for example.  They differ in how some options are
+set, and in how @C { start_gm } is defined.
+@PP
+All three functions make assignments as well as change them, so may
+be used to construct solutions as well as repair them.  However,
+there are better ways to construct solutions.
+@PP
+Here is function @C { KheEjectionChainRepairResources }:
+@ID @C {
+bool KheEjectionChainRepairResources(KHE_TASKING tasking,
+  KHE_OPTIONS options)
+{
+  KHE_EJECTOR ej;  KHE_GROUP_MONITOR kempe_gm, start_gm, limit_gm;
+  KHE_SOLN soln;  bool res;  KHE_AUGMENT_OPTIONS ao;
+
+  /* get an ejector */
+  ej = KheEjectionChainEjectorOption(options, "es_ejector2");
+
+  /* set the control options */
+  KheOptionsSetBool(options, "es_repair_times", false);
+  KheOptionsSetObject(options, "es_limit_node", NULL);
+  KheOptionsSetBool(options, "es_repair_resources", true);
+
+  /* build the required group monitors and solve */
+  soln = KheTaskingSoln(tasking);
+  KheGroupCorrelatedMonitors(soln, options);
+  kempe_gm = KheKempeDemandGroupMonitorMake(soln);
+  start_gm = KheTaskingStartGroupMonitorMake(tasking);
+  ao = KheAugmentOptionsMake(soln, options, KheEjectorArena(ej));
+  KheEjectorSolveBegin(ej, start_gm, (KHE_GROUP_MONITOR) soln, ao,
+    options);
+  res = KheEjectorSolveEnd(ej);
+
+  /* clean up and return */
+  KheGroupMonitorDelete(kempe_gm);
+  KheGroupMonitorDelete(start_gm);
+  KheUnGroupCorrelatedMonitors(soln);
+  return res;
+}
+}
+We've simplified it slightly to emphasize the main points.
+We'll go through it now line by line.
+@PP
+@C { KheEjectionChainEjectorOption } retrieves an ejector object
+from @C { options }, stored under key @C { "es_ejector2" }.   The
+ejector's augment functions are already loaded.  If there is no
+such object, it creates one, stores it under that key, and returns
+it.  This avoids wasting time by creating ejector objects over and
+over again, but its main purpose is to allow statistics over the
+whole run to be accumulated in just a few ejector
+objects---currently @C { "es_ejector1" } for time repair,
+and @C { "es_ejector2" } for resource repair.
+@PP
+Next, options @C { "es_repair_times" }, @C { "es_limit_node" }, and
+@C { "es_repair_resources" } are set to values appropriate to resource
+repair.  These values will be consulted later by augment functions and
+will cause them to limit their repairs to resource repairs.
+@PP
+As discussed in Section {@NumberOf general_solvers.grouping.correlation},
+it is important for the effective use of ejection chains to
+group correlated monitors.  This is done by the call to
+@C { KheGroupCorrelatedMonitors }, and undone at the end by
+@C { KheUnGroupCorrelatedMonitors }
+(Section {@NumberOf general_solvers.grouping.functions}).
+There is no need here to group monitors concerned with time assignment,
+but it is simpler to just group everything.
+@PP
+Two other group monitors, of the kind described as @I { focus groupings }
+in Section {@NumberOf general_solvers.grouping.focus}, are needed by
+@C { KheEjectionChainRepairResources }.  The first is @C { kempe_gm },
+needed to support repairs that include Kempe moves; the second is
+@C { start_gm }, needed to limit the main loop of the ejector to
+repairs of event resource and resource defects whose resource type is
+that of @C { tasking }.  We'll have more to say about limiting the
+scope of repairs later on.
+@PP
+It is reasonable to worry about the time it takes to group monitors,
+so the author ran just the group monitor setup and removal parts of
+@C { KheEjectionChainNodeRepairTimes } 10000 times on a typical
+instance (BGHS98) and measured the time taken.  This was 31.35
+seconds, or about 0.003 seconds per setup"/"remove.  This is not
+significant if it is done infrequently.
+@PP
+@C { KheAugmentOptionsMake } constructs an object of type
+@C { KHE_AUGMENT_OPTIONS } by filling in its fields based
+on values it retrieves from @C { options }.  It is basically
+an optimization:  it allows augment functions to access the
+options they need much more quickly that via a cumbersome
+retrieval from an @C { options } object.  We'll look at
+this more closely in Section {@NumberOf eject2.options}.
+@PP
+We are nearly done.  The calls to @C { KheEjectorSolveBegin } and
+@C { KheEjectorSolveEnd } do the actual solve.  We've omitted some
+code here which optionally installs a limit monitor in between these
+two calls.  Then, in accordance with our general policy concerning
+group monitors (Section {@NumberOf general_solvers.grouping.intro}),
+the group monitors created by this function are deleted.  Finally,
+the earlier call to @C { KheGroupCorrelatedMonitors } is undone, and
+@C { true } is returned if the solution was improved.
+@End @Section
+
+@Section
+    @Title { Focus groupings for ejection chains }
+    @Tag { eject2.focus }
+@Begin
+@LP
+Top-level ejection chain functions need focus groupings for their
+start group monitors (but not their continue group monitors, since
+they use the solution object for that), and for their limit
+monitors.  This section describes the public functions, defined
+in @C { khe_se_focus.c }, which return these group monitors.
+@PP
+@C { KheEjectionChainNodeRepairTimes } uses the group monitor returned by
+@ID @C {
+KHE_GROUP_MONITOR KheNodeTimeRepairStartGroupMonitorMake(KHE_NODE node);
+}
+as its start group monitor.  The result has sub-tag
+@C { KHE_SUBTAG_NODE_TIME_REPAIR }.  Its children are monitors, or
+correlation groupings of monitors where these are already present, of
+two kinds.  First are all assign time, prefer times, spread events,
+order events, and ordinary demand monitors that monitor the meets
+of @C { node } and its descendants, plus any meets whose assignments
+are fixed, directly or indirectly, to them.  Second are all resource
+monitors.  Only preassigned resources are assigned during time repair,
+but those assignments may cause resource defects which can only be
+repaired by changing time assignments, just because the resources
+involved are preassigned.
+@PP
+@C { KheEjectionChainLayerRepairTimes } chooses one of the group monitors
+returned by
+@ID @C {
+KHE_GROUP_MONITOR KheLayerTimeRepairStartGroupMonitorMake(
+  KHE_LAYER layer);
+KHE_GROUP_MONITOR KheLayerTimeRepairLongStartGroupMonitorMake(
+  KHE_LAYER layer);
+}
+as its start group monitor, depending on option
+@C { es_layer_repair_long }.  The result has
+sub-tag @C { KHE_SUBTAG_LAYER_TIME_REPAIR }, with the same children
+as before, only limited to those that monitor the meets and resources
+of @C { layer }, or (if @C { es_layer_repair_long } is @C { true})
+of layers whose index number is less than or equal to @C { layer }'s.
+@PP
+@C { KheEjectionChainRepairResources } uses the group monitor returned
+by
+@ID @C {
+KHE_GROUP_MONITOR KheTaskingStartGroupMonitorMake(KHE_TASKING tasking);
+}
+for its start group monitor.  The result has sub-tag
+@C { KHE_SUBTAG_TASKING }, and its children are the following
+monitors (or correlation groupings of those monitors, where those already
+exist):  the assign resource, prefer resources, and avoid split
+assignments monitors, and the resource monitors that monitor the
+tasks and resources of @C { tasking }.  If the tasking is for a
+particular resource type, only monitors of entities of that type
+are included.
+@PP
+To allow an ejection chain to unassign meets temporarily but prevent
+it from leaving meets unassigned in the end, a limit monitor is
+imposed which rejects chains that allow the total cost of assign
+time defects to increase.  This monitor is created by calling
+@ID @C {
+KHE_GROUP_MONITOR KheGroupEventMonitors(KHE_SOLN soln,
+  KHE_MONITOR_TAG tag, KHE_SUBTAG_STANDARD_TYPE sub_tag);
+}
+passing @C { KHE_ASSIGN_TIME_MONITOR_TAG } and
+@C { KHE_SUBTAG_ASSIGN_TIME } as tag parameters.
+@PP
+To prevent the number of unmatched demand tixels from increasing,
+when that is requested by the @C { resource_invariant } option,
+the group monitor returned by function @ID @C {
+KHE_GROUP_MONITOR KheAllDemandGroupMonitorMake(KHE_SOLN soln);
+}
+is used as a limit monitor.  Its sub-tag is @C { KHE_SUBTAG_ALL_DEMAND },
+and its children are all ordinary and workload demand monitors.
+Correlation groupings are irrelevant to limit monitors, so these last
+two functions take no account of them.
+@End @Section
+
+@Section
+    @Title { Augment options }
+    @Tag { eject2.options }
+@Begin
+@LP
+Ejection chain code consults many options.  Rather than clumsy
+retrievals of these options from an @C { options } object each
+time they are needed, the ejection chain code retrieves each
+option just once, and stores its value in an object of type
+@C { KHE_AUGMENT_OPTIONS }.  This object is passed to the ejector
+as an argument of function @C { KheEjectorSolveBegin }, which
+passes it back to each augment function, making the options
+immediately available to them.
+@PP
+Type @C { KHE_AUGMENT_OPTIONS } is defined in @C { khe_solvers.h } by
+@ID @C {
+typedef struct khe_augment_options_rec *KHE_AUGMENT_OPTIONS;
+}
+and made concrete at the start of @C { khe_se_solvers.c }:
+@ID @C {
+struct khe_augment_options_rec {
+
+  /* time repair options */
+  bool				vizier_node;
+  bool				layer_repair_long;
+  bool				nodes_before_meets;
+  KHE_OPTIONS_KEMPE		use_kempe_moves;
+  bool				use_fuzzy_moves;
+  bool				no_ejecting_moves;
+
+  /* resource repair options */
+  bool				widening_off;
+  bool				reversing_off;
+  bool				balancing_off;
+  int				widening_max;
+  int				balancing_max;
+  bool 				full_widening_on;
+  bool				optimal_on;
+  int				optimal_width;
+
+  /* options that are set by functions, not by the user */
+  bool				repair_times;
+  bool				use_split_moves;
+  KHE_KEMPE_STATS		kempe_stats;
+  KHE_NODE			limit_node;
+  bool				repair_resources;
+  KHE_FRAME			frame;
+  KHE_EVENT_TIMETABLE_MONITOR	event_timetable_monitor;
+  KHE_TASK_FINDER		task_finder;
+};
+}
+The reader can see now why we describe @C { khe_se_solvers.c } as
+volatile:  these options control various promising ideas that may come
+and go.  The options will come and go with the ideas.
+@PP
+A few of these options are more permanent than the others and deserve
+special notice.
+Option @C { repair_times } is @C { true } when augment functions are
+permitted to change the assignments of meets, and @C { repair_resources }
+is @C { true } when they are permitted to change the assignments of
+tasks.  At least one of these must be @C { true }, since otherwise
+the augment functions can change nothing.  It is also acceptable for
+both to be @C { true }, although that can lead to slow runs.
+@PP
+Option @C { frame } is the common frame; @C { event_timetable_monitor }
+is an event timetable monitor, from which an augment function can retrieve
+the tasks running at a given time; and @C { task_finder } is a task finder
+object, as in Section {@NumberOf resource_structural.task_finding}.
+# It is handy to have direct access to these objects, and not have to
+# retrieve them from a @C { KHE_OPTIONS } object each time they are needed.
+@PP
+A @C { KHE_AUGMENT_OPTIONS } object is created by a call to
+@C { KheAugmentOptionsMake }.  We won't present its implementation;
+it simply creates an object and fills its fields with values
+retrieved from the @C { options } object.
+# In this way these
+# values become immediately accessible; they don't have to be retrieved
+# from a @C { KHE_OPTIONS } object each time they are needed.
+@PP
+Here now is the full list of options that control the top-level
+ejection chain functions.  These options are quite separate from
+the options used to control ejector objects, which are listed
+elsewhere (Section {@NumberOf eject1.solving}).
+@PP
+First come options that do not need to be stored in the
+@C { KHE_AUGMENT_OPTIONS } object, because they affect only
+the main functions, not the augment functions:
+@TaggedList
+
+@DTI { @F rs_ejector_off }
+{
+A Boolean option which, when @C { true }, causes
+@C { KheEjectionChainRepairResources } to do nothing.
+}
+
+@DTI { @F { es_ejector1 }, @F { es_ejector2 } }
+{
+These two options hold ejector objects.  @C { KheEjectionChainNodeRepairTimes }
+and @C { KheEjectionChainLayerRepairTimes } use the ejector object stored
+under key @F { es_ejector1 }, while @C { KheEjectionChainRepairResources }
+uses the ejector object stored under key @F { es_ejector2 }.  There is no
+need for the user to set these options, since they will be set the first
+time they are needed; but retrieving them at the end of the solve can be
+useful, since they will then contain statistics on the performance of the
+ejection chain algorithm.
+}
+
+@DTI { @F es_schedules }
+{
+The value here is a string describing the schedules to apply
+to an ejector.  The default value is @C { "1+,u-" }.  For the
+meaning of this, consult Section {@NumberOf ejection.ejectors}.
+}
+
+@DTI { @F es_group_limit_resources_off }
+{
+A Boolean option which, when @C { true }, instructs
+@C { KheGroupCorrelatedMonitors }
+(Section {@NumberOf general_solvers.grouping.functions})
+to not group limit resources monitors for the same
+events and resource types.  Grouping these monitors is not exact,
+which is why this option is offered to turn it off, but it may be
+helpful anyway, to reduce the density of these constraints.
+}
+
+@EndList
+Next come those options retrieved from @C { options } by
+@C { KheAugmentOptionsMake } and stored in the @C { KHE_AUGMENT_OPTIONS }
+object.  First, those concerned with time assignment:
+@TaggedList
+
+@DTI { @F es_vizier_node }
+{
+A Boolean option which, when @C { true }, instructs
+@C { KheEjectionChainNodeRepairTimes } and
+@C { KheEjectionChainLayerRepairTimes } to insert a vizier node
+(Section {@NumberOf time_structural.nodes.vizier}) temporarily
+while they run.
+}
+
+@DTI { @F es_layer_repair_long }
+{
+A Boolean option which, when @C { true }, instructs
+@C { KheEjectionChainLayerRepairTimes } to target every
+layer up to and including the current layer when repairing the
+current layer.  Otherwise only the current layer is targeted.
+}
+
+@DTI { @F es_nodes_before_meets }
+{
+A Boolean option which, when @C { true }, instructs augment
+functions that try both node swaps and meet moves to try the
+node swaps first.
+}
+
+@DTI { @F es_kempe_moves }
+{
+This option determines whether augment functions that move
+meets use Kempe moves in addition to ejecting and basic
+ones (Section {@NumberOf time_solvers.kempe}).  Its possible
+values are @F { true }, meaning to use them, @C { false },
+meaning to not use them, and @F { large_layers } (the default),
+meaning to use them when moving the meets of nodes that lie in
+layers of large duration relative to the cycle duration,
+reasoning that swaps are usually needed when such meets are moved.
+}
+
+@DTI { @F es_fuzzy_moves }
+{
+A Boolean option which, when @C { true }, instructs augment
+functions that move meets to try fuzzy meet moves
+(Section {@NumberOf time_solvers.repair.meet_set}) in addition
+to the other kinds of meet moves.  If they do, to conserve
+running time they only do so when repairing a defect of the
+current best solution, not when repairing a defect introduced
+by a previous repair.  At present the @C { width }, @C { depth },
+and @C { max_meets } arguments passed to @C { KheFuzzyMeetMove }
+are fixed constants.
+}
+
+@DTI { @F es_no_ejecting_moves }
+{
+A Boolean option which, when @C { true }, instructs augment
+functions that assign and move meets to not use ejecting moves,
+only basic ones (Section {@NumberOf time_solvers.kempe}).
+}
+
+# @DTI { @F es_no_limit_busy_sequences }
+# {
+# A Boolean option which, when @C { true }, instructs augment
+# functions that repair limit busy times defects to move only
+# single assignments, not sequences of assignments.
+# }
+
+# @DTI { @F es_max_augments }
+# {
+# An upper limit on the number of augments tried on each attempt
+# to repair a main loop defect.  The default value is @C { 120 },
+# which may be more effective than a larger number, especially
+# when there is a time limit, because it helps the search to
+# not waste time on lost causes.
+# }
+
+# @DTI { @F es_max_repairs }
+# {
+# An upper limit on the number of repairs tried on each attempt
+# to repair a main loop defect.  The default value is @C { INT_MAX }.
+# }
+
+# @DTI { @F es_no_promote_defects }
+# {
+# (@I { withdrawn }) A Boolean option which, when @C { true }, instructs
+# an ejector not to promote defects (Section {@NumberOf ejection.promotion}).
+# }
+
+# @DTI { @F es_fresh_visits }
+# {
+# A Boolean option which, when @C { true }, instructs an ejector to
+# make fresh visits (Section {@NumberOf ejection.articulated}).
+# }
+
+# @DTI { @F es_max_beam }
+# {
+# An integer option which gives the maximum number of monitors that
+# may appear in a beam (Section {@NumberOf ejection.beams}).  The
+# default value is 1, producing ejection chains rather than beams.
+# }
+
+# @DTI { @F es_limit_defects }
+# {
+# An option whose value is either @C { "unlimited" } or an integer.
+# This integer is a limit on the number of defects handled by the
+# main loop of the ejector.  Each time the main list of defects
+# is copied and sorted, if its size exceeds this limit, defects are
+# dropped from the end until it doesn't.  When the option is not
+# set, or its value is @C { "unlimited" }, no limit is applied.
+# }
+
+@EndList
+Second, options concerned with resource assignment:
+@TaggedList
+
+@DTI { {@F es_widening_off}, {@F es_reversing_off}, {@F es_balancing_off}  }
+{
+Boolean options which, when @C { true }, cause widening, reversing,
+and balancing to be omitted from task move repairs.
+@DP
+@I { Note:  Task move repairs treat tasks @C { t } for which
+@C { KheTaskNeedsAssignmentHasCost(t) } is @C { false } as free
+time.  Inserting this note in the right place is still to do.
+}
+}
+
+@DTI { {@F es_widening_max} }
+{
+When widening is in effect (when @F es_widening_off is @C { false }),
+this integer option determines the maximum number of frame time groups
+that widening covers.  Calling this number @M { m }, and supposing
+the task set being moved already covers @M { s } time groups, the
+maximum is @M { max(m, s) }.  The default value is 4.
+}
+
+@DTI { {@F es_balancing_max} }
+{
+When balancing is in effect (when @F es_balancing_off is @C { false }),
+this integer option determines the maximum number of repairs that
+move a task set in the other direction to the main move.  The
+default value is 12.
+}
+
+@DTI { {@F es_full_widening_on} }
+{
+A boolean option which, when @C { true }, includes full widening
+in task move repairs.  This swaps timetables from the task being
+moved back to the start or forward to the end of the cycle.  It
+is effective, but its slowness typically increases cost on solves
+limited by time.
+}
+
+@DTI { {@F es_optimal_on} }
+{
+A boolean option which, when @C { true }, causes optimal widened
+task set moves to be used.  In that case, @F es_optimal_width
+just below is consulted, as is {@F es_balancing_off} above, but
+the other options from {@F es_widening_off} down to here are
+ignored.
+}
+
+@DTI { {@F es_optimal_width} }
+{
+When @F es_optimal_on is @C { true }, this integer option determines
+how many extra days to include in the optimal move.  The default value,
+6, adds 6 extra days.  When these are added to the one day typically
+involved in the original move, this covers a full week.
+}
+
+@EndList
+The following options are set within
+@C { KheEjectionChainRepairResources } and similar functions,
+making it futile for the user to set them:
+@TaggedList
+
+@DTI { @F es_repair_times }
+{
+A Boolean option which, when @C { true }, lets augment functions
+change meet assignments.  @C { KheEjectionChainNodeRepairTimes } and
+@C { KheEjectionChainLayerRepairTimes } set it to @C { true }, while
+@C { KheEjectionChainRepairResources } sets it to @C { false }.
+}
+
+@DTI { @F es_split_moves }
+{
+A Boolean option which, when @C { true }, instructs augment
+functions that move meets to try split meet moves in addition
+to other kinds of meet moves.  @C { KheGeneralSolve2022 } sets
+this option to @C { true } when the instance contains soft split
+events or distribute split events constraints, reasoning that
+they may not have been satisfied by structural solvers.
+}
+
+@DTI { @F es_limit_node }
+{
+This option holds a node object.  When it is non-@C { NULL }, it causes
+augment functions that assign and move meets to limit their repairs to
+the descendants of that node.  This option is set by all three functions.
+}
+
+@DTI { @F es_repair_resources }
+{
+A Boolean option which, when @C { true }, lets augment functions
+change task assignments.  @C { KheEjectionChainNodeRepairTimes } and
+@C { KheEjectionChainLayerRepairTimes } set it to @C { false }, while
+@C { KheEjectionChainRepairResources } sets it to @C { true }.
+}
+
+@EndList
+As mentioned earlier, one can expect this list to change as good
+ideas come and go.
+@End @Section
+
+@Section
+    @Title { How to write an augment function }
+    @Tag { eject2.augment }
+@Begin
+@LP
+An augment function has type
+@ID @C {
+bool (*KHE_EJECTOR_AUGMENT_FN)(KHE_EJECTOR ej,
+  KHE_AUGMENT_OPTIONS ao, KHE_MONITOR d);
+}
+The parameters are the ejector @C { ej } passed to @C { KheEjectorSolve },
+a set of options @C { ao } which may be consulted to influence the
+detailed behaviour of the augment function, and one defect @C { d }
+that the augment function is supposed to repair.  When ejection beams
+are in use the ejector still only expects the user's augment functions
+to repair a single defect.  Thus one can switch from chains to beams
+and back again without changing any augment functions.
+@PP
+It is a precondition that @C { d }'s cost exceeds its lower bound, and
+that reducing its cost to its lower bound would be a step towards a
+successful augment.  The return value says whether the augment
+successfully reduced the solution cost or not, and must be @C { true }
+if some call to @C { KheEjectorRepairEnd } (see below) returns
+@C { true }, or @C { false } otherwise.  The ejector relies on
+this value and it must be right.
+@PP
+Augment functions often look like this, although not necessarily exactly:
+@ID {0.98 1.0} @Scale @C {
+bool ExampleAugment(KHE_EJECTOR ej, KHE_AUGMENT_OPTIONS ao, KHE_MONITOR d)
+{
+  KHE_ENTITY e;  bool success;  REPAIR r;
+  e = SomeSolnEntityRelatedTo(d);
+  if( !KheEntityVisited(e) )
+  {
+    KheEntityVisit(e);
+    for( each r in RepairsOf(e) )
+    {
+      KheEjectorRepairBegin(ej);
+      success = Apply(r);
+      if( KheEjectorRepairEnd(ej, 0, success) )
+	return true;
+    }
+    if( KheEjectorCurrMayRevisit(ej) )
+      KheEntityUnVisit(e);
+  }
+  return false;
+}
+}
+Function @C { SomeSolnEntityRelatedTo } uses @C { d } to identify
+some entity (node, meet, task, etc.) that will be changed by the
+repairs, but that should only be changed if it has not already
+been visited (tested by calling @C { KheMeetVisited } etc. from
+Section {@NumberOf "solutions.top.visit.numbers"}).  After the
+visit, the boilerplate code
+@ID @C {
+if( KheEjectorCurrMayRevisit(ej) )
+  KheEntityUnVisit(e);
+}
+marks the entity unvisited if revisiting is allowed.
+@PP
+Each application of one repair must be bracketed by calls to
+@C { KheEjectorRepairBegin } and @C { KheEjectorRepairEnd },
+as shown.  We'll return to these two functions shortly.
+@PP
+Since writing the above, it has occurred to the author that the
+visited entity related to @C { d } could be @C { d } itself.  The
+code above that relates to visiting @C { e } is now applied to
+@C { d } behind the scenes in the ejector object.  This has the
+usual effect of prohibiting exponential searches, and it means
+that the writer of an augment function can safely drop all
+visiting code, producing this:
+@ID {0.98 1.0} @Scale @C {
+bool ExampleAugment(KHE_EJECTOR ej, KHE_AUGMENT_OPTIONS ao, KHE_MONITOR d)
+{
+  bool success;  REPAIR r;
+  for( each r in RepairsOf(d) )
+  {
+    KheEjectorRepairBegin(ej);
+    success = Apply(r);
+    if( KheEjectorRepairEnd(ej, 0, success) )
+      return true;
+  }
+  return false;
+}
+}
+The augment function is also conceptually simpler this way:  it
+searches a graph whose nodes are defects and whose edges are repairs,
+without revisiting any node.  Of course, the search is different,
+and the question of whether it is better or worse must be decided
+empirically.  The author has successfully removed all visiting code
+from his nurse rostering augment functions:  running times are often
+larger, but cost is nearly always lower, often significantly lower.
+@PP
+Function @C { RepairsOf } builds a set of alternative repairs @C { r }
+of @C { e } or @C { d }, and @C { Apply(r) } stands for the code that
+applies repair @C { r }.  In practice, repairs just need to be iterated
+over and applied; an explicit set is not needed.  Nor is
+there any need for the augment function to follow any particular
+structure; anything that generates a sequence of pairs of calls
+to @C { KheEjectorRepairBegin } and @C { KheEjectorRepairEnd }
+is acceptable.
+@PP
+For example, some expensive repairs are only worth trying when
+repairing a defect that is really present in the solution, not
+introduced by a previous repair.  This can be effected by
+@ID @C {
+if( KheEjectorCurrLength(ej) == 1 )
+{
+  KheEjectorRepairBegin(ej);
+  ... apply expensive repair ...
+  if( KheEjectorRepairEnd(ej, 0, success) )
+    return true;
+}
+}
+This works because, as mentioned earlier,
+@C { KheEjectorCurrLength(ej) } returns 1 when the augment function
+was called from the main loop, 2 when the augment function was called
+by an augment function called from the main loop, and so on.
+@PP
+Functions @C { KheEjectorRepairBegin } and @C { KheEjectorRepairEnd }
+are supplied by KHE:
+@ID @C {
+void KheEjectorRepairBegin(KHE_EJECTOR ej);
+bool KheEjectorRepairEnd(KHE_EJECTOR ej, int repair_type, bool success);
+}
+Calls to them must occur in unnested matching pairs.  A call to
+@C { KheEjectorRepairBegin } informs @C { ej } that a repair is
+about to begin, and the matching call to @C { KheEjectorRepairEnd }
+informs it that that repair has just ended.  The repair is undone and
+redone as required behind the scenes by @C { KheEjectorRepairEnd },
+using marks and paths, so undoing is not the user's concern.
+@PP
+The @C { repair_type } parameter of @C { KheEjectorRepairEnd } is
+used to gather statistics about the solve
+(Section {@NumberOf eject1.statistics}).  It may be 0 if statistics
+are not wanted.
+@PP
+The @C { success } parameter tells the ejector whether the caller
+thinks the current repair was successful (that is, ran to completion).
+If it is @C { false }, the ejector undoes the partially completed
+repair and forgets that it ever happened.  If it is @C { true },
+the ejector checks whether the repair reduced the cost of the
+solution, whether there is a single new defect worth recursing on,
+and so on.  The writer of an augment function can forget that all
+this is happening behind the scenes.
+@PP
+If @C { KheEjectorRepairEnd } returns @C { true }, the ejector has
+found a successful chain.  When this happens, the rule is that the
+augment function should return @C { true } immediately.  It does not
+matter whether any entity is marked unvisited or not before exit.
+@PP
+However, there is an exception to this rule.  We illustrate this by
+the following example.
+@PP
+Suppose that, in order to encourage ejection chains to remove a cluster
+busy times defect, some days when the resource will be busy are chosen,
+all meets assigned the resource outside those days are unassigned, and
+repairs are tried which move those meets to the chosen days.
+@PP
+While the repairs are underway, it is desired to limit the domains of
+the resource's meets to the chosen days, to keep the repairs on track.
+So the repair altogether consists of unassigning some of the resource's
+meets and adding a meet bound to each of the resource's meets.
+@PP
+Whether the repair is successful or not, after it and the chains below
+it are finished, the meet bound must be removed from the resource's
+meets, since the domains of the meets should not be restricted
+permanently.  If the repair is unsuccessful, the meet bound is removed
+by the ejector as part of undoing the repair.  But if the repair is
+successful there is a problem, because the repair is not undone.
+So in this case, in between receiving the @C { true } result from
+@C { KheEjectorRepairEnd } and returning @C { true } itself, the
+augment function should remove the meet bounds that it added.
+@PP
+In general, this kind of cleanup should not change the cost of
+the solution.  It might remove meet or task bounds, unfix meets
+or tasks, and so on.  Because it is done after a successful
+chain, it cannot be assumed that the solution is in the same
+state as when the repair began, although the user may be able
+to prove that certain aspects of it cannot have changed, based
+on his knowledge of what the augment functions do.  In the
+example, if no repairs remove meet bounds other than those
+they add themselves, then the meet bound will still be present
+and it is safe to delete it.
+@End @Section
+
+# @SubSection
+#     @Title { Obtaining ejector objects }
+#     @Tag { eject2.repair.ejectors }
+# @Begin
+# @LP
+# The first issue is where the ejector objects come from.  They
+# need to be loaded with the right augment functions, and they
+# need to be available after the solve, to give access to their
+# statistics.  KHE offers a function for creating an ejector
+# object with its augment functions loaded:
+# @ID {0.98 1.0} @Scale @C {
+# KHE_EJECTOR KheEjectionChainEjectorMake(KHE_OPTIONS options, HA_ARENA a);
+# }
+# This returns a new ejector object, ready to solve with, stored in
+# arena @C { a }.  Its schedules come from the @C { es_schedules }
+# option of @C { options }, and its augment functions are the ones
+# defined by KHE.  However, the three ejection chain solvers obtain
+# their ejector objects indirectly, by calling
+# @ID {0.98 1.0} @Scale @C {
+# KHE_EJECTOR KheEjectionChainEjectorOption(KHE_OPTIONS options, char *key);
+# }
+# This retrieves the object from @C { options } with the given key,
+# casts it to @C { KHE_EJECTOR }, and returns it; or if there is no
+# such object, it calls @C { KheEjectionChainEjectorMake(options, a) }
+# to create one, adds it to @C { options } under the given key, and
+# returns it.  The ejector's lifetime is the lifetime of @C { options },
+# because @C { a } is @C { KheOptionsArena(options) }.
+# @PP
+# For @C { KheEjectionChainNodeRepairTimes } and
+# @C { KheEjectionChainLayerRepairTimes } the key is @C { "es_ejector1" };
+# for @C { KheEjectionChainRepairResources } it is @C { "es_ejector2" }.
+# This allows for collecting two sets of statistics, for time
+# assignment and resource assignment.
+# @End @SubSection
+
+@Section
+    @Title { Limiting the scope of changes }
+    @Tag { eject2.limiting }
+@Begin
+@LP
+Ejection chains work best when they are free to follow chains into
+any part of a solution, and make any repairs that help.  This
+freedom can conflict with the caller's desire to limit the scope
+of the changes they make, typically because initial assignments
+have not yet been made to some parts of the solution, and an
+ejection chain repair should not anticipate them.
+@PP
+For example, suppose resource @M { r } is preassigned to some
+tasks, and there are others it could be assigned to.  The
+preassigned tasks go into @M { r }'s timetable when their meets
+are assigned times, and could then create resource defects that
+an ejection chain time repair algorithm knows about.  Suppose a
+limit busy times underload defect is created (quite likely when
+the workload on some day first becomes non-zero), and its augment
+function tries (among other things) to assign more tasks to
+@M { r } to increase its workload on that day.  This is not
+done at present, but it is plausible.  Then there will be an
+unexpected burst of resource assignment during time assignment.
+@PP
+One romantic possibility is to `let a thousand flowers bloom'
+and just accept such repairs.  The problem with this is that
+a carefully organized initial assignment can be much better
+than the result of a set of uncoordinated individual repairs.
+@PP
+Another possibility is to fix the assignments of all variables
+beyond the scope of the current phase of the solve to their
+current values, often null values.  This is a very reliable
+approach, and arguably the most truthful, because it says to the
+ejection chain algorithm, in effect, `for reasons beyond your
+comprehension, you are not permitted to change these variables.'
+But it suffers from a potentially severe efficiency problem:  a
+large amount of time could be spent in discovering a large number
+of repairs, which all fail through trying to change fixed variables.
+@PP
+Yet another possibility is to have one ejector object for each
+kind of call (one for repairing time assignments, another for
+repairing resource assignments, and so on), with different
+augment functions.  The augment functions for time repair would
+never assign a task, for example.  This was the author's original
+approach, but as the code grew it became very hard to maintain.
+@PP
+At present the author is using the following somewhat ad-hoc ideas
+to limit the scope of changes.  They do the job well at very little
+cost in code and run time.
+@PP
+The start group monitor is one obvious aid to restricting the scope
+of a call.  For example, time repair calls do not include event
+resource monitors in their start group monitors.
+@PP
+Many repairs move meets and tasks, but do not assign them.  It seems
+that once a meet or task has been assigned, it is always reasonable to
+move it during repair.  So the danger areas are augment functions that
+assign meets and tasks, not augment functions that merely move them.
+@PP
+Augment functions for assign time and assign resource defects must
+contain `dangerous' assignments.  But suppose that the assign time
+or assign resource monitor for some meet or task is not in the start
+group monitor.  Then a repair of that monitor cannot occur first on any
+chain; and if the meet or task is unassigned to begin with, it
+cannot occur later either, since the monitor starts off with
+maximum cost, so its cost cannot increase, and only monitors whose
+cost has increased are repaired after the first repair on a
+chain.  So assign time and assign resource augment functions can
+be included without risk of the resulting time and resource
+assignments being out of scope.  This is just as well,
+since they are needed after ejecting meet and task moves.
+@PP
+If it can be shown, as was just done, that certain events will
+remain unassigned, then they can have no other event defects,
+since those require the events involved to be assigned.
+Similarly, unassigned event resources will never give rise to
+other event resource defects.
+@PP
+Another idea is to add options to the options object that control
+which repairs are tried.  This is as general as different ejector
+objects with different augment functions are, but, if the options
+are few and clearly defined, it avoids the maintenance problems.
+If many calls on augment functions achieve nothing because options
+prevent them from trying things, that would be an efficiency problem,
+but there is no problem of that kind in practice.
+@PP
+We've already seen that the @C { KHE_AUGMENT_OPTIONS } object contains
+a @C { repair_times } field, which when @C { true } allows repairs
+that assign and move meets, and a @C { repair_resources } field, which
+when @C { true } allows repairs that assign and move tasks.  It takes
+virtually no code or time to consult these options; often, just one
+test at the start of an augment function is enough.
+@PP
+When moving a meet, its chain of assignments is followed upwards,
+trying moves at each level.  But if the aim is to repair only a
+small area (one runaround, say), then even if a repair starts
+within scope, it can leave it as it moves up the chain.  This has
+happened and caused problems.  So the @C { KHE_AUGMENT_OPTIONS }
+object contains a @C { limit_node } field, whose value is a node.
+If it is non-@C { NULL }, meet assignments and moves are not permitted
+outside its proper descendants.
+@PP
+{0.95 1.0} @Scale @C { KheEjectionChainNodeRepairTimes }
+and {0.95 1.0} @Scale @C { KheEjectionChainLayerRepairTimes } set
+option @C { es_repair_times } to @C { true },
+@C { es_repair_resources } to @C { false }, and
+@C { es_limit_node } to the parent node, or to @C { NULL } if it is
+the cycle node.  The @C { false } value for @C { es_repair_resources }
+solves the hypothetical problem, given as an example at the start
+of this section, of limit busy times repairs assigning resources
+during time assignment.
+@PP
+{0.95 1.0} @Scale @C { KheEjectionChainRepairResources } sets option
+@C { es_repair_times } to @C { false }, option @C { es_repair_resources }
+to @C { true }, and option @C { es_limit_node } to @C { NULL }.
+Setting @C { es_repair_times } to @C { true } here would also
+be reasonable, although slow; it would allow the repairs to try
+meet moves while repairing task assignments.
+@End @Section
+
+@Section
+    @Title { Repairs and augment functions for time assignment }
+    @Tag { eject2.repair_time }
+@Begin
+@LP
+The author has made several attempts to organize the functions that
+go to make up augment functions hierarchically.  This has not been
+entirely successful, especially since entity visiting code disappeared
+behind the scenes.  However at present the hierarchy has three levels:
+repairs, multi-repairs, and augment functions.
+@PP
+A @I repair is a code fragment that makes one or more changes to
+the solution, aiming to repair some defect.  All the changes
+work together to make up the one repair; they are not alternative
+changes.  Concretely, a repair is the code executed between one
+call to @C { KheEjectorRepairBegin } and the matching call to
+@C { KheEjectorRepairEnd }.  Sometimes it
+is convenient to include those two calls as part of the repair,
+sometimes it is convenient to exclude them and speak of the repair
+as just the code between them.  The code making up one repair is
+often packaged into a function, possibly a function defined elsewhere
+like @C { KheMeetMove } or @C { KheTaskAssign }.  In that case, that
+function is called a @I { repair function }.  We also refer to the
+actual changes made to the solution by this code as one repair.
+@PP
+A @I multi-repair is a code fragment that tries a sequence of
+zero or more alternative repairs, each enclosed in
+@C { KheEjectorRepairBegin } and @C { KheEjectorRepairEnd }.  A
+@I { multi-repair function } is a function whose body is a multi-repair.
+@PP
+An @I { augment function } is a multi-repair function of type
+@C { KHE_EJECTOR_AUGMENT_FN } which is passed to an ejector
+object.  Typically, it calls other multi-repair functions,
+and they call repair functions and repairs.
+# Arguably, it is wrong to refer
+# to this as an augment function, because so much of what an
+# augment function has to do is done behing the scenes, before
+# or after the function is called, and within the calls to
+# @C { KheEjectorRepairBegin } and @C { KheEjectorRepairEnd }.
+# However, this is our terminology and we're sticking with it.
+# The user-defined functions passed to the ejector are augment
+# functions in this sense, but so are many smaller functions
+# that try just a few alternative repairs.
+# @PP
+# The augment functions passed to the ejector are private to KHE.
+# This section explains what they do in detail.  It may be somewhat
+# out of date.
+# @PP
+# The augment functions consult several options.  The
+# @C { repair_times }, @C { limit_node }, and
+# @C { repair_resources } options are particularly important
+# because they limit the scope of repairs.  They cannot be set
+# by the user---or rather, they can, but that would be futile
+# because they are reset within the main functions.
+# Any repair which assigns or moves a meet consults
+# @C { repair_times }, and only proceeds if it is
+# @C { true }.  It tries moving each ancestor of the meet, since
+# that will also move the original meet; but if
+# @C { limit_node } is non-@C { NULL }, it omits moves
+# of meets lying within nodes which are not proper descendants of
+# @C { limit_node }.  Any repair which assigns or moves a
+# task consults @C { repair_resources }, and only
+# proceeds if it is @C { true }.
+@PP
+We'll start by presenting the full list of repairs used by
+the KHE augment functions that repair time defects.
+@PP
+@I { Meet bound repairs } reduce the domains of all meets
+assigned a given resource @C { r } to a subset of a given
+time group @C { tg }, by adding @C { tg } as a meet bound
+to all those meets.  Any meets assigned times outside @C { tg }
+are unassigned first.  This is used to fix resource overload
+problems by moving meets away from over-used times; but it gets
+very little use in practice, because both resource repair and
+time repair have to be enabled if it is to be called.
+@PP
+@I { Node meet swaps } call repair function @C { KheNodeMeetSwap }
+(Section {@NumberOf time_solvers.misc}) to swap over the assignments
+of the meets of two nodes.  If the @C { nodes_before_meets }
+option is @C { true }, then if node swaps are tried at all, they
+are tried before (rather than after) meet moves.
+@PP
+@I { Meet moves } call repair function @C { KheTypedMeetMove }
+(Section {@NumberOf time_solvers.kempe}) to move the assignments of
+meets, performing either a basic move, an ejecting move, or a Kempe
+move as requested.  Where it is stated below that a Kempe meet
+move is tried, it is in fact tried only when the @C { kempe_moves }
+option is @F { true }.  Where it is stated below that an ejecting
+meet assignment or move is tried, a basic meet assignment or move
+is tried instead when @C { no_ejecting_moves } is @C { true }.
+# , or it is
+# @F { large_layers } and the meet to be moved lies in at least
+# one layer whose duration is at least 80% of the duration of the
+# cycle.
+@PP
+@I { Kempe"/"ejecting meet moves } are multi-repairs consisting
+of one or two alternative repairs, first a Kempe meet move, then
+an ejecting meet move with the same parameters.  The ejecting meet
+move is omitted when the Kempe meet move reports that it did only
+what a basic meet move would have done, since in that case the
+ejecting move is identical to the Kempe move.  This sequence
+is similar to making an ejecting move and then, on the next
+repair, favouring a particular reassignment of the ejected
+meet(s) which is likely to work well.
+# Fuzzy and split moves
+# may follow the Kempe and ejecting meet moves, as explained above.
+@PP
+@I { Fuzzy meet moves } move meets in a more elaborate way
+by calling repair function @C { KheFuzzyMeetMove }
+(Section {@NumberOf time_solvers.repair.meet_set}).  Fuzzy meet
+moves are not mentioned below, but they are tried after Kempe and
+ejecting meet moves, although only when the @C { fuzzy_moves } option
+is @C { true } and the current length is 1.
+@PP
+@I { Split moves } split a meet into two and Kempe-move one of the
+fragments.  Conversely, @I { merge moves } Kempe-move one meet to
+adjacent to another and merge the two fragments.  Split and merge
+moves are used similarly to fuzzy meet moves:  although not mentioned
+below, they are tried after Kempe and ejecting meet moves, but only when
+the @C { split_moves } option is @C { true } and the current length
+is 1.  The Kempe meet moves made here are not influenced by the
+@C { kempe_moves } option.
+# @PP
+# @I { Ejecting task assignments and moves }, which assign or move a
+# task to a given resource and then unassign any clashing tasks
+# (Section {@NumberOf resource_solvers.kempe}).
+# @PP
+# @I { Ejecting task-set moves }, which use ejecting task moves to
+# move a set of tasks to a common resource, succeeding only if all
+# of the moves that change anything succeed.
+@PP
+@I { Meet-and-task moves } Kempe-move a meet at the same time
+as moving one of its tasks, succeeding only if both moves succeed.
+# @PP
+# Each repair is enclosed in calls to @C { KheEjectorRepairBegin }
+# and @C { KheEjectorRepairEnd } as usual.  In the more complex cases,
+# such as the last two on the list above, the @C { success } argument
+# of @C { KheEjectorRepairEnd } is set to @C { true } only if all
+# parts of the repair succeed.  Some of the more complex repairs are
+# tried only when the current length is 1, that is, when the defect
+# being repaired is truly present, not introduced by some other repair.
+# @PP
+# A @I { complex repair } is a combined repair that changes more
+# than just a few entities.  Complex repairs are problematical,
+# because of the many choices, and because they are likely to
+# introduce many defects.  If they are used at all, it seems best
+# to aim for a moderate number of changes, and a moderate number
+# of alternatives.  To conserve running time, it may be best to
+# allow them only at length 1, limiting them to repairing real
+# defects, not defects introduced by previous repairs.
+# @PP
+# Complex repairs are similar to VLSN searches:  both rearrange a
+# large chunk of the solution.  However, there are differences.
+# A VLSN search has a single outcome which aims to reduce the cost
+# of the solution.  A complex repair is one element of a set of
+# alternative repairs, and it aims to either reduce the cost of
+# the solution or else introduce just one significant new defect.
+# @PP
+# Some alternative repairs are naturally tried one after another.
+# The ejecting task moves of a given task to each resource in its
+# domain is one example.  Here are three less obvious, but nevertheless
+# very useful sequences of alternative repairs.
+# @PP
+# A @I { resource underload repair } for resource @M { r } and time
+# group @M { g } is a sequence of alternative repairs which aim to
+# increase the number of times @M { r } is busy within @M { g }.
+# Unless @M { g } is the whole cycle, for each task assigned @M { r }
+# whose @I overlap (the number of times it is running within @M { g })
+# is less that its duration, it tries all ejecting meet moves of the
+# task's meet which increase its overlap.  After that it tries an
+# ejection tree repair like the one described below for cluster busy
+# times defects, which aims to empty out the entire time group---a
+# quite different way to remove the defect.
+# @PP
+# A @I { resource overload repair } for resource @M { r } and time
+# group @M { g } is a sequence of alternative repairs which aims to
+# decrease the number of times @M { r } is busy within @M { g }.
+# First, for each task assigned but not preassigned @M { r } whose
+# overlap is non-zero, it tries all ejecting task moves of the task
+# to its domain's resources.  Then, for each task assigned (including
+# preassigned) @M { r } whose overlap is non-zero, it tries all
+# ejecting meet moves of the task's meet which decrease the overlap.
+@PP
+Most of these repairs are packaged into function @C { KheMeetMultiRepair },
+which tries, using whatever means the options settings allow, to move
+the assignment of a given meet.
+@PP
+Following is a description of what each augment function does when
+given a non-group monitor with non-zero cost.  When given a group
+monitor (which must come from a correlation grouping) with non-zero
+cost, since the elements of the group all monitor the same thing,
+the augment function takes any individual defect from the group and
+repairs that defect.
+@PP
+Wherever possible, augment functions change the starting points of
+the sequences of alternative repairs that they try.  For example,
+when trying alternative times, the code might be
+@ID @C {
+for( i = 0;  i < KheTimeGroupTimeCount(tg);  i++ )
+{
+  index = (KheEjectorCurrAugmentCount(ej) + i) %
+    KheTimeGroupTimeCount(tg);
+  t = KheTimeGroupTime(tg, index);
+  ... try a repair using t ...
+}
+}
+The first time tried depends on the number of augments so far,
+an essentially random number.  This simple idea significantly
+decreases final cost and run time.
+@PP
+@I { Split events and distribute split events defects. }  Most
+events are split into meets of suitable durations during layer
+tree construction, but sometimes the layer tree does not remove all
+these defects, or a split move introduces one.  In those cases, the
+split analyser (Section {@NumberOf time_structural.split.analyse})
+from the @C { options } object is used to analyse the defects and
+suggest splits and merges which correct them.  For each split
+suggestion, for each meet conforming to the suggestion, a repair
+is tried which splits the meet as suggested.  For each merge
+suggestion, for each pair of meets conforming to the suggestion,
+four combined repairs are tried, each consisting of, first, a
+Kempe meet move which brings the two meets together, and second,
+the merge of the two meets.  The four Kempe moves move the first
+meet to immediately before and after the second, and the second to
+immediately before and after the first, where possible.
+@PP
+@I { Assign time defects. }  For each monitored unassigned meet,
+all ejecting meet moves to a parent meet and offset that would
+assign the meet to a time within its domain are tried.
+@PP
+@I { Prefer times defects. }  For each monitored meet assigned
+an unpreferred time, all Kempe"/"ejecting meet moves to a
+parent meet and offset giving a preferred time are tried.
+@PP
+@I { Spread events defects. }  For each monitored meet in an
+over-populated time group, all Kempe"/"ejecting moves of the
+meet to a time group that it would not over-populate are tried;
+and for each under-populated time group, for each meet whose
+removal would not under-populate its time group, all
+Kempe"/"ejecting moves of it to the under-populated time group
+are tried.
+@PP
+@I { Link events defects. }  These are not repaired; they are
+expected to be handled structurally.
+@PP
+@I { Order events defects. }  These are currently ignored, because,
+as far as the author is aware, there are no instances containing order
+events constraints.  It will not be difficult to find suitable meet
+moves when such instances appear.
+# @PP
+# @I { Assign resource defects. }  For each monitored unassigned task,
+# all ejecting assignments of the task to resources in its domain are
+# tried.  Then if the @C { es_repair_times } option permits, all
+# combinations of a Kempe meet move of the enclosing meet and an
+# ejecting assignment of the task to resources in its domain are tried.
+# @PP
+# @I { Prefer resources defects. }  For each monitored task assigned
+# an unpreferred resource, all ejecting moves of the task to
+# preferred resources are tried.
+# @PP
+# @I { Avoid split assignments defects. }  For each resource participating
+# in a split assignment there is one repair:  all involved tasks
+# assigned that resource are unassigned, all involved tasks' domains
+# are restricted to the other participating resources, and a set of
+# ejection chains is tried, each of which attempts to reassign one of
+# the unassigned tasks.  The repair succeeds only if all these chains
+# succeed, making an ejection tree, not a chain.  This is expensive
+# and unlikely to work, so it is only tried when the defect is a main
+# loop defect or only one task needs to be unassigned.
+# # @I { Avoid split assignments defects. }  For each pair of resources
+# # assigned to monitored tasks, and for each resource in the domain of
+# # one of those tasks, an ejecting task-set move of those tasks to that
+# # resource is tried.  Then, for each resource assigned to exactly one
+# # of the monitored tasks, a meet-and-task move of that task's meet to
+# # a different time is tried, combined with a move of the task to one
+# # of the other resources assigned to any of the monitored tasks.
+# @PP
+# @I { Avoid clashes defects. }  Avoid clashes monitors are detached
+# during ejection chain repair, since their work is done by demand
+# monitors.  So there are no avoid clashes defects.
+# # For each clashing task, try moving it
+# # to any other resource in its domain.  This function expects to be called
+# # only during resource repair, because during time repair avoid clashes
+# # monitors are usually detached.
+# # Even during resource repair it would probably be better to ignore
+# # these defects, since they are basically unrepairable then anyway.
+# @PP
+# @I { Avoid unavailable times defects. }  A resource overload
+# repair (see above) for the monitored resource and the unavailable
+# times is tried.
+# @PP
+# @I { Limit idle times defects. }  For each task assigned the
+# monitored resource at the start or end of a `day' (actually, a time
+# group being monitored), each Kempe"/"ejecting meet move of that
+# task's meet such that the initial meet move reduces the number of
+# idle times for that resource is tried.  Calculating this condition
+# is not trivial, but the augment function does it exactly.  Task moves
+# could help to repair limit idle times defects for unpreassigned
+# resources, but in current data sets the resources involved are
+# usually preassigned, so task moves are not currently being tried.
+# @PP
+# After the repairs just given are tried, if the repair has length 1
+# (if the defect was not created by a previous repair on the current
+# chain), a complex repair is tried which eliminates all idle times for
+# one resource on one day.  Take the meets assigned that resource on
+# that day.  A retimetabling of those meets on that day with no clashes
+# and no idle times is defined by a starting time for the first meet
+# and a permutation of the meets (their chronological order in the
+# assignment).  If there are @M { k } meets and @M { s } starting
+# times that don't put the last meet off the end of the day, then
+# there are @M { s cdot k! } retimetablings in total.  In practice
+# this is a moderate number.  For safety, only a limited number of
+# retimetablings is tried, by switching to a single permutation at
+# each new node after a fixed limit (currently 1000) is reached.
+# # , especially if we prune the repairs as
+# # they are being generated, by allowing at most one assignment that
+# # increases the number of unmatched demand tixels (two would not be
+# # repairable on the next step anyway).
+# @PP
+# @I { Cluster busy times defects. }  If the resource is busy in too
+# few monitored time groups, all ejecting meet moves are tried which
+# move a meet which is not the only meet in a monitored time group
+# (either because every monitored time group it overlaps with overlaps
+# with at least one other meet, or because it does not overlap with
+# any monitored time groups) to a monitored time group in which it
+# is.  If the resource is busy in too many monitored time groups,
+# then for each monitored time group @C { tg } containing at least
+# one meet, if the length is 1 or @C { tg } contains exactly one meet,
+# all the meets in @C { tg } are unassigned, and @C { tg } and all
+# monitored time groups containing no meets are removed from the
+# domains of all meets assigned the resource.  This is an ejection
+# tree repair if more than one meet is unassigned:  all of the
+# unassigned meets must be reassigned for success.  The repair
+# must ensure that the domains are restored on success as well
+# as on failure.
+# # @C { on_success_fn } parameter of @C { KheEjectorRepairEndLong }
+# # is used to ensure that the domains are restored on success as well
+# # as on failure.
+# @PP
+# @I { Limit busy times defects. }  For each set of times when
+# the resource is underloaded (resp. overloaded), a resource
+# underload (resp. overload) repair of the resource at those
+# times is tried.
+# @PP
+# @I { Limit workload defects. }  If the resource is overloaded,
+# a resource overload repair is tried, taking the set of times to be
+# the entire cycle.  There is currently no repair for underloads.
+# @PP
+# @I { Ordinary and workload demand defects. }  If the defect has
+# a workload demand monitor competitor (possibly itself, although
+# workload demand monitors rarely fail to match), a resource overload
+# repair is tried for the workload demand monitor's resource and
+# the domain of its originating monitor.  If the defect has no
+# workload demand defect competitor, all ejecting meet moves of
+# competitor meets to anywhere different are tried; but meets
+# within vizier nodes are not moved in this case, since that
+# would only shift the problem to a different time.
+@End @Section
+
+@Section
+    @Title { Repairs and augment functions for resource assignment }
+    @Tag { eject2.repair_resource }
+@Begin
+@LP
+This section presents the repairs and augment functions for resource
+assignment.
+@PP
+Resource assignment is complicated by the need to support the two
+different applications of high school timetabling and nurse
+rostering.  The main issue in high school timetabing is avoiding
+split assignments (also called resource constancy); without that,
+resource assignment is essentially room assignment, which is well
+known to be easy in practice.
+@PP
+# All times are preassigned in nurse rostering, so there are no event
+# monitor defects, and no repairs that change the time of an event.
+# Consequently, although there are many kinds of event resource and
+# resource monitors, giving rise to many kinds of defects, in the
+# end there is only one way to repair these defects:  by @I moving
+# (changing the assignments of) one or more tasks.
+# @PP
+# For the most part we will be moving a single task.  When we do move
+# more than one task, we will move them all in the same way:  from
+# some resource @M { r sub 1 } to another resource @M { r sub 2 }.
+# Repair operations that change nothing are not allowed, so the set
+# of tasks must be non-empty, and @M { r sub 1 } and @M { r sub 2 }
+# must be different.  Either resource may be @C { NULL }, meaning a
+# non-assignment of the tasks involved.  This supports assignment
+# and unassignment as well as the true move.
+# @PP
+# Only proper root tasks ever get moved.  This ensures that any
+# pre-existing task grouping is not disturbed by the ejection chain
+# algorithm.
+In nurse rostering, each resource is assigned to at most one task
+per day, and there are many constraints that relate what a resource
+does on one day to what it does on adjacent days.  So it makes sense
+to use repairs that move small sets of tasks, from adjacent days,
+as a block from one resource to another.  Many authors of nurse
+rostering solvers have come to this conclusion.
+@PP
+Accordingly, we distinguish between @I { basic repairs }, which do
+the minimum needed to remove some defect, and @I { enhanced repairs },
+which are larger repairs, containing the basic ones plus moves on
+adjacent days.  For high school timetabling, only basic repairs are
+tried, but for nurse rostering we try enhanced versions of the
+basic repairs.  For example, if resource @M { r } is overloaded,
+moving any one of @M { r }'s tasks to any other resource will remove
+(or at least reduce) the defect, making one basic repair for each
+task assigned @M { r }.  These are applied as described in high school
+timetabling, but for nurse rostering they need to be enhanced.
+@PP
+All of the resource repair options in the @C { KHE_AUGMENT_OPTIONS }
+object relate to enhanced moves, except @C { repair_resources }.  They
+turn various kinds of enhanced moves on and off, and supply maximum
+values for the number of adjacent days to involve.
+@PP
+At the centre of the implementation of all this is the following
+multi-repair function:
+@ID @C {
+bool KheTaskSetMoveAugment(KHE_TASK_SET from_r_ts,
+  KHE_RESOURCE_GROUP rg, KHE_RESOURCE_GROUP not_rg, bool allow_unassign)
+}
+We have omitted some parameters to allow us to focus on the
+essentials.  Parameter @C { from_r_ts } contains a non-empty set of
+tasks, all assigned the same resource @C { r } (possibly @C { NULL }).
+Parameter @C { rg } contains a set of non-@C { NULL } resources, as
+does @C { not_rg }.  Let @C { r2 } be a resource that is not equal to
+@C { r }, that lies in @C { rg }, does not lie in @C { not_rg }, and may
+be @C { NULL } only when @C { allow_unassign } is @C { true }.  Then
+@C { KheTaskSetMoveAugment } tries one repair for each such @C { r2 },
+which moves the tasks of @C { from_r_ts } from @C { r } to @C { r2 }.
+# After each repair it passes control to the ejector for evaluation,
+# leading to continuation of the chain or backing out, as usual.
+@PP
+These repairs are basic repairs.  Before each is tried it is
+analysed for possible enhancement.  Several enhanced repairs
+may be derived from one basic repair; they are all tried.
+@PP
+Unlike time repair, which utilizes many repair functions,
+@C { KheTaskSetMoveAugment }'s repairs are the only ones tried during
+resource repair.  This leaves us with
+two questions.  First, how are the various defects converted into
+calls on @C { KheTaskSetMoveAugment }?  And second, in the nurse
+rostering case, what enhancements does @C { KheTaskSetMoveAugment }
+apply to each of the basic repairs it finds?  We begin by answering
+the first question for each kind of event resource and resource monitor
+@C { m }, beginning with event resource monitors.
+@PP
+@I { Assign resource monitor }.  For each unassigned task @C { t }
+monitored by @C { m }, call
+@ID @C {
+KheTaskSetMoveAugment({t}, R, {}, false);
+}
+where @C { R } is the set of resources acceptable to @C { t }
+(its domain).
+@PP
+@I { Prefer resources monitor }.  For each task @C { t } monitored
+by @C { m } which is assigned a resource that is not preferred by
+@C { m }, call
+@ID @C {
+KheTaskSetMoveAugment({t}, R * D, {}, true);
+}
+where @C { R } is the set of resources acceptable to @C { t } (its
+domain), @C { D } is the set of resources that @C { m } prefers,
+and @C { * } is set intersection.  Here @C { allow_unassign } is
+@C { true } because prefer resources monitors have zero cost
+when the tasks they monitor are unassigned.
+@PP
+@I { Limit resources monitor }.  When the defect is an @I { underload }
+(not enough tasks assigned resources from @C { m }'s set of resources
+@C { D }), for each task @C { t } monitored by @C { m } which is
+either unassigned or assigned a resource not from @C { D } we call
+@ID @C {
+KheTaskSetMoveAugment({t}, R * D, {}, false);
+}
+where @C { R } is the set of resources acceptable to @C { t }.  This
+attempts to move @C { t } to any resource in @C { R * D }.  When the
+defect is an @I { overload } (too many tasks assigned resources from
+@C { m }'s set of resources @C { D }), for each task @C { t } monitored
+by @C { m } which is assigned a resource from @C { D } we call
+@ID @C {
+KheTaskSetMoveAugment({t}, R, D, true);
+}
+where @C { R } is the set of resources acceptable to @C { t }.
+This attempts to move @C { t } to any resource in @C { R } but
+not @C { D }, or to unassign it.
+@PP
+We move on now to resource monitors.  Two key helper functions are
+used for them:
+@ID @C {
+bool KheResourceOverloadAugment(KHE_RESOURCE r,
+  KHE_TIME_GROUP tg, bool require_zero)
+}
+and
+@ID @C {
+bool KheResourceUnderloadAugment(KHE_RESOURCE r,
+  KHE_TIME_GROUP tg, bool allow_zero)
+}
+Here @C { r } is the resource being monitored by @C { m }, and @C { tg }
+is an arbitrary non-empty set of times.  @C { KheResourceOverloadAugment }
+is called when @C { r } is too busy during @C { tg }; it tries to
+find repairs that reduce the number of tasks assigned @C { r } that run
+during @C { tg }.  Any reduction is useful, except that if
+@C { require_zero } is @C { true }, only reductions that go all the
+way to zero are useful.  Similarly, @C { KheResourceUnderloadAugment }
+is called when @C { r } is not busy enough during @C { tg }; it
+tries to find repairs that increase the number of tasks assigned
+@C { r } that run during @C { tg }.  If @C { allow_zero } is
+@C { true }, reducing the number of tasks assigned @C { r } during
+@C { tg } to zero is an odd but acceptable alternative.
+@PP
+We'll first see how to implement these two functions, and then how
+to call them when repairing resource monitors.  In
+@C { KheResourceOverloadAugment }, the first step is to build the
+set @C { S } of all tasks which are assigned @C { r } and which run
+during @C { tg }, by consulting the timetable monitor for @C { r }
+maintained by the KHE platform.  @C { S } will be non-empty because
+@C { r } is overloaded during @C { tg }.  If @C { require_zero } is
+@C { false }, the aim is to move any one of these tasks away from
+@C { r }, so for each task @C { t } in @C { S } the code calls
+@ID @C {
+KheTaskSetMoveAugment({t}, R, {}, true)
+}
+where @C { R } is the domain of @C { t }.  If @C { require_zero } is
+@C { true }, a single call is made, to
+@ID @C {
+KheTaskSetMoveAugment(S, R, {}, true)
+}
+where @C { R } is the domain of the first task of @C { S }.
+@PP
+There are two points to make about this second case.  First, @C { R } may
+not suit some tasks of @C { S } other than the first.  If so, some of
+the repairs tried by @C { KheTaskSetMoveAugment } may not be able to
+be carried out.  That is not a problem:  as always in such cases, they
+will just be abandoned with no harm done except a small loss of time.
+@PP
+Second, it only tries repairs that move the tasks to the same new
+resource.  This restriction to one new resource is not a requirement
+of @C { KheResourceOverloadAugment } and could be dropped.  However,
+allowing the tasks to move to different resources would greatly
+increase the number of possible repairs, and probably yield little
+benefit, given that @C { S } will usually be small.
+@PP
+@C { KheResourceUnderloadAugment } loops through each time of @C { tg },
+skipping times from days when @C { r } is already busy.  For each of the
+unskipped times, it finds all tasks @C { t } (assigned and unassigned)
+which run at that time and are willing to be assigned @C { r }, and calls
+@ID @C {
+KheTaskSetMoveAugment({t}, {r}, {}, false)
+}
+It optimizes by skipping each task that is equivalent to the previous
+task it tried.
+@PP
+Now we use @C { KheResourceOverloadAugment } and
+@C { KheResourceUnderloadAugment } in the implementations
+of the augment functions for the resource monitors.
+@PP
+@I { Avoid unavailable times monitor }.  This translates into
+a single call to
+@ID @C {
+KheResourceOverloadAugment(r, tg, false)
+}
+where @C { tg } is the set of times that @C { m }'s constraint
+requires @C { r } to be free.
+@PP
+@I { Cluster busy times monitor }.  If @C { m }'s defect is too few
+active time groups, then the repair visits each time group @C { tg }
+of @C { m } which is not active and tries to make it active, by calling
+@ID @C {
+KheResourceUnderloadAugment(r, tg, false)
+}
+if the time group is positive, and
+@ID @C {
+KheResourceOverloadAugment(r, tg, true)
+}
+if the time group is negative.  We set @C { require_zero } to
+@C { true } here because to make a negative time group active one must
+reduce the number of tasks running during that time group to zero.
+@PP
+If the monitor's @C { allow_zero } flag is set, then another way to
+handle too few active time groups is to reduce the number of active
+time groups to zero.  The repair tries this too, using calls to
+@C { KheResourceUnderloadAugment } and @C { KheResourceOverloadAugment }
+similar to those just given, but only when there is exactly one active
+time group:  making two or more active time groups inactive is awkward
+to implement under current arrangements, and unlikely to succeed.
+@PP
+When @C { m } has too many active time groups, for each active time
+group @C { tg } the repair calls
+@ID @C {
+KheResourceOverloadAugment(r, tg, true)
+}
+when @C { tg } is positive and
+@ID @C {
+KheResourceUnderloadAugment(r, tg, false)
+}
+when it is negative---just the opposite of what it does when there
+are too few.  Here the reason for setting @C { require_zero } to
+@C { true } in @C { KheResourceOverloadAugment } is that to make
+a positive time group inactive one must reduce its busy times to
+zero.  It is true that in nurse rostering, @C { tg } usually contains
+the times of one day at most, so that @C { r } can be busy with
+at most one task during @C { tg }, making @C { require_zero }
+irrelevant.  But there are exceptions, notably constraints on
+the number of busy weekends, where to remove an overload it may
+be necessary to free up @C { r } on two days.
+@PP
+@I { Limit busy times monitor }.  Limit busy times constraints can be
+converted into cluster busy times constraints.  The repair does what
+would be done if this conversion were carried out.
+@PP
+@I { Limit workload monitor }.  These are like limit busy times monitors,
+except that they monitor total workload rather than busyness.  Accordingly,
+the same repairs are used for them.
+@PP
+@I { Limit active intervals monitor }.  If the defect is a sequence
+@C { s } of too many consecutive active time groups, the repair tries
+to make the first active time group of @C { s } inactive (using the
+same calls as were used above by the cluster busy times monitor for
+the same purpose), and separately it tries to make the last active
+time group of @C { s } inactive.  It also tries the time groups in
+between, but that is not likely to work well.  These basic repairs
+will need adjustment by the enhancement phase.
+@PP
+If the defect is a sequence @C { s } of too few consecutive active
+time groups, then if that number is 1 or 2 the repair first tries
+to make the active time groups inactive, so that there is no sequence
+at all; then it tries to extend @C { s } one place to the left, by
+making the inactive time group there active; and finally it tries to
+extend @C { s } one place to the right.
+@PP
+@I { Obsolete below here.  Some of it relates to enhanced moves,
+but it all needs a complete redo. }
+@PP
+Which tasks should be chosen?  Initially, they should all be assigned to
+whatever @C { task } is assigned to initially (possibly @C { NULL }),
+otherwise the rationale for this kind of move is lost.  The number of
+adjacent days to include tasks from is harder to be sure about, except
+that, as we search in each direction from @C { task }'s day, we are
+obliged to stop after we reach the first or last day, and if there is
+no task assigned what @C { task } is assigned to initially.  Furthermore,
+if @C { r2 } is already busy on some day, it is not likely to be useful
+to give it another task on that day.  So the search should stop at the
+first case of that.  So we have a different set of moves to make for
+each @C { r2 }.
+@PP
+Our plan is to move just @C { task } to begin with, then @C { task }
+plus one day, then @C { task } plus 2 days, and so on up to @C { k }
+days, where @C { k } is a parameter that we can choose, by means of
+an option perhaps.  We will try moving all sets of from 1 to @C { k }
+days that include @C { task }.  Clearly, @C { k } must be small, say
+4 at most.  Only @C { task } will be marked visited and checked for
+being visited.
+@PP
+The set of possible repairs here has two dimensions, one indexed
+by sets of days to move, the other by @C { r2 }.  We could iterate
+in any order that maximizes efficiency.  It would be good, for
+example, to build task sets as required, and remember them
+from one resource to the next.
+@End @Section
+
+# @Section
+#     @Title { Correlation grouping }
+#     @Tag { eject2.correlation }
+# @Begin
+# @LP
+# To @I group two or more monitors means to make them children of a
+# common parent group monitor.  There are several reasons why this
+# might be done, the main ones being @I { correlation grouping },
+# the subject of this section, where monitors are grouped because
+# they monitor the same thing, and @I { focus grouping }, the subject
+# of the following section, where the parent is a focus for some operation.
+# # As previously mentioned, when using ejection chains it is important to
+# # group monitors together when they monitor the same thing.  This both
+# # reduces the number of defects and increases their cost, increasing the
+# # chance of being able to follow an ejection chain to a successful conclusion.
+# # @PP
+# # Although ejection chains are the leading user of monitor grouping,
+# # they are not the only one.  This section covers all forms of
+# # monitor grouping, including those needed for Kempe and ejecting
+# # meet moves (Section {@NumberOf time_solvers.kempe}).
+# @BeginSubSections
+
+# @SubSection
+#     @Title { Introduction }
+#     @Tag { eject2.correlation.intro }
+# @Begin
+# @LP
+# # Monitor grouping works like this.  Suppose we know that monitors
+# # @C { m1 } and @C { m2 } monitor the same thing.  We introduce a group
+# # monitor @C { g }, make @C { m1 } and @C { m2 } children of @C { g },
+# # and ensure that when handling defects we use @C { g }, not @C { m1 }
+# # and @C { m2 }.  For example, when using ejection chains we ensure
+# # that @C { start_gm } and @C { continue_gm } have @C { g } among
+# # their children, not @C { m1 } and @C { m2 }.  In this way, when
+# # @C { m1 } and @C { m2 } signal that there is a defect, the signal
+# # is received via @C { g }, not directly from @C { m1 } and @C { m2 }.
+# # @PP
+# # Some solvers need specific groupings.  The Kempe meet move
+# # operation (Section {@NumberOf time_solvers.kempe}) is an
+# # example:  its precondition specifies that a particular group
+# # monitor must be present.  This is permissible, and as with all
+# # preconditions it imposes a requirement on the caller of the
+# # operation to ensure that the precondition is satisfied when the
+# # operation is called.  But such requirements should not prohibit the
+# # presence of other group monitors.  For example, the implementation
+# # of the Kempe meet move operation begins with a tiny search for the
+# # group monitor it requires.  If other group monitors are present
+# # nearby, that is not a problem.  If this example is followed,
+# # multiple requirements for group monitors will not conflict.
+# # @PP
+# # There is a danger that group monitors will multiply, slowing down
+# # the solve and confusing its logic.  It is best if each function
+# # that creates a group monitor takes responsibility for deleting it
+# # later, even if this means creating the same group monitors over and
+# # over again.  Timing tests conducted by the author show that adding
+# # and deleting the group monitors used by the various solvers in this
+# # guide takes an insignificant amount of time.
+# # @PP
+# Two monitors are @I correlated when they monitor the same thing, not
+# formally usually, but in reality.  For example, if two events are
+# joined by a link events constraint, and one is fixed to the other,
+# then two spread events monitors, one for each event, will be correlated.
+# @PP
+# A @I defect is a specific point of imperfection in a solution,
+# represented concretely by a monitor with non-zero cost.
+# @I { Correlated defects } are a problem for ejection chains.  The cost
+# of each defect separately might not be large enough to end the chain
+# if removed, causing the chain to terminate in failure, whereas if
+# it was clear that there was really only one problem, the chain
+# might be able to repair it and continue.
+# @PP
+# The solution to this problem works like this.  Suppose we know that
+# monitors @C { m1 } and @C { m2 } are correlated.  We introduce a group
+# monitor @C { g }, make @C { m1 } and @C { m2 } children of @C { g },
+# and ensure that when handling defects we use @C { g }, not @C { m1 }
+# and @C { m2 }.  For example, when using ejection chains we ensure
+# that @C { start_gm } and @C { continue_gm } have @C { g } among
+# their children, not @C { m1 } and @C { m2 }.  In this way, when
+# @C { m1 } and @C { m2 } signal that there is a defect, the signal
+# is received via @C { g }, not directly from @C { m1 } and @C { m2 }.
+# # @PP
+# # So correlated monitors
+# # should be grouped, whenever possible.  These groups are the
+# # equivalence classes of the correlation relation, which is
+# # clearly an equivalence relation.  A grouping of correlated
+# # monitors is called a @I { correlation grouping }.
+# @PP
+# A @I { correlation grouping } is a whole set of group monitors
+# created to group together correlated monitors.  A function which
+# creates a correlation grouping works as follows.  Monitors not
+# relevant to the grouping remain as they were.  Relevant monitors
+# are deleted from any parents they have, and partitioned into groups
+# of correlated monitors.  For each group containing two or more
+# monitors, a group monitor called a @I { correlation group monitor }
+# is made, the monitors are made children of it, and it is made a
+# child of the solution object.  For each group containing one monitor,
+# that monitor is made a child of the solution, and no group monitor
+# is made.  Any group monitors other than the solution object which
+# lose all their children because of these changes are deleted, possibly
+# causing further deletions of childless group monitors.
+# @PP
+# A function which deletes a correlation grouping visits all monitors
+# relevant to the grouping and deletes those parents of those
+# monitors whose @C { sub_tag } indicates that they are part of
+# the correlation grouping.  The deleting is done by calls to
+# @C { KheGroupMonitorBypassAndDelete }.
+# @End @SubSection
+#
+# @SubSection
+#     @Title { Correlation problems involving demand defects }
+#     @Tag { eject2.correlation.demand }
+# @Begin
+# @LP
+# # Section {@NumberOf time_structural.monitor} discusses the problem
+# # of correlated monitors, and how it can be solved by grouping.
+# Demand monitors (Chapter {@NumberOf matchings}), representing nodes in
+# the global tixel matching, are a particularly difficult case for
+# correlation grouping.  They often correlate with other monitors,
+# but not in a simple way.  This section discusses the problems they
+# raise and how KHE handles them.
+# @PP
+# Demand monitors correlate with avoid clashes monitors:  when there is
+# a clash, there will be both an avoid clashes defect and an ordinary
+# demand defect.  They also correlate with avoid unavailable times, limit
+# busy times, and limit workload monitors:  when there is a hard avoid
+# unavailable times defect, for example, there will also be a demand
+# defect.  There are several possible ways to handle these correlations.
+# # This section explores several
+# # ways of handling these correlations, beginning with grouping.
+# @PP
+# @I { Group the correlated monitors. }  Grouping is the ideal solution
+# for correlation problems, but it does not work here.  There are two
+# reasons for this.
+# @PP
+# First, although every avoid clashes defect has a correlated ordinary
+# demand defect, unless the resource involved is preassigned there is
+# no way to predict which monitors will be correlated, since that
+# depends on which resource is assigned to the demand monitors' tasks.
+# @PP
+# Second, grouping workload demand monitors with the resource monitors
+# they are derived from has a subtle flaw.  A demand defect is really
+# the whole set of demand monitors that compete for the insufficient
+# supply.  (These sets are quite unpredictable and cannot themselves
+# be grouped.)  A workload demand defect shows up, not in the workload
+# demand monitor itself, but in an ordinary demand monitor that
+# competes with it.  This is because the last demand tixel to change
+# its domain and require rematching is the one that misses out on the
+# available supply, and workload demand monitors never change their
+# domains.
+# # So this grouping still leaves two correlated defects
+# # ungrouped:  the group monitor and the unmatched ordinary demand monitor.
+# @PP
+# If grouping does not work, then one of the correlated monitors has
+# to be detached or otherwise ignored.  There are several ways to do this.
+# @PP
+# @I { Detach demand monitors. }  This does not work, because no-one
+# notices that six Science meets are scheduled simultaneously when
+# there are only five Science laboratories, and the resulting time
+# assignment is useless.
+# @PP
+# @I { Attach demand monitors but exclude them from continue group monitors. }
+# This prevents correlated monitors from appearing on defect lists,
+# but both costs continue to be added to the solution cost, so
+# removing the resource defect alone does not produce an overall
+# improvement.  The chain terminates in failure; the ejector cannot
+# see that repairing the resource defect could work.
+# @PP
+# @I { Attach demand monitors but exclude them from the solution and
+# continue group monitors; add a limit monitor holding them. }  Then
+# other monitors will be repaired, but no chain which increases the total
+# number of demand defects will be accepted.  This has two problems.
+# @PP
+# First, it can waste time constructing chains which fall at the last
+# hurdle when it is discovered that they increase demand defects.  This
+# is particularly likely during time repair:  the six Science meets
+# problem could well occur and pass unnoticed for a long time.
+# # Resource repair usually
+# # runs faster, and wasting time then does not matter so much.
+# @PP
+# Second, although it prevents demand defects from increasing, it
+# does not repair them.  This rules it out for time repair, which
+# is largely about repairing demand defects, but it may not matter
+# for resource repair.  Resource repair cannot reduce the number of
+# demand defects unless it moves meets:  merely assigning resources
+# reduces the domains of demand tixels, which cannot reduce demand
+# defects.  Even moving meets is unlikely to reduce demand defects
+# during resource repair, since many of those moves will have been
+# tried previously, during time repair.
+# @PP
+# @I { Detach correlated resource monitors. }  Instead of detaching
+# demand monitors, detach the resource monitors they correlate with.
+# This is our preferred approach, and we will now go on to consider
+# how to carry it out for each kind of resource monitor.  The main
+# danger is @I { inexactness }:  if some detached resource monitor is
+# not modelled exactly by the demand monitors that replace it, then
+# some defects may be handled imperfectly.
+# @PP
+# @I { Detach all avoid clashes monitors. }  For every avoid clashes
+# defect there is an ordinary demand defect.  The only inexactness
+# is that avoid clashes monitors may have any weights, whereas demand
+# monitors have equal weight, usually 1 (hard).  But avoid clashes
+# constraints usually have weight 1 (hard) or more, so this does not
+# seem to be a problem in practice, given that, as the specification
+# says, hard constraint violations should be few in good solutions.
+# @PP
+# @I { Detach avoid unavailable times monitors that give rise to
+# workload demand monitors. }  These are monitors with weight at least 1
+# (hard).  The modelling here is exact apart from any difference in
+# hard weight, so again there is no problem in practice.
+# @PP
+# @I { Detach limit busy times monitors that give rise to workload
+# demand monitors. }  These are monitors with weight at least 1
+# (hard) which satisfy the subset tree condition
+# (Section {@NumberOf matchings.workload.tree}).  Apart from the
+# possible difference in hard weight, this is exact except for one
+# problem:  limit busy times constraints can impose both a lower
+# and an upper limit on resource availability in some set of times,
+# and workload demand monitors do not model lower limits at all.
+# @PP
+# This can be fixed by (conceptually) breaking each limit busy times
+# monitor into two, an underload monitor and an overload monitor, and
+# detaching the overload monitor but not the underload monitor.  KHE
+# expresses this idea in a different way, chosen because it also
+# solves the problem presented by limit workload monitors, to be
+# discussed in their turn.
+# @PP
+# Limit busy times monitors have two attributes, @C { Minimum } and
+# @C { Maximum }, such that less than @C { Minimum } busy times is an
+# underload, and more than @C { Maximum } is an overload.  Add a third
+# attribute, @C { Ceiling }, such that @C { Ceiling >= Maximum }, and
+# specify that, with higher priority than the usual rule, when the number
+# of busy times exceeds @C { Ceiling } the deviation is 0.
+# @PP
+# Function @C { KheLimitBusyTimesMonitorSetCeiling }
+# (Section {@NumberOf monitoring.limitbusy}) may be called to set the
+# ceiling.  Setting it to @C { INT_MAX } (the default value) produces
+# the usual rule.  Setting it to @C { Maximum } is equivalent to
+# detaching overload monitoring.
+# @PP
+# @I { Detach limit workload monitors that give rise to workload
+# demand monitors. }  Limit workload monitors are similar to limit
+# busy times monitors whose set of times is the entire cycle.
+# However, the demand monitors derived from a limit workload
+# monitor do not necessarily model even the upper limit exactly
+# (Section {@NumberOf matchings.workload.construct}).  This
+# problem can be solved as follows.
+# @PP
+# Consider a resource with a hard limit workload monitor and some
+# hard workload demand monitors derived from it, and suppose that
+# all of these monitors are attached.  As the resource's workload
+# increases, it crosses from a `white region' of zero cost into a
+# `grey region' where the limit workload monitor has non-zero cost
+# but the workload demand monitors do not, and then into a `black
+# region' where both the limit workload monitor and the workload
+# demand monitors have non-zero cost.  This black region is the problem.
+# @PP
+# The problem is solved by adding a @C { Ceiling } attribute to
+# limit workload monitors, as for limit busy times monitors.
+# Function @C { KheLimitWorkloadMonitorSetCeiling }
+# (Section {@NumberOf monitoring_resource_monitors_workload})
+# sets the ceiling.  As before, the default value
+# is @C { INT_MAX }.  The appropriate alternative value is not
+# @C { Maximum }, but rather a value which marks the start of
+# the black region, so that the limit workload monitor's cost
+# drops to zero as the workload crosses from the grey region
+# to the black region.  In this way, all workload overloads
+# are reported, but by only one kind of monitor at any one time.
+# @PP
+# There is one anomaly in this arrangement:  a repair that
+# reduces workload from the black region to the grey region
+# does not always decrease cost.  This is a pity but it is
+# very much a second-order problem, given that the costs
+# involved are all hard costs, so that in practice repairs
+# are wanted that reduce them to zero.  What actually happens is
+# that one repair puts a resource above the white zone, and this
+# stimulates a choice of next repair which returns it to the white
+# zone.  Repairs which move between the grey and black zones are
+# possible but are not likely to lie on successful chains anyway,
+# so it does not matter much if their handling is imperfect.
+# @PP
+# The appropriate value for @C { Ceiling } is the number of times
+# in the cycle minus the total number of workload demand monitors
+# for the resource in question, regardless of their origin.  When
+# the resource's workload exceeds this value, there will be at
+# least one demand defect, and it is time for the limit workload
+# monitor to bow out.
+# @PP
+# To summarize all this:  there is some choice during resource
+# repair, but detaching resource monitors (with ceilings) always
+# works, and it is the only method that works during time repair.
+# @End @SubSection
+#
+# @SubSection
+#     @Title { Practical support for correlation grouping }
+#     @Tag { eject2.correlation.correlation }
+# @Begin
+# @LP
+# To install and remove the correlation groupings used by ejection chains, call
+# @ID @C {
+# void KheEjectionChainPrepareMonitors(KHE_SOLN soln,
+#   KHE_OPTIONS options);
+# void KheEjectionChainUnPrepareMonitors(KHE_SOLN soln);
+# }
+# This includes detaching some resource monitors, as in the plan
+# from Section {@NumberOf eject2.correlation.demand}.  This section
+# explains exactly what @C { KheEjectionChainPrepareMonitors } does.
+# # @PP
+# # Function @C { KheEjectionChainPrepareMonitors }
+# # (Section {@NumberOf eject2.grouping.correlation})
+# # creates correlation groupings of some correlated monitors, and
+# # detaches others, in preparation for ejection chain repair.
+# @PP
+# It is convenient to have standard values for the sub-tags and
+# sub-tag labels of the group monitors created by grouping functions,
+# both correlation and focus.  So KHE defines type
+# @ID {0.90 1.0} @Scale @C {
+# typedef enum {
+#  KHE_SUBTAG_SPLIT_EVENTS,	      /* "SplitEventsGroupMonitor"           */
+#  KHE_SUBTAG_DISTRIBUTE_SPLIT_EVENTS, /* "DistributeSplitEventsGroupMonitor" */
+#  KHE_SUBTAG_ASSIGN_TIME,	      /* "AssignTimeGroupMonitor"            */
+#  KHE_SUBTAG_PREFER_TIMES,	      /* "PreferTimesGroupMonitor"           */
+#  KHE_SUBTAG_SPREAD_EVENTS,	      /* "SpreadEventsGroupMonitor"          */
+#  KHE_SUBTAG_LINK_EVENTS,	      /* "LinkEventsGroupMonitor"            */
+#  KHE_SUBTAG_ORDER_EVENTS,	      /* "OrderEventsGroupMonitor"           */
+#  KHE_SUBTAG_ASSIGN_RESOURCE,	      /* "AssignResourceGroupMonitor"        */
+#  KHE_SUBTAG_PREFER_RESOURCES,	      /* "PreferResourcesGroupMonitor"       */
+#  KHE_SUBTAG_AVOID_SPLIT_ASSIGNMENTS, /* "AvoidSplitAssignmentsGroupMonitor" */
+#  KHE_SUBTAG_AVOID_CLASHES,	      /* "AvoidClashesGroupMonitor"          */
+#  KHE_SUBTAG_AVOID_UNAVAILABLE_TIMES, /* "AvoidUnavailableTimesGroupMonitor" */
+#  KHE_SUBTAG_LIMIT_IDLE_TIMES,	      /* "LimitIdleTimesGroupMonitor"        */
+#  KHE_SUBTAG_CLUSTER_BUSY_TIMES,      /* "ClusterBusyTimesGroupMonitor"      */
+#  KHE_SUBTAG_LIMIT_BUSY_TIMES,	      /* "LimitBusyTimesGroupMonitor"        */
+#  KHE_SUBTAG_LIMIT_WORKLOAD,	      /* "LimitWorkloadGroupMonitor"         */
+#  KHE_SUBTAG_LIMIT_ACTIVE_INTERVALS,  /* "LimitActiveIntervalsGroupMonitor"  */
+#  KHE_SUBTAG_LIMIT_RESOURCES,         /* "LimitResourcesGroupMonitor"        */
+#  KHE_SUBTAG_ORDINARY_DEMAND,	      /* "OrdinaryDemandGroupMonitor"        */
+#  KHE_SUBTAG_WORKLOAD_DEMAND,	      /* "WorkloadDemandGroupMonitor"        */
+#  KHE_SUBTAG_KEMPE_DEMAND,	      /* "KempeDemandGroupMonitor"           */
+#  KHE_SUBTAG_NODE_TIME_REPAIR,	      /* "NodeTimeRepairGroupMonitor"        */
+#  KHE_SUBTAG_LAYER_TIME_REPAIR,	      /* "LayerTimeRepairGroupMonitor"       */
+#  KHE_SUBTAG_TASKING,		      /* "TaskingGroupMonitor"               */
+#  KHE_SUBTAG_ALL_DEMAND		      /* "AllDemandGroupMonitor"             */
+# } KHE_SUBTAG_STANDARD_TYPE;
+# }
+# for the sub-tags, and the strings in comments, obtainable by calling
+# @ID @C {
+# char *KheSubTagLabel(KHE_SUBTAG_STANDARD_TYPE sub_tag);
+# }
+# for the corresponding sub-tag labels.  There is also
+# @ID @C {
+# KHE_SUBTAG_STANDARD_TYPE KheSubTagFromTag(KHE_MONITOR_TAG tag);
+# }
+# which returns the appropriate sub-tag for a group monitor whose
+# children have the given @C { tag }.
+# @PP
+# Let's return now to @C { KheEjectionChainPrepareMonitors }.  It begins
+# by partitioning the events of @C { soln }'s instance into classes,
+# placing events into the same class when following the fixed assignment
+# paths out of their meets proves that their meets must run at the same
+# times.  It then groups event monitors as follows.
+# @PP
+# @I { Split events and distribute split events monitors. } For each
+# class, it groups together the split events and distribute split
+# events monitors that monitor the events of that class.  It gives
+# sub-tag @C { KHE_SUBTAG_SPLIT_EVENTS } to any group monitors it
+# creates.  There is also a @C { KHE_SUBTAG_DISTRIBUTE_SPLIT_EVENTS }
+# subtag, but it is not used.
+# # Event splitting
+# # is handled structurally, so @C { KheEjectionChainPrepareMonitors }
+# # does nothing with these monitors.
+# # They usually have provably zero fixed cost, so are already detached.
+# @PP
+# @I { Assign time monitors. }  For each class, it groups the assign
+# time monitors that monitor the events of that class, giving sub-tag
+# @C { KHE_SUBTAG_ASSIGN_TIME } to any group monitors.
+# @PP
+# @I { Prefer times monitors. }  Within each class, it groups those
+# prefer times monitors that monitor events of that class whose
+# constraints request the same set of times, giving sub-tag
+# @C { KHE_SUBTAG_PREFER_TIMES } to any group monitors.
+# @PP
+# @I { Spread events monitors. }  For each spread events monitor, it
+# finds the set of classes that hold the events it monitors.  It
+# groups attached spread events monitors whose sets of classes are
+# equal, giving sub-tag @C { KHE_SUBTAG_SPREAD_EVENTS } to any group
+# monitors.  Strictly speaking, only monitors whose constraints
+# request the same time groups with the same limits should be grouped,
+# but that check is not currently being made.
+# @PP
+# @I { Link events monitors. }  Like split events monitors, these are
+# usually handled structurally, so it does nothing with them.  They
+# usually have provably zero fixed cost, so are already detached.
+# @PP
+# @I { Order events monitors. }  For each order events monitor, it
+# finds the sequence of classes that hold the two events it monitors.
+# It groups attached order events monitors whose sequences of classes
+# are equal, giving sub-tag @C { KHE_SUBTAG_ORDER_EVENTS } to any group
+# monitors.  Strictly speaking, only monitors whose constraints request
+# the same event separations should be grouped, but that check is not
+# currently being made.
+# @PP
+# Next, @C { KheEjectionChainPrepareMonitors } partitions the event
+# resources of @C { soln }'s instance into classes, placing event
+# resources into the same class when following the fixed assignment
+# paths out of their tasks proves that they must be assigned the same
+# resources.  It then groups event resource monitors as follows.
+# @PP
+# @I { Assign resource monitors. }  For each class, it groups the
+# assign resource monitors of that class's event resources, giving
+# sub-tag @C { KHE_SUBTAG_ASSIGN_RESOURCE } to any group monitors.
+# @PP
+# @I { Prefer resources monitors. }  Within each class, it groups those
+# prefer resources monitors that monitor the event resources of that
+# class whose constraints request the same set of resources, giving
+# sub-tag @C { KHE_SUBTAG_PREFER_RESOURCES } to any group monitors.
+# @PP
+# @I { Avoid split assignments monitors. }  There seems to be no
+# useful correlation grouping of these monitors, so nothing is done with
+# them.  They may be handled structurally, in which case they will
+# have provably zero fixed cost and will be already detached.
+# @PP
+# Students who follow the same curriculum have the same timetable.  So
+# for each resource type @C { rt } such that a call to
+# {0.95 1.0} @Scale @C { KheResourceTypeDemandIsAllPreassigned(rt) }
+# (Section {@NumberOf resource_types})
+# shows that its resources are all preassigned,
+# {0.95 1.0} @Scale @C { KheEjectionChainPrepareMonitors }
+# groups the resource monitors of @C { rt }'s resources as follows.
+# @PP
+# @I { Avoid clashes monitors. }  It groups those avoid clashes monitors
+# derived from the same constraint whose resources attend the same
+# events, giving sub-tag
+# {0.95 1.0} @Scale @C { KHE_SUBTAG_AVOID_CLASHES } to any group monitors.
+# @PP
+# @I { Avoid unavailable times monitors. }  It groups avoid unavailable
+# times monitors derived from the same constraint whose resources attend
+# the same events, giving any group monitors sub-tag
+# @C { KHE_SUBTAG_AVOID_UNAVAILABLE_TIMES }.
+# @PP
+# @I { Limit idle times monitors }.  It groups limit idle times monitors
+# derived from the same constraint whose resources attend the same events,
+# giving sub-tag @C { KHE_SUBTAG_LIMIT_IDLE_TIMES } to any group monitors.
+# @PP
+# @I { Cluster busy times monitors. }  It groups cluster busy times monitors
+# derived from the same constraint whose resources attend the same events,
+# giving any group monitors sub-tag @C { KHE_SUBTAG_CLUSTER_BUSY_TIMES }.
+# @PP
+# @I { Limit busy times monitors. }  It groups limit busy times monitors
+# derived from the same constraint whose resources attend the same events,
+# giving sub-tag @C { KHE_SUBTAG_LIMIT_BUSY_TIMES } to any group monitors.
+# @PP
+# @I { Limit workload monitors. }  It groups limit workload monitors
+# derived from the same constraint whose resources attend the same events,
+# giving sub-tag @C { KHE_SUBTAG_LIMIT_WORKLOAD } to any group monitors.
+# @PP
+# @I { Limit active intervals monitors. }  It groups limit active intervals
+# monitors derived from the same constraint whose resources attend the same
+# events, giving sub-tag @C { KHE_SUBTAG_LIMIT_ACTIVE_INTERVALS } to any
+# group monitors.
+# @PP
+# Fixed assignments between meets are taken into account when deciding
+# whether two resources attend the same events.  As far as resource
+# monitors are concerned, it is when the resource is busy that matters,
+# not which meets it attends.
+# @PP
+# When there is a global tixel matching,
+# @C { KheEjectionChainPrepareMonitors } also treats some resource
+# monitors as in Section {@NumberOf eject2.correlation.demand},
+# whether they are grouped or not:
+# @BulletList
+#
+# @LI @OneRow {
+# It detaches all attached avoid clashes monitors.
+# }
+
+# @LI @OneRow {
+# For each attached avoid unavailable times monitor @C { m } for which
+# a workload demand monitor with originating monitor @C { m } is
+# present (all hard ones, usually), it detaches @C { m }.
+# }
+#
+# @LI @OneRow {
+# For each attached limit busy times monitor @C { m } for which a
+# workload demand monitor with originating monitor @C { m } is
+# present (all hard ones satisfying the subset tree condition of
+# Section {@NumberOf matchings.workload.tree}, usually), if
+# @C { m }'s lower limit is 0 it detaches @C { m }, otherwise it
+# sets @C { m }'s @C { ceiling } attribute to its @C { maximum }
+# attribute, by calling @C { KheLimitBusyTimesMonitorSetCeiling }.
+# }
+#
+# @LI @OneRow {
+# For each attached limit workload monitor @C { m } for which a workload
+# demand monitor with originating monitor @C { m } is present (all hard
+# ones, usually), it sets @C { m }'s @C { ceiling } attribute to the cycle
+# length minus the number of workload demand monitors for @C { m }'s
+# resource (regardless of origin), or 0 if this is negative, by
+# calling @C { KheLimitWorkloadMonitorSetCeiling }.
+# }
+#
+# @EndList
+# Section {@NumberOf eject2.correlation.demand} explains all this.
+# @PP
+# Finally, @C { KheEjectionChainPrepareMonitors } groups demand monitors as
+# follows.  If a limit monitor containing these monitors is wanted, a
+# separate call is needed (Section {@NumberOf eject2.repair.focus}).
+# @PP
+# @I { Ordinary demand monitors. }  For each set of meets such that
+# the fixed assignment paths out of those meets end at the same meet,
+# it groups the demand monitors of those meets' tasks, giving sub-tag
+# @C { KHE_SUBTAG_MEET_DEMAND } to any group monitors.  The reasoning
+# is that the only practical way to repair an ordinary demand defect
+# is to change the assignment of its meet (or some other clashing meet),
+# which will affect all the demand monitors grouped with it here.
+# @PP
+# @I { Workload demand monitors. }  These remain ungrouped.  As
+# explained in Section {@NumberOf eject2.correlation.demand},
+# workload demand defects appear only indirectly, as competitors
+# of ordinary demand defects.
+# @End @SubSection
+#
+# @EndSubSections
+# @End @Section
+#
+# @Section
+#     @Title { Focus grouping }
+#     @Tag { eject2.focus }
+# @Begin
+# @LP
+# @I { Focus groupings } are useful monitor groupings that are not
+# correlation groupings.  They group diverse sets of monitors for
+# various purposes.
+# @PP
+# Focus groupings are often built on correlation groupings:  if a
+# monitor that a focus grouping handles is a descendant of a correlation
+# group monitor, the correlation group monitor goes into the focus
+# grouping, replacing the individual monitors which are its children.
+# @PP
+# A focus grouping makes one group monitor, called a
+# @I { focus group monitor }, not many.  The focus group monitor is
+# not made a child of the solution object, nor are its children unlinked
+# from any other parents that they may have.  So the focus group monitor
+# does not disturb existing calculations in any way; rather, it adds a
+# separate calculation on the side.  A focus grouping can be removed
+# by passing its focus group monitor to @C { KheGroupMonitorDelete }.
+# @PP
+# # Functions for creating focus groupings appear elsewhere in this
+# # guide.  They include @C { KheKempeDemandGroupMonitorMake }, needed by
+# # Kempe and ejecting meet moves (Section {@NumberOf time_solvers.kempe}),
+# # and several functions used by ejection chain repair algorithms
+# # (Section {@NumberOf ejection.repair.focus}).
+# # @PP
+# # @LP
+# # Section {@NumberOf time_structural.monitor} introduces the concept
+# # of focus groupings.
+# Ejection chain functions need focus groupings for their start group
+# monitors (but not their continue group monitors, since they use the
+# solution object for that), and for their limit monitors.
+# @C { KheEjectionChainNodeRepairTimes } uses the group monitor
+# returned by
+# @ID @C {
+# KHE_GROUP_MONITOR KheNodeTimeRepairStartGroupMonitorMake(KHE_NODE node);
+# }
+# as its start group monitor.  The result has sub-tag
+# @C { KHE_SUBTAG_NODE_TIME_REPAIR }.  Its children are monitors, or
+# correlation groupings of monitors where these are already present, of
+# two kinds.  First are all assign time, prefer times, spread events,
+# order events, and ordinary demand monitors that monitor the meets
+# of @C { node } and its descendants, plus any meets whose assignments
+# are fixed, directly or indirectly, to them.  Second are all resource
+# monitors.  Only preassigned resources are assigned during time repair,
+# but those assignments may cause resource defects which can only be
+# repaired by changing time assignments, just because the resources
+# involved are preassigned.
+# @PP
+# @C { KheEjectionChainLayerRepairTimes } chooses one of the group monitors
+# returned by
+# @ID @C {
+# KHE_GROUP_MONITOR KheLayerTimeRepairStartGroupMonitorMake(
+#   KHE_LAYER layer);
+# KHE_GROUP_MONITOR KheLayerTimeRepairLongStartGroupMonitorMake(
+#   KHE_LAYER layer);
+# }
+# as its start group monitor, depending on option
+# @C { es_layer_repair_long }.  The result has
+# sub-tag @C { KHE_SUBTAG_LAYER_TIME_REPAIR }, with the same children
+# as before, only limited to those that monitor the meets and resources
+# of @C { layer }, or (if @C { es_layer_repair_long } is @C { true})
+# of layers whose index number is less than or equal to @C { layer }'s.
+# @PP
+# @C { KheEjectionChainRepairResources } uses the group monitor returned
+# by
+# @ID @C {
+# KHE_GROUP_MONITOR KheTaskingStartGroupMonitorMake(KHE_TASKING tasking);
+# }
+# for its start group monitor.  The result has sub-tag
+# @C { KHE_SUBTAG_TASKING }, and its children are the following
+# monitors (or correlation groupings of those monitors, where those already
+# exist):  the assign resource, prefer resources, and avoid split
+# assignments monitors, and the resource monitors that monitor the
+# tasks and resources of @C { tasking }.  If the tasking is for a
+# particular resource type, only monitors of entities of that type
+# are included.
+# @PP
+# To allow an ejection chain to unassign meets temporarily but prevent
+# it from leaving meets unassigned in the end, a limit monitor is
+# imposed which rejects chains that allow the total cost of assign
+# time defects to increase.  This monitor is created by calling
+# @ID @C {
+# KHE_GROUP_MONITOR KheGroupEventMonitors(KHE_SOLN soln,
+#   KHE_MONITOR_TAG tag, KHE_SUBTAG_STANDARD_TYPE sub_tag);
+# }
+# passing @C { KHE_ASSIGN_TIME_MONITOR_TAG } and
+# @C { KHE_SUBTAG_ASSIGN_TIME } as tag parameters.
+# @PP
+# To prevent the number of unmatched demand tixels from increasing,
+# when that is requested by the @C { resource_invariant } option,
+# the group monitor returned by function @ID @C {
+# KHE_GROUP_MONITOR KheAllDemandGroupMonitorMake(KHE_SOLN soln);
+# }
+# is used as a limit monitor.  Its sub-tag is @C { KHE_SUBTAG_ALL_DEMAND },
+# and its children are all ordinary and workload demand monitors.
+# Correlation groupings are irrelevant to limit monitors, so these last
+# two functions take no account of them.
+# @PP
+# When building focus groupings, these public functions
+# are often helpful:
+# @ID @C {
+# bool KheMonitorHasParent(KHE_MONITOR m, int sub_tag,
+#   KHE_GROUP_MONITOR *res_gm);
+# void KheMonitorAddSelfOrParent(KHE_MONITOR m, int sub_tag,
+#   KHE_GROUP_MONITOR gm);
+# void KheMonitorDeleteAllParentsRecursive(KHE_MONITOR m);
+# }
+# Consult the documentation in the source code to find out what they do.
+# @End @Section
+
+@EndSections
+@End @Chapter

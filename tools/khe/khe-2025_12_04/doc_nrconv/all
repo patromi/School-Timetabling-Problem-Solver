@@ -1,0 +1,24 @@
+@SysInclude { cprint }
+@SysInclude { math }
+@SysInclude { tbl }
+@SysInclude { diag }
+
+macro @C { {0.9 1.0} @Scale @OneRow @CP }
+
+@Include { mybook }
+
+@Database @Reference { "/home/jeff/misc/refs/allrefs" }
+@Book
+    @Title { A User's Guide to the
+NRConv
+Nurse Rostering Converter }
+    @Author { Jeffrey H. Kingston
+@I { jeff@it.usyd.edu.au } }
+    @Edition { Version 2.14 (December 2025) }
+    @InitialSpace { troff }
+//
+@Include { intro }
+@Include { archives }
+@Include { instances }
+@Include { impl }
+@Include { source }

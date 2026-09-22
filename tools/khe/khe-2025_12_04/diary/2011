@@ -1,0 +1,2123 @@
+KHE diary for 2011
+------------------
+
+1 January 2011
+
+  Sorted out the problem with KheLayerNodeMatchingRepairTimes.
+  Actually it wasn't a bug; the problem is that it happens to
+  take us down an inferior path, that's all.  I did add a
+  transaction to make sure it changed things only when the
+  overall solution cost decreases.  Best of 1 now is:
+
+    KheGeneralSolve at end (17.13 secs so far):
+    Soln (instance "BGHS98", diversifier 0, cost 16.0704)
+    Soln                            Defects          Cost
+    -----------------------------------------------------
+    AssignResourceMonitor                10       12.0000
+    AvoidSplitAssignmentsMonitor         54        0.0620
+    SpreadEventsMonitor                  24        0.0024
+    AvoidClashesMonitor                   4        4.0000
+    LimitBusyTimesMonitor                25        0.0060
+    -----------------------------------------------------
+    Total                               117       16.0704
+
+  Best of 16 is:
+
+    16.0000 | **
+    15.0000 | *
+    14.0000 | *
+    13.0000 | ***
+    12.0000 M *
+    11.0000 M *
+    10.0000 | *
+     9.0000 | ***
+     8.0000 | ***
+
+    Soln (instance "BGHS98", diversifier 2, cost 8.0554)
+    Soln                            Defects          Cost
+    -----------------------------------------------------
+    AssignResourceMonitor                 3        5.0000
+    AvoidSplitAssignmentsMonitor         45        0.0510
+    SpreadEventsMonitor                   8        0.0008
+    AvoidClashesMonitor                   1        1.0000
+    AvoidUnavailableTimesMonitor          2        2.0000
+    LimitBusyTimesMonitor                16        0.0036
+    -----------------------------------------------------
+    Total                                75        8.0554
+
+  So things have decaysed a bit, although spread is great,
+  so let's keep all these things at least for now.  But,
+  once again, the problem is our old friend: inadquate
+  node regularity.
+
+  Tried again with drastic flag in layer match.  Best of 1
+  had cost 25.0848, best of 16 had cost
+
+    25.0000 | ***
+    24.0000 |
+    23.0000 |
+    22.0000 |
+    21.0000 |
+    20.0000 | **
+    19.0000 |
+    18.0000 |
+    17.0000 |
+    16.0000 |
+    15.0000 |
+    14.0000 |
+    13.0000 |
+    12.0000 |
+    11.0000 M ***
+    10.0000 M **
+     9.0000 |
+     8.0000 |
+     7.0000 |
+     6.0000 | ******
+
+    Soln (instance "BGHS98", diversifier 1, cost 6.0498)
+    Soln                            Defects          Cost
+    -----------------------------------------------------
+    AssignResourceMonitor                 3        5.0000
+    AvoidSplitAssignmentsMonitor         41        0.0420
+    SpreadEventsMonitor                  16        0.0016
+    AvoidClashesMonitor                   1        1.0000
+    LimitBusyTimesMonitor                25        0.0062
+    -----------------------------------------------------
+    Total                                86        6.0498
+
+  This is probably the best so far on soft cost.  But the
+  spread of results is quite alarming.  Obviously need to
+  do something along these lines, only smarter.  And this
+  very good result is still not node-regular.
+
+  Observed the solution cost layer by layer.  Up to the
+  end of Year 10 it is perfect (no defects at all).  A
+  layer-by-layer repair, initially open only to the layer
+  affected, seems like the go.  Have to flatten though.
+  Drastic, flatten, repair that layer only, continue.
+  Also have the ejection chain node repair to try.
+
+  Tooling up for ejection chain node repair.  Wrote functions
+  for meet swapping and for sorting meets within nodes.  Wrote
+  KheNodeDemandAugment, like KheDemandAugment but it swaps nodes
+  rather than moving meets.  I may not bother with a similar thing
+  for event defects.  KheGroupOrdinaryDemandMonitorsByChildNode
+  done.  Working on KheNodeMeetSwapRepairTimes in khe_assign_time.c.
+  With all these helpers done, it just needs putting together now.
+
+  NB ejection chain node repair is probably best with the
+  drastic flag or something like it, since otherwise the
+  horse has bolted before it gets called.
+
+2 January 2011
+
+  Working on a reorganization of the grouping helper functions.
+  Have done the event group monitors, event resource group
+  monitors, and resource group monitors so far, and just started
+  demand group monitors (see still to do in khe_grouping.c).
+
+3 January 2011
+
+  Finished off monitor grouping today.  I just have to change
+  the calls to grouping functions in the rest of KHE from the
+  old interfaces to the new ones, and add the node grouping
+  one that sparked this two-day reorganization, and then I
+  will be ready for node repair.
+
+4 January 2011
+
+  Completed the grouping reorganization, and finished off
+  KheNodeMeetSwapRepairTimes as well.  Here are the result
+  of a competition between KheLayerNodeMatchingRepairTimes
+  and KheNodeMeetSwapRepairTimes.  Both are called at the
+  same points, potentially (after each layer is assigned,
+  for example), and they do much the same thing.  If we
+  use KheLayerNodeMatchingRepairTimes only, we get this:
+
+  Best of 1:
+
+    KheGeneralSolve at end (15.07 secs so far):
+    Soln (instance "BGHS98", diversifier 0, cost 13.0657)
+    Soln                            Defects          Cost
+    -----------------------------------------------------
+    AssignResourceMonitor                 8       12.0000
+    AvoidSplitAssignmentsMonitor         47        0.0560
+    SpreadEventsMonitor                  29        0.0031
+    AvoidClashesMonitor                   1        1.0000
+    LimitBusyTimesMonitor                25        0.0066
+    -----------------------------------------------------
+    Total                               110       13.0657
+
+  Best of 16:
+
+    19.0000 | *
+    18.0000 |
+    17.0000 |
+    16.0000 |
+    15.0000 |
+    14.0000 |
+    13.0000 | **
+    12.0000 M *****
+    11.0000 M *
+    10.0000 | *
+     9.0000 | ****
+     8.0000 |
+     7.0000 |
+     6.0000 | *
+     5.0000 |
+     4.0000 |
+     3.0000 |
+     2.0000 | *
+
+    Soln (instance "BGHS98", diversifier 3, cost 2.0791)
+    Soln                            Defects          Cost
+    -----------------------------------------------------
+    AssignResourceMonitor                 2        2.0000
+    AvoidSplitAssignmentsMonitor         56        0.0660
+    SpreadEventsMonitor                  75        0.0075
+    LimitBusyTimesMonitor                23        0.0056
+    -----------------------------------------------------
+    Total                               156        2.0791
+
+  Wow!  If we use KheNodeMeetSwapRepairTimes instead of
+  KheLayerNodeMatchingRepairTimes we get this:
+
+  Best of 1:
+
+    KheGeneralSolve at end (16.10 secs so far):
+    Soln (instance "BGHS98", diversifier 0, cost 10.0632)
+    Soln                            Defects          Cost
+    -----------------------------------------------------
+    AssignResourceMonitor                 6        9.0000
+    AvoidSplitAssignmentsMonitor         37        0.0510
+    SpreadEventsMonitor                  76        0.0076
+    AvoidUnavailableTimesMonitor          1        1.0000
+    LimitBusyTimesMonitor                21        0.0046
+    -----------------------------------------------------
+    Total                               141       10.0632
+
+  Best of 16:
+
+      17.0000 | *
+      16.0000 |
+      15.0000 | *
+      14.0000 | *
+      13.0000 | **
+      12.0000 |
+      11.0000 | *
+      10.0000 M ****
+       9.0000 | *
+       8.0000 | ***
+       7.0000 | *
+       6.0000 |
+       5.0000 |
+       4.0000 |
+       3.0000 | *
+
+    Soln (instance "BGHS98", diversifier 10, cost 3.0664)
+    Soln                            Defects          Cost
+    -----------------------------------------------------
+    AssignResourceMonitor                 3        3.0000
+    AvoidSplitAssignmentsMonitor         45        0.0540
+    SpreadEventsMonitor                  63        0.0070
+    LimitBusyTimesMonitor                23        0.0054
+    -----------------------------------------------------
+    Total                               134        3.0664
+
+  This is pretty darn good too.  However, for the moment
+  we will stick with KheLayerNodeMatchingRepairTimes, and
+  the best so far result of 2.0791, although admittedly
+  the second best result is quite a long way above that,
+  and *still* we don't have good node regularity.
+
+  Tried for better node regularity by repairing meets
+  first with 0, then with 1, etc., a kind of global
+  interative deepening.  Best of 1:
+
+    KheGeneralSolve at end (17.13 secs so far):
+    Soln (instance "BGHS98", diversifier 0, cost 14.0532)
+    Soln                            Defects          Cost
+    -----------------------------------------------------
+    AssignResourceMonitor                 9       12.0000
+    AvoidSplitAssignmentsMonitor         40        0.0440
+    SpreadEventsMonitor                  34        0.0034
+    AvoidClashesMonitor                   2        2.0000
+    LimitBusyTimesMonitor                24        0.0058
+    -----------------------------------------------------
+    Total                               109       14.0532
+
+  Best of 16:
+
+    15.0000 | *
+    14.0000 | *
+    13.0000 | **
+    12.0000 | *
+    11.0000 | **
+    10.0000 M ***
+     9.0000 |
+     8.0000 | *
+     7.0000 | *
+     6.0000 | *
+     5.0000 | ***
+
+    Soln (instance "BGHS98", diversifier 10, cost 5.0647)
+    Soln                            Defects          Cost
+    -----------------------------------------------------
+    AssignResourceMonitor                 3        4.0000
+    AvoidSplitAssignmentsMonitor         50        0.0550
+    SpreadEventsMonitor                  39        0.0039
+    AvoidUnavailableTimesMonitor          1        1.0000
+    LimitBusyTimesMonitor                26        0.0058
+    -----------------------------------------------------
+    Total                               119        5.0647
+
+  Not wonderful by comparison with what we had before, not
+  even in the split assignments department that we were
+  supposed to be improving.  The result does look a bit more
+  node-regular, but not much more.
+
+  Turning on the drastic flag gives similar uninspiring results.
+  It's time to go for the heart of the problem.  I've turned off
+  KheEjectionChainRepairTimes, and I've set the drastic flag in
+  KheLayerMatchMake and in KheLayerMatchImproveNodeRegularity to
+  be true when we are at the overall root node.  And they are
+  both staying that way until I get good node regularity!
+
+  Found a glitch in the way KheLayerMatchMake works which
+  occasionally prevents it from splitting supply nodes in
+  the same way as the template layer, because the order in
+  which things get split affects the feasibility of other
+  splits, in a curious way.  Have to do something about it.
+
+5 January 2011
+
+  Encourage the layer matching to split large supply nodes
+  before small ones.
+
+  Have revised the documentation of layer matching, including
+  being explicit about the priorities of its various aims, and
+  revised its implementation.  Also revised the way it is called
+  (from KheNodeChildLayersAssignTimes) and documented that.
+  Time to test.
+
+6 January 2011
+
+  Tested revised layer match.  It did everything I wanted,
+  first time.  Now have perfect node regularity in years
+  12, 11, 10, and 9, which is probably enough, at least
+  for this time around.  Year 8 is very irregular anyway.
+
+  We're staying with drastic.  After turning on repair,
+  got this for best of 1:
+
+    KheGeneralSolve at end (11.01 secs so far):
+    Soln (instance "BGHS98", diversifier 0, cost 14.0555)
+    Soln                            Defects          Cost
+    -----------------------------------------------------
+    AssignResourceMonitor                10       14.0000
+    AvoidSplitAssignmentsMonitor         39        0.0440
+    SpreadEventsMonitor                  39        0.0039
+    LimitBusyTimesMonitor                26        0.0076
+    -----------------------------------------------------
+    Total                               114       14.0555
+
+  and this for best of 16:
+
+    16.0000 | **
+    15.0000 | **
+    14.0000 | **
+    13.0000 |
+    12.0000 | *
+    11.0000 |
+    10.0000 |
+     9.0000 M ***
+     8.0000 | *
+     7.0000 | **
+     6.0000 | *
+     5.0000 | **
+
+    Soln (instance "BGHS98", diversifier 10, cost 5.0612)
+    Soln                            Defects          Cost
+    -----------------------------------------------------
+    AssignResourceMonitor                 2        3.0000
+    AvoidSplitAssignmentsMonitor         44        0.0530
+    SpreadEventsMonitor                  18        0.0018
+    AvoidClashesMonitor                   2        2.0000
+    LimitBusyTimesMonitor                28        0.0064
+    -----------------------------------------------------
+    Total                                94        5.0612
+
+  The repair caused a truly massive loss of node regularity,
+  but at least this shows that we can get from a node regular
+  solution to one with few hard constraint violations, which
+  suggests we are on the right track.  Just need to find a
+  way to do it with less disruption to node regularity.  It's
+  slow with repair though: 39 seconds.  We need to repair
+  layer by layer, I believe.
+
+  There is one demand defect after Year 10 is assigned (an Arabic
+  teacher) and 35 after Year 9 is assigned.  Here are the 35 defects:
+
+    [ "x9_PD_3_1"d2.1$Mon7-Mon8+0:Teacher_PDHPEYr7_10 ]
+    [ "x9_PD_2_1"d2.1$Mon7-Mon8+1:Teacher_PDHPEYr7_10 ]
+    [ "x9_PD_4_1"d2.1$Mon7-Mon8+1:Teacher_PDHPEYr7_10 ]
+    [ "x9_PD_5_1"d2.1$Mon7-Mon8+1:Teacher_PDHPEYr7_10 ]
+    [ "x9_PD_4_1"d2.1$Mon7-Mon8+0:Teacher_PDHPEYr7_10 ]
+    [ "x9_PD_3_1"d2.1$Mon7-Mon8+1:Teacher_PDHPEYr7_10 ]
+    [ "x9_PD_2_1"d2.1$Mon7-Mon8+0:Teacher_PDHPEYr7_10 ]
+    [ "x9_PD_1_1"d2.1$Mon7-Mon8+0:Teacher_PDHPEYr7_10 ]
+    [ "x9_PD_1_1"d2.1$Mon7-Mon8+1:Teacher_PDHPEYr7_10 ]
+    [ "x9_PD_5_1"d2.1$Mon7-Mon8+0:Teacher_PDHPEYr7_10 ]
+
+    [ "x12_2_Biology_1":1d2.1$Mon1-Mon2+1:Room_ScienceLab ]
+    [ "x12_2_Biology_1":3d1.1$Wed1+0:Room_ScienceLab ]
+    [ "x12_2_GeneralScience_1_1":3d1.1$Wed1+0:Room_ScienceLab ]
+    [ "x12_2_Biology_1":2d2.1$Fri1-Fri2+1:Room_ScienceLab ]
+    [ "x12_2_GeneralScience_1_1":2d2.1$Fri1-Fri2+1:Room_ScienceLab ]
+    [ "x12_2_Biology_1":2d2.1$Fri1-Fri2+0:Room_ScienceLab ]
+    [ "x12_2_GeneralScience_1_1":2d2.1$Fri1-Fri2+0:Room_ScienceLab ]
+
+    [ "x12_5_ComputingStudies_1":1d2.1$Tue1-Tue2+1:Room_ComputerRoom ]
+    [ "x9_5ComputingStudies_1":0d1.1$Thu2+0:Room_ComputerRoom ]
+    [ "x9_5ComputingStudies_1":1d2.1$Fri4-Fri5+1:Room_ComputerRoom ]
+    [ "x9_5ComputingStudies_1":2d1.1$Mon6+0:Room_ComputerRoom ]
+    [ "x12_5_CS_Applic_1":0d1.1$Mon5+0:Room_ComputerRoom ]
+    [ "x9_5ComputingStudies_1":1d2.1$Fri4-Fri5+0:Room_ComputerRoom ]
+    [ "x12_5_ComputingStudies_1":0d1.1$Mon5+0:Room_ComputerRoom ]
+    [ "x12_5_CS_Applic_1":1d2.1$Tue1-Tue2+1:Room_ComputerRoom ]
+
+    [ "x9_5_Drama_1":2d1.0$Mon6+0:Teacher_DramaYr7_10 ]
+    [ "x12_2_Biology_1":3d1.0$Wed1+0:Teacher_Biology ]
+    [ "x9_5_Drama_1":1d2.0$Fri4-Fri5+0:Teacher_DramaYr7_10 ]
+    [ "x9_5_Drama_1":0d1.0$Thu2+0:Teacher_DramaYr7_10 ]
+    [ "x10_5_Arabic_1_1":0d1.0$Wed2+0:Teacher_ArabicYr7_10 ]
+    [ "x12_2_Biology_1":2d2.0$Fri1-Fri2+0:Teacher_Biology ]
+    [ "x12_2_Biology_1":2d2.0$Fri1-Fri2+1:Teacher_Biology ]
+    [ "x9_5_Drama_1":1d2.0$Fri4-Fri5+1:Teacher_DramaYr7_10 ]
+    [ "x9_7_Arabic_1_1":0d1.0$Wed3+0:Teacher_ArabicYr7_10 ]  (* from Year 10 *)
+    [ "x12_5_CS_Applic_1":1d2.0$Tue1-Tue2+1:{TAS01..TAS07} ]
+
+  Apart from the obvious problem of aligning Year 10 and Year 9
+  PDHPE, which accounts for 10 defects, we are two Science labs
+  down at Wed1, Fri1, and Fri2, as well as one Science teacher,
+  one computing lab down at various times, one Drama teacher
+  down at various times, plus a few odds and ends.
+
+  NB there are two Teacher_DramaYr7_10 teachers, but one of them
+  is forced into Year 11-12 drama at 3x6 times (12_2, 11_2, 11_5)
+  The Year7-10 drama demand is 4x4 (9_5, 9_6, 10_6, 10_7).
+
+  Result appeared inferior in Years 12-9, found out that this was because
+  of feedback from Years8-7 in KheLayerNodeMatchingNodeRepairTimes, so
+  added KheLayerNodeMatchingLayerRepairTimes to confine the changes to
+  the current year, and got this when repair is added (best of 1):
+
+    KheGeneralSolve at end (10.75 secs so far):
+    Soln (instance "BGHS98", diversifier 0, cost 7.0671)
+    Soln                            Defects          Cost
+    -----------------------------------------------------
+    AssignResourceMonitor                 5        6.0000
+    AvoidSplitAssignmentsMonitor         48        0.0560
+    SpreadEventsMonitor                  64        0.0065
+    AvoidClashesMonitor                   1        1.0000
+    LimitBusyTimesMonitor                19        0.0046
+    -----------------------------------------------------
+    Total                               137        7.0671
+
+  and this for best of 16:
+
+    19.0000 | *
+    18.0000 |
+    17.0000 | *
+    16.0000 | *
+    15.0000 | *
+    14.0000 | *
+    13.0000 | *
+    12.0000 | *
+    11.0000 M *
+    10.0000 M ***
+     9.0000 | *
+     8.0000 | **
+     7.0000 | *
+     6.0000 | *
+
+    Soln (instance "BGHS98", diversifier 10, cost 6.0730)
+    Soln                            Defects          Cost
+    -----------------------------------------------------
+    AssignResourceMonitor                 4        5.0000
+    AvoidSplitAssignmentsMonitor         47        0.0610
+    SpreadEventsMonitor                  54        0.0054
+    AvoidClashesMonitor                   1        1.0000
+    LimitBusyTimesMonitor                28        0.0066
+    -----------------------------------------------------
+    Total                               134        6.0730
+
+  which is not wonderful.  But, as usual, the repair is
+  making hay of the node regularity.
+
+  What we really need before we can go further is a node
+  regular assignment of years 12-9 that has *many* fewer
+  than the 35 demand defects listed above.  At present,
+  everything else is pretty good, just one spread defect.
+
+  One simple thing which reduces the number to just 5
+  (3 Science labs and 2 Arabic teachers) is to re-use
+  the first layer as the template layer throughout.
+  Doing this and adding repair gives this best of 1:
+
+    KheGeneralSolve at end (10.39 secs so far):
+    Soln (instance "BGHS98", diversifier 0, cost 10.0568)
+    Soln                            Defects          Cost
+    -----------------------------------------------------
+    AssignResourceMonitor                 6        8.0000
+    AvoidSplitAssignmentsMonitor         43        0.0500
+    SpreadEventsMonitor                  17        0.0018
+    AvoidClashesMonitor                   2        2.0000
+    LimitBusyTimesMonitor                24        0.0050
+    -----------------------------------------------------
+    Total                                92       10.0568
+
+  and this best of 16:
+
+    24.0000 | *
+    23.0000 |
+    22.0000 |
+    21.0000 |
+    20.0000 |
+    19.0000 |
+    18.0000 |
+    17.0000 |
+    16.0000 | *
+    15.0000 |
+    14.0000 |
+    13.0000 | *
+    12.0000 | *
+    11.0000 |
+    10.0000 M *****
+     9.0000 | ***
+     8.0000 |
+     7.0000 | ****
+
+    Soln (instance "BGHS98", diversifier 11, cost 7.0401)
+    Soln                            Defects          Cost
+    -----------------------------------------------------
+    AssignResourceMonitor                 4        6.0000
+    AvoidSplitAssignmentsMonitor         30        0.0340
+    SpreadEventsMonitor                  17        0.0017
+    AvoidClashesMonitor                   1        1.0000
+    LimitBusyTimesMonitor                21        0.0044
+    -----------------------------------------------------
+    Total                                73        7.0401
+
+  Not a great result on hard constraints, but easily the best
+  so far on split assignments (KTS did no better); perhaps we
+  should go this way.  Anyway, the result looks node-regular,
+  confirming again the general principle that node regularity
+  reduces split assignments.  But we need to do even better.
+
+  What about blocking in the most regular events in all layers
+  and then timetabling the irregular ones around them?
+
+  Gone back to refreshing template layers and not preferring
+  node regularity over cost when improving node regularity, on
+  the principle that I might be getting better node regularity
+  now anyway from the other changes I made.  Best of 1:
+
+    KheGeneralSolve at end (15.20 secs so far):
+    Soln (instance "BGHS98", diversifier 0, cost 5.0528)
+    Soln                            Defects          Cost
+    -----------------------------------------------------
+    AssignResourceMonitor                 4        4.0000
+    AvoidSplitAssignmentsMonitor         43        0.0460
+    SpreadEventsMonitor                  21        0.0022
+    AvoidClashesMonitor                   1        1.0000
+    LimitBusyTimesMonitor                22        0.0046
+    -----------------------------------------------------
+    Total                                91        5.0528
+
+  Best of 16:
+
+    11.0000 | **
+    10.0000 | *
+     9.0000 M *****
+     8.0000 M **
+     7.0000 | *
+     6.0000 | **
+     5.0000 | **
+     4.0000 |
+     3.0000 | *
+
+    Soln (instance "BGHS98", diversifier 6, cost 3.0691)
+    Soln                            Defects          Cost
+    -----------------------------------------------------
+    AssignResourceMonitor                 2        2.0000
+    AvoidSplitAssignmentsMonitor         50        0.0580
+    SpreadEventsMonitor                  44        0.0045
+    AvoidClashesMonitor                   1        1.0000
+    LimitBusyTimesMonitor                29        0.0066
+    -----------------------------------------------------
+    Total                               126        3.0691
+
+  Low total, but many split assignements due to the usual
+  poor node regularity.
+
+  Before pursuing this further I've decided to implement global
+  time swaps, as yet another way to improve time assignments
+  without loss of node regularity.  I've documented it and
+  implemented and documented some new monitor grouping functions
+  it needs.   Done quite a lot of the setting up, but struck
+  a problem with the domains of the meets of the intermediate
+  node I'm introducing.
+
+8 January 2011
+
+  Spent a couple of hours tracking down and fixing a bug that
+  turned out to be in KheMeetSplit.  Grr.
+
+  And now I've discovered that the design for handling time
+  domains does not work correctly when meets are split, at
+  least, not when there are preassigned times.  So there is
+  a whole whack of stuff there to do that I will do later
+  (done, see just below).
+
+  Currently implementing KheTimeGroupReduceInternal in file
+  khe_time_group.c, so that I can get maximal domains for
+  the node swapper.
+
+  Places where KheMeetSplit is called:
+
+    KheNodeGlobalSwapRepairTimes to split the meets of the
+    swap node, which at this point have singleton domains.
+
+    KheLayerTreeMake() to ensure that all meets have durations
+    which do not exceed the number of times in the instance.
+
+    khe_split_class.c to split meets during layer tree
+    construction.
+
+  Places where KheMeetSetDomain is called:
+
+    KheNodeGlobalSwapRepairTimes, to copy a domain.
+
+    KheMinimumRunaroundDuration, to copy a domain.
+
+    KheNodeMakeFromTemplate (KheTryRunaround), to copy a domain.
+
+    KheSolnMakeCycleMeet, to set the domain of a cycle meet.
+
+    khe_transaction.c, to undo and redo.
+
+    khe_split_class.c, to set the domains of the newly split
+    meets; these domains are complex results of applying
+    jobs during KheLayerTreeMake.
+
+  Worked out a whole new plan for meet domains (sigh) and am
+  implementing it now.  Have basically finished the new module,
+  khe_time_group_nhood.c, and now have to use it.
+
+9 January 2011
+
+  Completed the implementation of the new plan for meet domains,
+  all documented and tested.  So can go back to the thing that
+  sparked it off, global swaps, now.
+
+  Is this part of the solution invariant or not?
+
+  # If meet @C { meet } is preassigned time @M { t } (if it is
+  # derived from an instance event which is preassigned time @M { t })
+  # then the current time domain of @C { meet } is a subset of
+  # @M { lbrace t rbrace };
+
+10 January 2011
+
+  It would be good to optimize KheSolnTimeGroupBegin etc. so
+  that it only creates a new time group when it has to, i.e.
+  when existing time groups don't do the job.
+
+  Got KheNodeGlobalSwapRepairTimes working.  It found two
+  repairs which together reduced soft cost from 53 to 46.
+  The overall solution cost was reduced from this (best of 1):
+
+    KheGeneralSolve at end (11.49 secs so far):
+    Soln (instance "BGHS98", diversifier 0, cost 10.0753)
+    Soln                            Defects          Cost
+    -----------------------------------------------------
+    AssignResourceMonitor                 7        7.0000
+    AvoidSplitAssignmentsMonitor         54        0.0670
+    SpreadEventsMonitor                  21        0.0021
+    AvoidClashesMonitor                   3        3.0000
+    LimitBusyTimesMonitor                27        0.0062
+    -----------------------------------------------------
+    Total                               112       10.0753
+
+  and this (best of 16):
+
+    14.0000 | ***
+    13.0000 | *
+    12.0000 | *
+    11.0000 | **
+    10.0000 M **
+     9.0000 | ****
+     8.0000 |
+     7.0000 | *
+     6.0000 | *
+     5.0000 |
+     4.0000 | *
+
+    Average of 16 solutions           Defects          Cost
+    -------------------------------------------------------
+    AssignResourceMonitor                 6.4        7.0000
+    AvoidSplitAssignmentsMonitor         48.1        0.0556
+    SpreadEventsMonitor                  27.9        0.0028
+    AvoidClashesMonitor                   1.8        2.0000
+    AvoidUnavailableTimesMonitor          0.2        0.0000
+    LimitBusyTimesMonitor                22.6        0.0052
+    -------------------------------------------------------
+    Total                               107.0        9.0636
+
+    Soln (instance "BGHS98", diversifier 8, cost 4.0581)
+    Soln                            Defects          Cost
+    -----------------------------------------------------
+    AssignResourceMonitor                 2        2.0000
+    AvoidSplitAssignmentsMonitor         46        0.0490
+    SpreadEventsMonitor                  41        0.0041
+    AvoidClashesMonitor                   1        1.0000
+    AvoidUnavailableTimesMonitor          1        1.0000
+    LimitBusyTimesMonitor                21        0.0050
+    -----------------------------------------------------
+    Total                               112        4.0581
+
+  to this (best of 1):
+
+    KheGeneralSolve at end (9.60 secs so far):
+    Soln (instance "BGHS98", diversifier 0, cost 8.0585)
+    Soln                            Defects          Cost
+    -----------------------------------------------------
+    AssignResourceMonitor                 6        6.0000
+    AvoidSplitAssignmentsMonitor         44        0.0520
+    SpreadEventsMonitor                  17        0.0017
+    AvoidClashesMonitor                   1        2.0000
+    LimitBusyTimesMonitor                23        0.0048
+    -----------------------------------------------------
+    Total                                91        8.0585
+
+  and this (best of 16):
+
+    14.0000 | *
+    13.0000 |
+    12.0000 | ***
+    11.0000 | *
+    10.0000 | *
+     9.0000 M ***
+     8.0000 | ****
+     7.0000 | *
+     6.0000 |
+     5.0000 | **
+
+    Average of 16 solutions           Defects          Cost
+    -------------------------------------------------------
+    AssignResourceMonitor                 5.9        7.0000
+    AvoidSplitAssignmentsMonitor         46.4        0.0545
+    SpreadEventsMonitor                  28.3        0.0028
+    AvoidClashesMonitor                   1.2        1.0000
+    AvoidUnavailableTimesMonitor          0.2        0.0000
+    LimitBusyTimesMonitor                22.9        0.0051
+    -------------------------------------------------------
+    Total                               105.1        8.0624
+
+    Soln (instance "BGHS98", diversifier 14, cost 5.0582)
+    Soln                            Defects          Cost
+    -----------------------------------------------------
+    AssignResourceMonitor                 3        3.0000
+    AvoidSplitAssignmentsMonitor         44        0.0520
+    SpreadEventsMonitor                  20        0.0020
+    AvoidClashesMonitor                   1        1.0000
+    AvoidUnavailableTimesMonitor          1        1.0000
+    LimitBusyTimesMonitor                20        0.0042
+    -----------------------------------------------------
+    Total                                89        5.0582
+
+  Run times are faster and solutions are much the same.  They
+  do look a bit more node-regular, although they are still not
+  node-regular.  Back to the same problem:  node regularity.
+
+  Tried global swaps at the end of each layer.  Best of 1:
+
+    KheGeneralSolve at end (9.11 secs so far):
+    Soln (instance "BGHS98", diversifier 0, cost 6.0562)
+    Soln                              Defects          Cost
+    -------------------------------------------------------
+    AssignResourceMonitor                   5        5.0000
+    AvoidSplitAssignmentsMonitor           46        0.0490
+    SpreadEventsMonitor                    32        0.0032
+    AvoidClashesMonitor                     1        1.0000
+    LimitBusyTimesMonitor                  19        0.0040
+    -------------------------------------------------------
+    Total                                 103        6.0562
+
+  Best of 16:
+
+    20.0000 | *
+    19.0000 |
+    18.0000 |
+    17.0000 |
+    16.0000 |
+    15.0000 |
+    14.0000 | *
+    13.0000 |
+    12.0000 | **
+    11.0000 | *
+    10.0000 | **
+     9.0000 M ***
+     8.0000 | ***
+     7.0000 |
+     6.0000 | ***
+
+    Average of 16 solutions           Defects          Cost
+    -------------------------------------------------------
+    AssignResourceMonitor                 6.0        7.0000
+    AvoidSplitAssignmentsMonitor         46.0        0.0526
+    SpreadEventsMonitor                  34.6        0.0034
+    AvoidClashesMonitor                   1.6        2.0000
+    AvoidUnavailableTimesMonitor          0.2        0.0000
+    LimitBusyTimesMonitor                20.8        0.0047
+    -------------------------------------------------------
+    Total                               109.1        9.0607
+
+    Soln (instance "BGHS98", diversifier 6, cost 6.0550)
+    Soln                              Defects          Cost
+    -------------------------------------------------------
+    AssignResourceMonitor                   5        5.0000
+    AvoidSplitAssignmentsMonitor           46        0.0480
+    SpreadEventsMonitor                    32        0.0032
+    AvoidClashesMonitor                     1        1.0000
+    LimitBusyTimesMonitor                  17        0.0038
+    -------------------------------------------------------
+    Total                                 101        6.0550
+
+  No better really, not using it.
+
+  Made the first step towards allowing multiple template
+  layers, which is to support them but only actually use
+  the first.  Next step is to make use of them.
+
+11 January 2011
+
+  Have changed khe_layer_match.c so that template nodes are stored
+  in supply nodes and demand node groups indexed by template layer,
+  and done a careful audit of this radically changed version.  The
+  next step is to find better node regularity algorithms using the
+  additional template layers.  I've implemented one simple algorithm,
+  which is to try for an exact match with any node in any template
+  layer, and after that fall back on the usual heuristic search.
+  Need to test this algorithm now, then improve it.
+
+  First test gave 20 demand defects at the end of the last layer,
+  which is a good number, but the result was not very regular.
+  With repair, best of 1 had cost 16.0564, best of 16 had cost
+  5.0671, median 12, and there were only 6 distinct solutions,
+  which seems odd.
+
+  An improved first test gave 27 demand defects at the end of
+  the last layer, which is not great but the result seems to
+  be pretty regular (Year 9 English has a genuine problem in
+  being regular, otherwise Year 9 looks pretty right).  With
+  repair, best of 1 had cost 11.0625.  Best of 16 had cost
+  3.0525, but it was a phenomenal outlier:
+
+    14.0000 | *
+    13.0000 | ****
+    12.0000 |
+    11.0000 M ****
+    10.0000 | *
+     9.0000 | *
+     8.0000 | ****
+     7.0000 |
+     6.0000 |
+     5.0000 |
+     4.0000 |
+     3.0000 | *
+
+    Average of 16 solutions           Defects          Cost
+    -------------------------------------------------------
+    AssignResourceMonitor                 6.4        8.0000
+    AvoidSplitAssignmentsMonitor         45.5        0.0525
+    SpreadEventsMonitor                  25.4        0.0025
+    AvoidClashesMonitor                   1.1        1.0000
+    AvoidUnavailableTimesMonitor          0.4        0.0000
+    LimitBusyTimesMonitor                23.3        0.0055
+    -------------------------------------------------------
+    Total                               102.1        9.0605
+
+    Soln (instance "BGHS98", diversifier 11, cost 3.0525)
+    Soln                              Defects          Cost
+    -------------------------------------------------------
+    AssignResourceMonitor                   1        1.0000
+    AvoidSplitAssignmentsMonitor           41        0.0450
+    SpreadEventsMonitor                    24        0.0025
+    AvoidClashesMonitor                     2        2.0000
+    LimitBusyTimesMonitor                  20        0.0050
+    -------------------------------------------------------
+    Total                                  88        3.0525
+
+  As usual the good node regularity before repair was lost.
+  After more fiddling, here are some more experiments:
+
+     Slack cost         Best of 1         Best of 16
+     -----------------------------------------------
+     KheCost(0, 0)      10.0685             4.0593
+     KheCost(1, 0)       9.0651             3.0525 (outlier)
+     KheCost(2, 0)      17.0595             7.0609
+     KheCost(3, 0)      11.0666             3.0545
+     -----------------------------------------------
+
+  We'll stick with KheCost(1, 0) as usual, but more work is
+  needed auditing the effectiveness of the new layer match
+  node regularity algorithm.
+
+  * At present Year 9 has 6 demand defects (one inherited
+    from Year 10).  If we can spread the Year 9 Science/Music
+    runaround out more we can remove 2 of these 6 defects.
+
+  * The problem with Year 9 English is genuine, but it would
+    be good to fix it without relying on diversification.
+    Could we do a maximum matching (unweighted, perhaps) of
+    the nodes of maximum duration, rather than heuristically
+    fixing the first?  Or of all sets of similar nodes?
+
+  If we could fix both of these problems, then Year 9 would
+  probably be good enough, and that would probably do for
+  the initial time assignment.  Then need to make the time
+  repair algorithm less regularity-destroying.
+
+12 January 2011
+
+  Decided I needed a specialized runaround time solver, otherwise
+  I will never be sure of getting neat runarounds.  Have documented
+  a design for such a solver and built the infrastructure for it
+  (khe_runaround_time.c); currently it is compiled and running and
+  builds the solver object that is needed, ready to implement the
+  actual algorithm.
+
+13 January 2011
+
+  Implemented and tested the runaround time solver.  It's working
+  but the iterator needs to be changed so that it preferably
+  visits each parent meet just once, at an offset that depends
+  on the shift.  At present we aren't getting enough variety
+  within each parent meet.
+
+15 January 2011
+
+  Finally got the runaround solver working well.  Best of 1:
+
+    Soln (instance "BGHS98", diversifier 0, cost 9.0650)
+    Soln                              Defects          Cost
+    -------------------------------------------------------
+    AssignResourceMonitor                   5        7.0000
+    AvoidSplitAssignmentsMonitor           52        0.0580
+    SpreadEventsMonitor                    18        0.0018
+    AvoidClashesMonitor                     2        2.0000
+    LimitBusyTimesMonitor                  21        0.0052
+    -------------------------------------------------------
+    Total                                  98        9.0650
+
+  Best of 16:
+
+    14.0000 | **
+    13.0000 |
+    12.0000 |
+    11.0000 | **
+    10.0000 M *******
+     9.0000 | *
+     8.0000 | *
+     7.0000 | **
+     6.0000 | *
+
+    Average of 16 solutions           Defects          Cost
+    -------------------------------------------------------
+    AssignResourceMonitor                 5.0        7.0000
+    AvoidSplitAssignmentsMonitor         46.8        0.0531
+    SpreadEventsMonitor                  23.9        0.0023
+    AvoidClashesMonitor                   2.1        2.0000
+    AvoidUnavailableTimesMonitor          0.4        0.0000
+    LimitBusyTimesMonitor                23.2        0.0054
+    -------------------------------------------------------
+    Total                               101.3        9.0608
+
+    Soln (instance "BGHS98", diversifier 11, cost 6.0645)
+    Soln                              Defects          Cost
+    -------------------------------------------------------
+    AssignResourceMonitor                   4        4.0000
+    AvoidSplitAssignmentsMonitor           46        0.0580
+    SpreadEventsMonitor                    11        0.0011
+    AvoidClashesMonitor                     2        2.0000
+    LimitBusyTimesMonitor                  21        0.0054
+    -------------------------------------------------------
+    Total                                  84        6.0645
+
+  Not great, but still it's right to have decent runarounds, and
+  we are down to just five demand defects (one inherited from
+  Year 10) after assigning Year 9 (this is best of 1):
+
+    [ "x11_4_ComputingStudies_1":3d1.1$Wed2+0:Room_ComputerRoom ]
+    [ "x9_7_Arabic_2_1":2d1.0$Wed3+0:Teacher_ArabicYr7_10 ]
+    [ "x12_3_Physics_1":0d1.1$Wed4+0:Room_ScienceLab ]
+    [ "x12_3_Physics_1":3d1.1$Thu3+0:Room_ScienceLab ]
+    [ "x10_5_Arabic_1_1":0d1.0$Fri3+0:Teacher_ArabicYr7_10 ]
+
+  and 23 after assigning all layers.  This is better than the
+  35 we were getting originally.
+
+  Looking at the unrepaired timetable, Year 10 is perfect now
+  but Year 9 is not quite perfect.  Need to investigate Year 9
+  and see if it can be made better.
+
+  Tried allowing inexact match in TrySingle and got best of
+  1 cost 8.0565 and best of 16 cost 6.0495.  Not great.
+
+  Did a test which proved that on the first solution there was
+  no node-regular assignment for Year 9 English.  Not entirely
+  sure why not, but it seems to be a fact.  You can get one by
+  increasing the slack to about KheCost(3, 0).
+
+  I think it might be time to try for a meet repair that is
+  less disruptive of node regularity than the one we have now.
+  Even a simple meet swapper, taking meets in order of lowest
+  demand first, might do some good.
+
+  Current best of 1 is 13.0724, current best of 16 is 6.0715,
+  which is not great.
+
+16 January 2011
+
+  Have decided on a Plan.  Use KheCost(3, 0) which gives a very
+  node-regular timetable, but with 30 demand defects.  The Plan
+  is to somehow swap away almost all of these demand defects,
+  after flattening, without totally destroying node regularity.
+  At present, best of 1 without repair is
+
+    KheGeneralSolve after time assignment (1.58 secs so far):
+    Soln (instance "BGHS98", diversifier 0, cost 2808.0048)
+    Soln                              Defects          Cost
+    -------------------------------------------------------
+    AssignResourceMonitor                 666     2787.0000
+    SpreadEventsMonitor                    45        0.0048
+    OrdinaryDemandMonitor                  21       21.0000
+    -------------------------------------------------------
+    Total                                 732     2808.0048
+
+  If the current ejection chain algorithm is used, we get
+
+    KheGeneralSolve after time assignment (3.86 secs so far):
+    Soln (instance "BGHS98", diversifier 0, cost 2790.0014)
+    Soln                              Defects          Cost
+    -------------------------------------------------------
+    AssignResourceMonitor                 666     2787.0000
+    SpreadEventsMonitor                    14        0.0014
+    OrdinaryDemandMonitor                   3        3.0000
+    -------------------------------------------------------
+    Total                                 683     2790.0014
+
+  This shows that the ejection chain algorithm is effective,
+  but it's slow (over 2 seconds) and disrupts node regularity.
+  The challenge now is to find a method which is just as
+  effective, but which runs faster and is less disruptive.
+  I've set up khe_simple_repair.c which is to do this.
+
+  Found and fixed a nasty bug in KheGroupMonitorDefectSort,
+  it was forgetting to bring the cost up to date before
+  starting the sort, so the size of the array of defects
+  was sometimes changing as the sort went on.
+
+17 January 2011
+
+  Got the simple swapper going on repairing demand defects; it
+  plus loosening reduced the number of demand defects from 28
+  to 9, although after resource assignment, somehow (inexactness
+  of Sport?), there were only 4.  It seems likely that running
+  this first, followed by the ejection chain algorithm to clean
+  up the small residue, would be good.
+
+  Tried with KheCost(4, 0) and followed the simple repair with
+  an ejection chain repair.  The best of 1 was also best of 16:
+
+    13.0000 | **
+    12.0000 | *
+    11.0000 | **
+    10.0000 M ***
+     9.0000 M *
+     8.0000 | *
+     7.0000 | **
+     6.0000 | ****
+
+    Average of 16 solutions           Defects          Cost
+    -------------------------------------------------------
+    AssignResourceMonitor                 4.6        6.0000
+    AvoidSplitAssignmentsMonitor         46.8        0.0545
+    SpreadEventsMonitor                  35.8        0.0035
+    AvoidClashesMonitor                   1.8        2.0000
+    AvoidUnavailableTimesMonitor          0.3        0.0000
+    LimitBusyTimesMonitor                23.4        0.0058
+    -------------------------------------------------------
+    Total                               112.6        8.0638
+
+    Soln (instance "BGHS98", diversifier 0, cost 6.0636)
+    Soln                              Defects          Cost
+    -------------------------------------------------------
+    AssignResourceMonitor                   3        6.0000
+    AvoidSplitAssignmentsMonitor           49        0.0550
+    SpreadEventsMonitor                    26        0.0026
+    LimitBusyTimesMonitor                  23        0.0060
+    -------------------------------------------------------
+    Total                                 101        6.0636
+
+  The ejection chain repair continues to play havoc with node
+  regularity.  Added simple spread repair and got this best of 1
+  (KheCost(4, 0), incl. ejection chains):
+
+    KheGeneralSolve at end (16.29 secs so far):
+    Soln (instance "BGHS98", diversifier 0, cost 9.0621)
+    Soln                              Defects          Cost
+    -------------------------------------------------------
+    AssignResourceMonitor                   3        6.0000
+    AvoidSplitAssignmentsMonitor           51        0.0540
+    SpreadEventsMonitor                    22        0.0023
+    AvoidClashesMonitor                     2        3.0000
+    LimitBusyTimesMonitor                  23        0.0058
+    -------------------------------------------------------
+    Total                                 101        9.0621
+
+  and this best of 16:
+
+    16.0000 | *
+    15.0000 |
+    14.0000 |
+    13.0000 | **
+    12.0000 | ****
+    11.0000 |
+    10.0000 |
+     9.0000 M ***
+     8.0000 | ***
+     7.0000 |
+     6.0000 | **
+     5.0000 | *
+
+    Average of 16 solutions           Defects          Cost
+    -------------------------------------------------------
+    AssignResourceMonitor                 4.4        7.0000
+    AvoidSplitAssignmentsMonitor         46.7        0.0534
+    SpreadEventsMonitor                  42.1        0.0042
+    AvoidClashesMonitor                   2.0        2.0000
+    AvoidUnavailableTimesMonitor          0.1        0.0000
+    LimitBusyTimesMonitor                25.3        0.0059
+    -------------------------------------------------------
+    Total                               120.7        9.0635
+
+    Soln (instance "BGHS98", diversifier 2, cost 5.0649)
+    Soln                              Defects          Cost
+    -------------------------------------------------------
+    AssignResourceMonitor                   4        5.0000
+    AvoidSplitAssignmentsMonitor           43        0.0530
+    SpreadEventsMonitor                    47        0.0047
+    LimitBusyTimesMonitor                  28        0.0072
+    -------------------------------------------------------
+    Total                                 122        5.0649
+
+  Not remarkable.  Without ejection chain repair the best of
+  16 was 12.0622.
+
+  Documented the simple repair algorithm.
+
+  Documented a version of ejection chains that tries to
+  minimize disruption.  Seems quite implementable and not
+  necessarily slow.  Will implement it next.
+
+18 January 2011
+
+  Working on the new kind of ejection chain today.  Have
+  implemented and documented it and a new solvers assuming
+  its presence.  Best of 1 with the regular repair:
+
+    KheGeneralSolve at end (11.67 secs so far):
+    Soln (instance "BGHS98", diversifier 0, cost 10.0560)
+    Soln                              Defects          Cost
+    -------------------------------------------------------
+    AssignResourceMonitor                   5        6.0000
+    AvoidSplitAssignmentsMonitor           42        0.0500
+    SpreadEventsMonitor                    16        0.0016
+    AvoidClashesMonitor                     3        4.0000
+    LimitBusyTimesMonitor                  21        0.0044
+    -------------------------------------------------------
+    Total                                  87       10.0560
+
+  and best of 16:
+
+    14.0000 | **
+    13.0000 | *
+    12.0000 |
+    11.0000 |
+    10.0000 M ***********
+     9.0000 | **
+
+    Average of 16 solutions           Defects          Cost
+    -------------------------------------------------------
+    AssignResourceMonitor                 5.2        7.0000
+    AvoidSplitAssignmentsMonitor         49.0        0.0551
+    SpreadEventsMonitor                  33.7        0.0034
+    AvoidClashesMonitor                   2.1        2.0000
+    AvoidUnavailableTimesMonitor          0.4        0.0000
+    LimitBusyTimesMonitor                23.9        0.0055
+    -------------------------------------------------------
+    Total                               114.3        9.0640
+
+    Soln (instance "BGHS98", diversifier 2, cost 9.0606)
+    Soln                              Defects          Cost
+    -------------------------------------------------------
+    AssignResourceMonitor                   7        8.0000
+    AvoidSplitAssignmentsMonitor           47        0.0520
+    SpreadEventsMonitor                    30        0.0030
+    AvoidClashesMonitor                     1        1.0000
+    LimitBusyTimesMonitor                  24        0.0056
+    -------------------------------------------------------
+    Total                                 109        9.0606
+
+  This is with KheCost(4, 0).  With KheCost(1, 0) the best of
+  16 is 4.0730.
+
+  Best of 1 with the new "long" repair:
+
+    KheGeneralSolve at end (19.91 secs so far):
+    Soln (instance "BGHS98", diversifier 0, cost 11.0689)
+    Soln                              Defects          Cost
+    -------------------------------------------------------
+    AssignResourceMonitor                   6        9.0000
+    AvoidSplitAssignmentsMonitor           51        0.0600
+    SpreadEventsMonitor                    23        0.0023
+    AvoidClashesMonitor                     1        2.0000
+    LimitBusyTimesMonitor                  25        0.0066
+    -------------------------------------------------------
+    Total                                 106       11.0689
+
+  and best of 16:
+
+    12.0000 | *
+    11.0000 | **
+    10.0000 | **
+     9.0000 M ***
+     8.0000 M *****
+     7.0000 | *
+     6.0000 | *
+     5.0000 | *
+
+    Average of 16 solutions           Defects          Cost
+    -------------------------------------------------------
+    AssignResourceMonitor                 4.4        6.0000
+    AvoidSplitAssignmentsMonitor         44.7        0.0520
+    SpreadEventsMonitor                  44.4        0.0045
+    AvoidClashesMonitor                   1.4        2.0000
+    LimitBusyTimesMonitor                24.6        0.0060
+    -------------------------------------------------------
+    Total                               119.5        8.0625
+
+    Soln (instance "BGHS98", diversifier 4, cost 5.0735)
+    Soln                              Defects          Cost
+    -------------------------------------------------------
+    AssignResourceMonitor                   3        4.0000
+    AvoidSplitAssignmentsMonitor           51        0.0580
+    SpreadEventsMonitor                    79        0.0079
+    AvoidClashesMonitor                     1        1.0000
+    LimitBusyTimesMonitor                  30        0.0076
+    -------------------------------------------------------
+    Total                                 164        5.0735
+
+  With KheCost(1, 0) the best is 5.0562.
+
+  and with long repair, but not limiting disruption:
+
+    KheGeneralSolve at end (28.58 secs so far):
+    Soln (instance "BGHS98", diversifier 0, cost 7.0724)
+    Soln                              Defects          Cost
+    -------------------------------------------------------
+    AssignResourceMonitor                   4        5.0000
+    AvoidSplitAssignmentsMonitor           50        0.0590
+    SpreadEventsMonitor                    78        0.0078
+    AvoidClashesMonitor                     1        2.0000
+    LimitBusyTimesMonitor                  26        0.0056
+    -------------------------------------------------------
+    Total                                 159        7.0724
+
+  Best of 16 with this setting is quite good:
+
+    11.0000 | ***
+    10.0000 | **
+     9.0000 |
+     8.0000 |
+     7.0000 M ***
+     6.0000 M *
+     5.0000 | *******
+
+    Average of 16 solutions           Defects          Cost
+    -------------------------------------------------------
+    AssignResourceMonitor                 3.9        5.0000
+    AvoidSplitAssignmentsMonitor         45.8        0.0528
+    SpreadEventsMonitor                  67.3        0.0068
+    AvoidClashesMonitor                   1.3        1.0000
+    AvoidUnavailableTimesMonitor          0.1        0.0000
+    LimitBusyTimesMonitor                24.4        0.0059
+    -------------------------------------------------------
+    Total                               142.8        6.0655
+
+    Soln (instance "BGHS98", diversifier 3, cost 5.0541)
+    Soln                              Defects          Cost
+    -------------------------------------------------------
+    AssignResourceMonitor                   3        4.0000
+    AvoidSplitAssignmentsMonitor           37        0.0430
+    SpreadEventsMonitor                    61        0.0061
+    AvoidClashesMonitor                     1        1.0000
+    LimitBusyTimesMonitor                  21        0.0050
+    -------------------------------------------------------
+    Total                                 123        5.0541
+
+  With KheCost(1, 0) the best is
+
+    Soln (instance "BGHS98", diversifier 8, cost 4.0619)
+    Soln                              Defects          Cost
+    -------------------------------------------------------
+    AssignResourceMonitor                   2        3.0000
+    AvoidSplitAssignmentsMonitor           42        0.0530
+    SpreadEventsMonitor                    41        0.0041
+    AvoidClashesMonitor                     1        1.0000
+    LimitBusyTimesMonitor                  21        0.0048
+    -------------------------------------------------------
+    Total                                 107        4.0619
+
+  which is the best of this run of tests, although as usual
+  not a node-regular assignment.  I've worked out why swapping
+  meets can disrupt Year 10: it's because the Year 10 Maths
+  classes are all linked.  If you decide to move one, you
+  move the lot, and there goes your node regularity.  Debug
+  runs have shown transactions doing all this - and yet they
+  are the least disruptive ones.
+
+  One possibility would be to actually limit disruption rather
+  than merely to minimize it as we are doing now.
+
+18 January 2011
+
+  Reorganized ejectors to unify the new ideas and allow
+  disruption to be limited as well as minimized.  All
+  done, documented, audited, and tested.  Results:
+
+    7.0734 in 8.32 secs on KHE_EJECTOR_FIRST_SUCCESS
+    4.0809 in 22.11 secs on KHE_EJECTOR_MIN_COST,
+    7.0708 in 20.91 secs on KHE_EJECTOR_MIN_DISRUPTION_THEN_COST
+
+  Then setting max_disruption to 60 got
+
+   11.0617 in 13.33 secs on KHE_EJECTOR_MIN_DISRUPTION_THEN_COST
+   10.0609 in 7.57 secs on KHE_EJECTOR_MIN_COST
+
+  These last are noticeably better in soft constraint cost (avoid
+  split assignments costs, basically) than the others, and one can
+  see some residual node regularity in the display.  Keeping to
+  (KHE_EJECTOR_MIN_COST, 60), best of 16 is 8.0583.
+
+  What to do now?  I'm still at the same problem:  I can get
+  reasonable node regularity in Year 9, I can get reasonable
+  demand cost in Year 9, but I don't seem to be able to get
+  both, whatever I do.  I really need to solve this problem.
+  The KTS solution has both, why can't I get it in KHE?
+
+  I'm running out of ideas, but one possibility is to make
+  a version of KheLayerMatchImproveNodeRegularity which has
+  the following priorities:
+
+  * First, demand cost for nodes where there are no children,
+    hence no real prospects for swapping demand problems away
+    later on.
+
+  * Second, node regularity.
+
+  * Third, demand cost for nodes with children.
+
+  This way, we might avoid intractable demand costs but still
+  get good node regularity.  Current vanilla-flavoured results:
+
+    KheGeneralSolve at end (8.46 secs so far):
+    Soln (instance "BGHS98", diversifier 0, cost 15.0622)
+    Soln                              Defects          Cost
+    -------------------------------------------------------
+    AssignResourceMonitor                   5       10.0000
+    AvoidSplitAssignmentsMonitor           46        0.0550
+    SpreadEventsMonitor                    14        0.0014
+    AvoidClashesMonitor                     3        4.0000
+    AvoidUnavailableTimesMonitor            1        1.0000
+    LimitBusyTimesMonitor                  23        0.0058
+    -------------------------------------------------------
+    Total                                  92       15.0622
+
+  and best of 16:
+
+    15.0000 | **
+    14.0000 | **
+    13.0000 | *
+    12.0000 |
+    11.0000 | **
+    10.0000 M **
+     9.0000 | *
+     8.0000 |
+     7.0000 |
+     6.0000 | ****
+     5.0000 | **
+
+    Average of 16 solutions           Defects          Cost
+    -------------------------------------------------------
+    AssignResourceMonitor                 5.2        7.0000
+    AvoidSplitAssignmentsMonitor         43.6        0.0495
+    SpreadEventsMonitor                  21.5        0.0021
+    AvoidClashesMonitor                   1.4        1.0000
+    AvoidUnavailableTimesMonitor          0.4        0.0000
+    LimitBusyTimesMonitor                22.0        0.0052
+    -------------------------------------------------------
+    Total                                94.1        8.0568
+
+    Soln (instance "BGHS98", diversifier 7, cost 5.0537)
+    Soln                              Defects          Cost
+    -------------------------------------------------------
+    AssignResourceMonitor                   4        5.0000
+    AvoidSplitAssignmentsMonitor           41        0.0470
+    SpreadEventsMonitor                    21        0.0021
+    LimitBusyTimesMonitor                  20        0.0046
+    -------------------------------------------------------
+    Total                                  86        5.0537
+
+28 January 2011
+
+  Just returned from a week's holiday.  Not sure where to go from
+  here so decided to do the re-implementation of HSEval using KHE.
+
+  Added reports to KHE's archive printing.  KHE already reads and
+  ignores reports (except for format errors), which is OK as is.
+
+  Finished the conversion of main.c and cgi.c in HSEval.
+
+29 January 2011
+
+  Continuing with the conversion of HSEval.  Added deviation
+  reporting to KHE, and also audited the function calculated,
+  which was sometimes wrong for cost functions other than Sum.
+
+1 February 2011
+
+  Revised HSEval now compiled and tested.  It all seems to
+  be working.  Should really use it for a while at home
+  before installing it on the net.
+
+2 February 2011
+
+  Working on KHE solving again.  Must stop soon.  Added a
+  min_cost_improvement parameter to KheSimpleRepairTimes,
+  it seemed to work quite well:  when passed KheCost(1, 0),
+  it found a few key repairs, but did not greatly disturb
+  node regularity.
+
+  Implementing KheMergeMeets uncovered errors in KheMeetSplit
+  and KheMeetMerge.  All fixed now.  Got a cost reduction from
+  25.0573 to 25.0552 from KheMergeMeets, which is bad because
+  it shows that there were 21 cases of adjacent meets; in one
+  case (x8_LPD_1234_1) two doubles merged into a quadruple!
+
+3 February 2011
+
+  Documented a new algorithm for improving node regularity,
+  one which distinguishes between child nodes without children
+  and child nodes with children.  Next step is to implement it.
+
+4 February 2011
+
+  Have a clean compile of the new algorithm for improving node
+  regularity.  It ran first time without crashing and after some
+  minor debugging produced a good timetable for Year 10.  Need
+  to investigate its behaviour closely now and refine it.
+
+5 February 2011
+
+  The new algorithm was handling Year 10 perfectly, but Year 9
+  less so.  Fixed a problem with the Year 9 segmentation, and
+  allowed KheLayerMatchMake to take account of a spread events
+  constraint, which has eliminated a small spread problem in
+  the first layer.
+
+6 February 2011
+
+  The new layer matching code is in pretty good shape, so I
+  thought it was time to bring back the various time repairs
+  and see what we get overall.  Best of 1:
+
+    KheGeneralSolve at end (15.52 secs so far):
+    Soln (instance "BGHS98", diversifier 0, cost 10.0454)
+    Soln                              Defects          Cost
+    -------------------------------------------------------
+    AssignResourceMonitor                   7        8.0000
+    AvoidSplitAssignmentsMonitor           36        0.0410
+    SpreadEventsMonitor                     8        0.0008
+    AvoidClashesMonitor                     2        2.0000
+    LimitBusyTimesMonitor                  15        0.0036
+    -------------------------------------------------------
+    Total                                  68       10.0454
+
+  Best of 16:
+
+      11.0000 | ***
+      10.0000 | ****
+       9.0000 M *
+       8.0000 M **
+       7.0000 | ***
+       6.0000 | ***
+
+    Soln (instance "BGHS98", diversifier 3, cost 6.0492)
+    Soln                              Defects          Cost
+    -------------------------------------------------------
+    AssignResourceMonitor                   6        6.0000
+    AvoidSplitAssignmentsMonitor           40        0.0430
+    SpreadEventsMonitor                     8        0.0008
+    LimitBusyTimesMonitor                  24        0.0054
+    -------------------------------------------------------
+    Total                                  78        6.0492
+
+  This is more or less the best so far on soft constraints,
+  which may be more important than reducing hard constraint
+  cost to 2 or 3.  Also fixed a bug with meet merging; child
+  meets were being given the wrong offsets.
+
+  Holding everything the same but refreshing the template layer:
+
+    KheGeneralSolve at end (11.53 secs so far):
+    Soln (instance "BGHS98", diversifier 0, cost 8.0733)
+    Soln                              Defects          Cost
+    -------------------------------------------------------
+    AssignResourceMonitor                   5        8.0000
+    AvoidSplitAssignmentsMonitor           56        0.0650
+    SpreadEventsMonitor                    27        0.0027
+    LimitBusyTimesMonitor                  22        0.0056
+    -------------------------------------------------------
+    Total                                 110        8.0733
+
+  Best of 16:
+
+    14.0000 | *
+    13.0000 |
+    12.0000 |
+    11.0000 |
+    10.0000 | *
+     9.0000 | **
+     8.0000 M ********
+     7.0000 | **
+     6.0000 |
+     5.0000 | *
+     4.0000 | *
+
+    Soln (instance "BGHS98", diversifier 7, cost 4.0641)
+    Soln                              Defects          Cost
+    -------------------------------------------------------
+    AssignResourceMonitor                   3        3.0000
+    AvoidSplitAssignmentsMonitor           49        0.0570
+    SpreadEventsMonitor                     9        0.0009
+    AvoidClashesMonitor                     1        1.0000
+    LimitBusyTimesMonitor                  25        0.0062
+    -------------------------------------------------------
+    Total                                  87        4.0641
+
+  Although hard cost is better, it is not better on average.
+  Soft cost is noticeably worse, and eyeballing the timetable
+  shows that it is much less regular.  So let's not refresh.
+
+  Have decided to spend some time on resoure adjustment, to
+  see whether these fairly large numbers of split assignments
+  can be reduced by means other than further improving node
+  regularity, which is getting hard.  Two ideas:
+
+  * bring over from KTS the algorithm for deassigning and
+    reassigning the two resources involved in the split;
+
+  * try an ejection chain repair algorithm that reassigns
+    times as well as resources.
+
+  I've documented a function which does the first of these,
+  have to implement it now.
+
+8 February 2011
+
+  In the middle of transporting the two-colouring code
+  across from KTS.  Actually it has more or less turned
+  into a complete rewrite.
+
+9 February 2011
+
+  Two-colouring module working.  It found five improvements, but
+  by the end there were just two improvements, so someone else
+  must have been at work on those defects as well.  Best of 16:
+
+    11.0000 | ***
+    10.0000 | ****
+     9.0000 M *
+     8.0000 M ****
+     7.0000 | *
+     6.0000 | ***
+
+    Soln (instance "BGHS98", diversifier 3, cost 6.0503)
+    Soln                              Defects          Cost
+    -------------------------------------------------------
+    AssignResourceMonitor                   6        6.0000
+    AvoidSplitAssignmentsMonitor           42        0.0440
+    SpreadEventsMonitor                     9        0.0009
+    LimitBusyTimesMonitor                  24        0.0054
+    -------------------------------------------------------
+    Total                                  81        6.0503
+
+  Found a problem with KheTaskKempeAssignResource.  It was
+  working on arbitrary tasks, not leader tasks, and if the
+  task it is given has no meet (quite possible with leader
+  tasks) it thinks its job is easy.
+
+  I've implemented, tested, and documented a new version which
+  works with leader tasks only.  Best of 1:
+
+    KheGeneralSolve at end (6.18 secs so far):
+    Soln (instance "BGHS98", diversifier 0, cost 10.0452)
+    Soln                              Defects          Cost
+    -------------------------------------------------------
+    AssignResourceMonitor                   7        8.0000
+    AvoidSplitAssignmentsMonitor           34        0.0400
+    SpreadEventsMonitor                     8        0.0008
+    AvoidClashesMonitor                     2        2.0000
+    LimitBusyTimesMonitor                  17        0.0044
+    -------------------------------------------------------
+    Total                                  68       10.0452
+
+  Best of 16:
+
+    11.0000 | ****
+    10.0000 | **
+     9.0000 M **
+     8.0000 M ****
+     7.0000 | *
+     6.0000 | ***
+
+    Soln (instance "BGHS98", diversifier 3, cost 6.0494)
+    Soln                              Defects          Cost
+    -------------------------------------------------------
+    AssignResourceMonitor                   5        5.0000
+    AvoidSplitAssignmentsMonitor           39        0.0430
+    SpreadEventsMonitor                     8        0.0008
+    AvoidClashesMonitor                     1        1.0000
+    LimitBusyTimesMonitor                  22        0.0056
+    -------------------------------------------------------
+    Total                                  75        6.0494
+
+  It does seem somewhat better on split assignments, as it
+  should be, because the old version was introducing them
+  before they were expected.
+
+10 February 2011
+
+  Options                           Time (1)   Cost(1)  Cost(16)
+  --------------------------------------------------------------
+  1 As above                            6.18   10.0452    6.0494
+  2 layer_node_matching_repair_times   14.55   20.0513    5.0455
+  3 node_meet_swap_repair_times        12.30    6.0381    6.0381
+  4 with_long_repair                    9.39   12.0475    6.0494
+  1+2+3                                11.37    7.0433    4.0538
+  1+2+3+4                              11.37    7.0433    4.0538
+  --------------------------------------------------------------
+  Let's use 1+2+3 for now.
+
+  Thing to do:
+
+  * try an ejection chain repair algorithm that reassigns
+    times as well as resources.
+
+12 February 2011
+
+  Working on building new versions of my instances and solutions
+  for Gerhard.  Came upon a nasty problem:  the code for inferring
+  time breaks was complete rubbish.  Have implemented a revised
+  version, quarantined in a separate file, and am ready to test
+  it.  But I'm wondering now, since time breaks are used to
+  build cycle meets, whether they should be part of the solution
+  and not part of the instance at all.  Who else uses time breaks
+  in the instance?
+
+13 February 2011
+
+  Have decided that time break inference belongs in solutions, not
+  in instances.  Have documented the new stuff and implemented most
+  of it, and now I need to remove the documentation of the old stuff
+  and unimplement it.
+
+14 February 2011
+
+  Removed old cycle meet stuff and its documentation, and added
+  the new stuff, documented it, and tested it - seems to work,
+  am getting the same cost (7.0433) as before.
+
+15 February 2011
+
+  Placed a new version of HSEval on the internet, and sent off
+  new versions of instances BGHS98, TES99, and SAHS96, with
+  solutions, to Gerhard.
+
+  There is a problem with MArrayContains when compiled at uni;
+  there seems to be some confusion about the sizeof values, it
+  says it's casting a pointer to an integer of a different size.
+
+16 February 2011
+
+  Working on evenness monitoring.  Have made partitions clearer
+  and given each of them an index in the instance.  Tested.
+  Documented and implemented evenness monitors, ready for testing.
+
+17 February 2011
+
+  Evenness monitoring seems to be working.  Best of 1:
+
+    KheGeneralSolve at end (13.54 secs so far):
+    Soln (instance "BGHS98", diversifier 0, cost 9.0434)
+    Soln                              Defects          Cost
+    -------------------------------------------------------
+    AssignResourceMonitor                   4        7.0000
+    AvoidSplitAssignmentsMonitor           35        0.0380
+    SpreadEventsMonitor                     4        0.0004
+    AvoidClashesMonitor                     2        2.0000
+    LimitBusyTimesMonitor                  21        0.0050
+    -------------------------------------------------------
+    Total                                  66        9.0434
+
+  Best of 16:
+
+    15.0000 | **
+    14.0000 |
+    13.0000 |
+    12.0000 |
+    11.0000 | ***
+    10.0000 | *
+     9.0000 M ***
+     8.0000 | *
+     7.0000 | ****
+     6.0000 |
+     5.0000 | **
+
+    Soln (instance "BGHS98", diversifier 4, cost 5.0464)
+    Soln                              Defects          Cost
+    -------------------------------------------------------
+    AssignResourceMonitor                   4        4.0000
+    AvoidSplitAssignmentsMonitor           33        0.0390
+    SpreadEventsMonitor                    20        0.0020
+    AvoidClashesMonitor                     1        1.0000
+    LimitBusyTimesMonitor                  23        0.0054
+    -------------------------------------------------------
+    Total                                  81        5.0464
+
+  Turning it off gives best of 1:
+
+    KheGeneralSolve at end (11.18 secs so far):
+    Soln (instance "BGHS98", diversifier 0, cost 7.0433)
+    Soln                              Defects          Cost
+    -------------------------------------------------------
+    AssignResourceMonitor                   5        7.0000
+    AvoidSplitAssignmentsMonitor           31        0.0380
+    SpreadEventsMonitor                     5        0.0005
+    LimitBusyTimesMonitor                  20        0.0048
+    -------------------------------------------------------
+    Total                                  61        7.0433
+
+  and best of 16 is 4.0538, with 42 split assignments.  All
+  this may just be noise.
+
+  Have been fiddling around with resource packing, to get it to
+  focus on packing tasks that will be difficult to move in time
+  later.  Changing just this one thing gives best of 1:
+
+    KheGeneralSolve at end (9.57 secs so far):
+    Soln (instance "BGHS98", diversifier 0, cost 6.0415)
+    Soln                              Defects          Cost
+    -------------------------------------------------------
+    AssignResourceMonitor                   5        6.0000
+    AvoidSplitAssignmentsMonitor           29        0.0360
+    SpreadEventsMonitor                     5        0.0005
+    LimitBusyTimesMonitor                  20        0.0050
+    -------------------------------------------------------
+    Total                                  59        6.0415
+
+  and best of 16:
+
+    24.0000 | **
+    22.0000 |
+    20.0000 |
+    18.0000 |
+    16.0000 |
+    14.0000 |
+    12.0000 | *
+    10.0000 | **
+     8.0000 M ****
+     6.0000 | *****
+     4.0000 | **
+
+    Soln (instance "BGHS98", diversifier 4, cost 4.0511)
+    Soln                              Defects          Cost
+    -------------------------------------------------------
+    AssignResourceMonitor                   2        3.0000
+    AvoidSplitAssignmentsMonitor           42        0.0450
+    SpreadEventsMonitor                     7        0.0007
+    AvoidClashesMonitor                     1        1.0000
+    LimitBusyTimesMonitor                  23        0.0054
+    -------------------------------------------------------
+    Total                                  75        4.0511
+
+  This is very marginally better (just noise), but presumably
+  there will now be a tendency for the split assignments to
+  concentrate in the more movable tasks, even though the
+  start to this given by resource packing is not continued
+  on through the ejection chain repairs.
+
+  With evenness get best of 1: 9.0457 (13.77 secs), best of
+  16: 5.0498, which is nothing remarkable.  Increasing the
+  weight of evenness monitors to KheCost(0, 5) gave best
+  of 1: 8.0372 (14.77 secs), best of 16: 5.0412, with 32
+  split assignments, again not a remarkable result.
+
+  There seems to have been something wrong with resource
+  packing, not packing everything it could.  It seems to
+  be working now, but I'm not sure what I did.  Anyway
+  the best of 1 is now 5.0559 (12.27 secs) and best of
+  16 is 4.0483, which is the best we've done recently:
+
+    26.0000 | **
+    24.0000 |
+    22.0000 |
+    20.0000 |
+    18.0000 |
+    16.0000 |
+    14.0000 |
+    12.0000 | *
+    10.0000 | ****
+     8.0000 M **
+     6.0000 | **
+     4.0000 | *****
+
+    Soln (instance "BGHS98", diversifier 4, cost 4.0483)
+    Soln                              Defects          Cost
+    -------------------------------------------------------
+    AssignResourceMonitor                   2        3.0000
+    AvoidSplitAssignmentsMonitor           36        0.0420
+    SpreadEventsMonitor                     7        0.0007
+    AvoidClashesMonitor                     1        1.0000
+    LimitBusyTimesMonitor                  26        0.0056
+    -------------------------------------------------------
+    Total                                  72        4.0483
+
+  There are 6 Maths split assignments in this solution, which
+  is not good, especially considering that there is a remaining
+  workload of 4, which ought to give some room to move.
+
+  There is a Year 8 split assignment which can be removed by
+  a simple move of one half of the split to the resource of
+  the other.  That fix would clear the way for removing the
+  split assignment in x12_4_Maths_6P_1, which if removed would
+  give one overload defect which itself could be removed by
+  an ejection chain.  So there are prospects for reducing the
+  6 Maths split assignments to 4, a more acceptable number.
+
+  Why is this not being done?  Have to track it through the
+  various stages of ejection chains etc.  This solution has
+  diversifier 4, can we start off one soln with this value?
+
+18 February 2011
+
+  Found and fixed the bug just referred to.  It was caused by
+  defect lists changing as they were traversed, causing some
+  defects to be skipped over without any repair being attempted.
+  I've verified that there are no easy repairs now.
+
+  Best of 1 now has cost 9.0495 (13.17 secs), and best of 16 has
+  cost 9.0438.  There is a diversity problem (only 6 distinct
+  solutions), and a problem with node regularity in Year 9 that
+  needs looking into.  It looks like the more effective ejection
+  chain has done a better job of disrupting node regularity
+  during time assignment.
+
+  And when I turned off time adjustment, a dirty little secret
+  was revealed:  once again, the Maths meeting is being dumped
+  on top of the Staff meeting.  Fixed now; it turned out that
+  KheNodeMeetSwapRepairTimes was swapping the assignments of
+  some unassigned meets, a very silly thing to do.  The similar
+  KheLayerNodeMatchingLayerRepairTimes was already ensuring that
+  all the nodes it included were fully assigned.
+
+  With ordinary time adjustment, best of 1 now has cost 16.0504
+  (20.71 sections), best of 16 has cost 8.0518.  With extended
+  time adjustment *instead*, best of 1 has cost 18.0540 (14.38
+  secs), best of 16 has cost 8.0585.  Still only six distinct
+  solutions.  Either way the node regularity remains poor,
+  although the extended one does seem to be less bad:  it has
+  left Year 10 unwrecked.
+
+  Tried extended repair without simple adjustment first.  Got
+  best of 1 26.0399 (16.20 secs), and best of 16 9.0429.  The
+  best of 16 had some disruption to Year 10 node regularity.
+  Need to look into preserving node regularity.
+
+  Back to simple and non-extended time repair.  Without node
+  meet swapping, best of 1 is 11.0481 (13.15 secs) and best
+  of 16 is 7.0470.  Node regularity seems not so bad, not
+  sure why that would be.  Still we seem better off without
+  it, will turn it off for the time being.
+
+  Have been looking at KheLayerTemplateRepairTimes to see
+  whether it can be encouraged to remove a small spread
+  defect from Year 10.  But noticed a strange thing:  it
+  is reporting that E10_5 and E10_7 share a template node,
+  but in the solution I can see, they don't.  The info it
+  is printing implies that there has been a subsequent swap
+  of E10_4 with E10_7, but I have no idea who did this.
+
+  Yes I do: it will be KheLayerNodeMatchingNodeRepairTimes.
+  Yep, that was it.  But we still have the spread problem
+  in Year 10 to fix.
+
+19 February 2011
+
+  Thinking about a more unified way of repairing time assignments,
+  one that incorporates most of the different ideas into a
+  single ejection chain algorithm.
+
+  Taken the first step in this direction by defining zones,
+  which will replace template layers but be part of the core
+  platform, so that everyone can access them.  Documented,
+  implemented, and tested (worked first time!).  Now to use it.
+
+20 February 2011
+
+  Revising layer matching to work with zones instead of template
+  layers.  Documentation done, implementation done, tested, and
+  working.  There seems to have been a strange bug in the old
+  node regularity code, can't see how it could have worked.
+  Best of 1 cost 8.0447 (11.79 secs), and this was also the
+  best of 16 (actually only 6 distinct solutions).  So it
+  looks like we have some work to do to get back to 4.xxxx.
+
+  There is a spread problem in Year 10:  E10_5 is being assigned
+  blocks {Tue1, Tue2}, {Thu7}, {Thu8}, and this has 1 spread
+  defect.  There is no node-regular repair that would remove
+  this, because the other occupant of the block containing
+  {Thu7} and {Thu8} is E10_7, and it already has a block on
+  Thursdays.  But that other block could swap with the E10_4
+  block {Wed5, Wed6}, and this would fix everything - an
+  ejection chain of depth 2.  The current function for fixing
+  these problems, KheLayerTemplateRepairTimes, just tries
+  swaps, not ejection chains.
+
+  Another job: review the handling of node regularity generally
+  in the User's Guide.  The functions defined in Section 10.5
+  don't seem to be getting much use.  Even KheLayerRegular,
+  formerly used to find template layers, is not currently used).
+  The whole concept is supported by zones but zones are not
+  mentioned in that section.
+
+21 February 2011
+
+  Planned and documented automatic time domains, which allow
+  meets to adapt their domains as other meets are assigned to
+  them and unassigned from them.  Implementation done, and no
+  problems with existing code, but have not actually tested
+  anything that uses automatic domains yet.
+
+  Could update the global swaps code to use automatic domains
+  right now, as a test.
+
+  Also need to redo KheLayerTemplateRepairTimes so that it
+  uses zones, not a template layer.
+
+  Then we have the following node-regular repair functions:
+
+    KheLayerTemplateRepairTimes
+    KheLayerNodeMatchingLayerRepairTimes
+    KheLayerNodeMatchingNodeRepairTimes
+    KheNodeMeetSwapRepairTimes
+    KheNodeGlobalSwapRepairTimes
+
+  most of which can be folded into a single node-regular ejection
+  chain repair algorithm applied after each layer is assigned.
+
+22 February 2011
+
+  Had an idea for a better way to structure my next PATAT paper, using
+  the single node-regular ejection chain time repair algorithm as the
+  focus.  Spent the morning sketching that out.  This afternoon I
+  converted KheLayerTemplateRepairTimes into KheLayerZoneRepairTimes.
+  All documented, implemented, tested, and working.  Also converted
+  KheNodeGlobalSwapRepairTimes to use automatic domains; it worked
+  first time.  And checked all occurrences of KheMeetDomain to make
+  sure they are OK with automatic domains.
+
+  The next step would seem to be a unified description of the
+  combined ejection chain time repair algorithm, followed by
+  its implementation.
+
+24 February 2011
+
+  Working on the new paper about node-regular time repair.  It
+  looks good in itself and will nicely complement a second paper,
+  which I will write later in the year, about solving the
+  XHSTT2011 instances.
+
+26 February 2011
+
+  Written most of the new paper, in the course of which I have
+  sorted out my ideas about generalizing the various functions
+  I've written for time repair into a single ejection chain
+  time repair function.
+
+  I should now implement those ideas, do some experiments, and
+  add their results to the paper, which will finish it off.  It
+  will not need to be updated, whatever I do later this year.
+
+27 February 2011
+
+  Changed the monitor grouping functions to accept an extra
+  parameter which causes them to group assigned meets only.
+  Currently working on a better Kempe meet move function,
+  in khe_time_repair.c.
+
+28 February 2011
+
+  I've redone KheKempeMeetMove to allow different durations in
+  the time-adjacent case.  Still to test, but I've audited it
+  and documented it carefully - it's great.
+
+  Also finished and audited the new prefer times augment,
+  including preserving zones, but not yet node moves.  Have
+  to do them, then spread and demand augments.
+
+1 March 2011
+
+  Spent the morning fiddling with the documentation, clearing
+  up a few conceptual points.  Finished off the whole ejection
+  chains time repair algorithm.  Still need to document it.
+  I've reorganized the time solvers chapter, but this ejection
+  chain algorithm is documented (in detail, that is) in the
+  ejection chains chapter.
+
+  It might be better to divide up the explanations of the
+  augment functions.  The current arrangement assumes
+  that there will only ever be one augment function for
+  each kind of constraint, whereas in reality there may
+  be one for each (algorithm, constraint) pair.
+
+  So the ejection chains algorithm should be organized
+  as a general introduction followed by one section
+  for each algorithm.
+
+2 March 2011
+
+  Documented and implemented vizier nodes, the new name for the node
+  inserted under the cycle node, including new code for handling zones.
+
+  Knocked the time solvers chapter into decent shape at last.  The only
+  remaining question is the name and final form of the function documented
+  in the "Putting it all together" section of that chapter, including
+  where vizier nodes are best incorporated.
+
+  Reviewed the distribution of the time solvers code into files, which is
+  in reasonable shape.  Next, I need to reorganize ejection chain code and
+  doc (see above).  At that point I should be ready to test the new stuff.
+
+  (1) Sort out "Putting it all together" in time_solvers;
+  (2) Reorganize ejection chains chapter;
+  (3) Start testing
+
+3 March 2011
+
+  (1) done, although now I'm puzzled about why domain tightening is
+  a part of that algorithm.  Should it move to the general solver?
+
+  (2) is done.  Ultimately I need to remove khe_augment.c, but at
+  present its augment functions are still called by the old ejection
+  chain algorithms documented in the time solvers chapter.  Until I
+  can get rid of them, khe_augment.c must remain.
+
+4 March 2011
+
+  Incorporated vizier splits into the time assignment algorithm.
+  Then ran the new algorithm.  It worked first time, basically.
+  Best of 1:
+
+    KheGeneralSolve at end (19.11 secs so far):
+    Soln (instance "BGHS98", diversifier 0, cost 9.0494)
+    Soln                              Defects          Cost
+    -------------------------------------------------------
+    AssignResourceMonitor                   6        7.0000
+    AvoidSplitAssignmentsMonitor           34        0.0410
+    SpreadEventsMonitor                    36        0.0036
+    AvoidClashesMonitor                     1        1.0000
+    AvoidUnavailableTimesMonitor            1        1.0000
+    LimitBusyTimesMonitor                  22        0.0048
+    -------------------------------------------------------
+    Total                                 100        9.0494
+
+  Best of 16:
+
+    13.0000 | *
+    12.0000 | ***
+    11.0000 | *
+    10.0000 | **
+     9.0000 M ***
+     8.0000 |
+     7.0000 | ***
+     6.0000 |
+     5.0000 | ***
+
+  [ Soln (instance "BGHS98", diversifier 2, cost 5.0432)
+    Soln                              Defects          Cost
+    -------------------------------------------------------
+    AssignResourceMonitor                   5        5.0000
+    AvoidSplitAssignmentsMonitor           34        0.0380
+    SpreadEventsMonitor                     4        0.0004
+    LimitBusyTimesMonitor                  20        0.0048
+    -------------------------------------------------------
+    Total                                  63        5.0432
+
+  This compares quite well with a previous result that I seem to
+  have considered to be good: 4.0483 (17 February).  Still only
+  6 distinct solutions, I really must do something about that.
+  Run time is another thing to look at.  Also it would be good
+  to get some idea of where the ejection chain is finding its
+  improvements (it is certainly finding many improvements).
+  Also min-disruptive repair after removing structures.
+  Also look at the timetable before removing structures.
+
+  Have begun to generate graphs, added one to the paper so far.
+
+5 March 2011
+
+  Finished my first PATAT12 paper, on time repair in high
+  school timetabling.
+
+1 April 2011
+
+  Tidied up the documentation and made an off-site backup and
+  new release.
+
+15 May 2011
+
+  Have been fixing a couple of bugs reported by users of HSEval,
+  one a straight bug in khe_dev_monitor.c, the other forgetting
+  that the resources of event resource groups have to be event
+  resources in themselves.  New version published today.
+
+6 June 2011
+
+  Fixed a reported bug in HSEval that turned out to be caused
+  by confusion between preassignments owing to preassigned
+  resources, and preassignments owing to singleton domains.

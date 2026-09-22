@@ -1,0 +1,865 @@
+@SubAppendix
+    @Title { Strings and symbol tables }
+    @Tag { hw }
+@Begin
+@LP
+@I { Note -- the Hn library has been flown in from another project of
+the author's, called Howard.  Three libraries, Hw, Hn, and Ho, are
+documented here, but only the Hn library is included in KHE.  Its
+header file is @C { howard_n.h } }.
+@PP
+This section describes Howard's Hw library, which provides operations on
+hw. @Index { Hw }
+wide strings (type @C { wchar_t * }), and symbol tables whose keys are
+wide strings.  It also documents Howard's Hn library, which is the same
+except that its strings are narrow (@C { char * } instead of
+@C { wchar_t * }).
+@BeginSubSubAppendices
+
+@SubSubAppendix
+    @Title { Strings }
+@Begin
+@LP
+One handy use for extensible arrays is to build up strings piece
+string.factories @Index { String factories }
+by piece in arena memory, similarly to @C { open_memstream } from
+POSIX-2008:
+@ID @C {
+void HwStringBegin(HA_ARRAY_CHAR ac, HA_ARENA a);
+void HwStringAdd(HA_ARRAY_CHAR *ac, wchar_t *format, ...);
+wchar_t *HwStringEnd(HA_ARRAY_CHAR ac);
+}
+@C { HwStringBegin } and @C { HwStringEnd } are in fact macros.
+@C { HwStringAdd } is a function; note that a reference to the array
+is passed, not the array itself.  @C { HA_ARRAY_CHAR } is defined by
+Ha and holds an extensible array of wide characters.  @C { HwStringBegin }
+initializes this array to empty (like @C { HaArrayInit });
+@C { HwStringAdd } appends a formatted string to the growing array; and
+@C { HwStringEnd } adds the final @C { L'\0' } and returns the string.
+The string returned by @C { HwStringEnd } (call it @C { str }) may be
+freed by calling either @C { HaArrayFree(ac) } or
+@C { HaResizableFree(str) }.  There is also
+@ID @C {
+void HwStringVAdd(HA_ARRAY_CHAR *ac, wchar_t *format, va_list args);
+}
+which is to @C { HwStringAdd } what @C { vwprintf } is to @C { wprintf }.
+@PP
+Thanks to a robust implementation, there is no limit on the size
+of any one of the formatted strings added to @C { *ac } by these
+functions.  There is an unchecked limit of @C { INT_MAX - 1 } on
+the total length of the string, because type @C { HA_ARRAY_CHAR }
+stores an array length in an @C { int } field.
+@PP
+In between the calls to @C { HwStringBegin } and @C { HwStringEnd },
+ordinary array operations may be applied to @C { ac } as usual.  For
+example,
+@ID @C {
+HaArrayFill(ac, 80, L' ');
+}
+pads out @C { ac } to length 80 with blanks.
+@PP
+For the convenience of applications which sometimes need to build
+a string and sometimes need to write to a file, functions
+@ID @C {
+void HwStringAddOrPrint(HA_ARRAY_CHAR *ac, FILE *fp,
+  const wchar_t *format, ...);
+void HwStringVAddOrPrint(HA_ARRAY_CHAR *ac, FILE *fp,
+  const wchar_t *format, va_list args);
+}
+are defined.  These are like @C { HwStringAdd } and @C { HwStringVAdd }
+when @C { ac != NULL }, and like @C { fwprintf } and @C { vfwprintf }
+when @C { ac == NULL } (so @C { fp } had better be non-@C { NULL } in
+that case).
+@PP
+Hw offers three other functions that create strings in arena memory:
+@ID @C {
+wchar_t *HwStringCopy(wchar_t *s, HA_ARENA a);
+wchar_t *HwStringSubstring(wchar_t *s, int start, int len, HA_ARENA a);
+wchar_t *HwStringMake(HA_ARENA a, const wchar_t *format, ...);
+}
+hw.string.copy @Index @C { HwStringCopy }
+hw.string.make @Index @C { HwStringMake }
+These are functions, not macros.  The arena memory remains allocated
+until the arena is freed.  @C { HwStringCopy } returns a copy
+of @C { s }, like the Linux @C { wcsdup }.  @C { HwStringSubstring }
+returns the substring of @C { s } which begins at position @C { start },
+counting from 0, and has length @C { len }, or less if @C { s } ends
+before then.  @C { HwStringMake } returns a formatted string:
+@ID @C {
+name = HwStringMake(a, L"%ls/%ls_%d", dir_name, file_name, version);
+}
+Thanks to a robust implementation, @C { HwStringMake } imposes
+no length limits.  There is also
+@ID @C {
+wchar_t *HwStringVMake(HA_ARENA a, const wchar_t *format, va_list args);
+}
+which is to @C { HwStringMake } what @C { vwprintf } is to @C { wprintf }.
+@PP
+Howard is written on the assumption that strings stored in memory
+will generally be wide strings.  Even so, some conversion is needed
+when interfacing with the operating system, so Hw offers two functions
+that convert from and to narrow strings:
+@ID @C {
+wchar_t *HwStringFromNarrow(char *s, HA_ARENA a);
+char *HwStringToNarrow(wchar_t *s, HA_ARENA a);
+}
+hw.string.from.narrow @Index @C { HwStringFromNarrow }
+hw.string.to.narrow @Index @C { HwStringToNarrow }
+For example, @C { HwStringFromNarrow } is useful for converting a
+command-line argument, which is a narrow string, to a string, and
+@C { HwStringToNarrow } is useful for converting a file name to
+the narrow string format required by @C { fopen }.  These strings
+may be freed immediately by passing them to @C { HaResizableFree },
+or kept until the arena is deleted later.
+@PP
+The standard C library offers several functions which query strings
+(@C { wcscmp }, @C { wcsstr }, etc.).  These may be used on Hw's
+strings.  Hw supplements these functions with a few others:
+@ID @C {
+int HwStringCount(wchar_t *s);
+bool HwStringIsEmpty(wchar_t *s);
+}
+Return the length of @C { s }, like @C { wcslen }; return @C { true }
+if @C { s } has count 0.
+@ID @C {
+bool HwStringEqual(wchar_t *s1, wchar_t *s2);
+}
+Return @C { true } if @C { s1 } and @C { s2 } are equal.
+@ID @C {
+bool HwStringContains(wchar_t *s, wchar_t *substr, int *pos);
+}
+If @C { substr } occurs within @C { s }, return @C { true }
+with @C { *pos } set to the starting position of the first
+occurrence of @C { substr } within @C { s }.  Otherwise
+return @C { false } with @C { *pos } not set.
+@ID @C {
+bool HwStringBeginsWith(wchar_t *s, wchar_t *prefix);
+bool HwStringEndsWith(wchar_t *s, wchar_t *suffix);
+}
+Return @C { true } if @C { prefix } occurs within @C { s } at the
+start, or if @C { suffix } occurs within @C { s } at the end.
+@End @SubSubAppendix
+
+@SubSubAppendix
+    @Title { Abort and assert }
+@Begin
+@LP
+Hw offers two functions for checking assertions:
+@ID @C {
+void HwAbort(wchar_t *fmt, ...);
+void HwAssert(bool cond, wchar_t *fmt, ...);
+}
+hw.abort @Index @C { HwAbort }
+hw.assert @Index @C { HwAssert }
+@C { HwAbort }'s parameters are the same as @C { wprintf }'s, but it
+prints onto @C { stderr } and then calls @C { abort }.  @C { HwAssert }
+does nothing if @C { cond } is @C { true }, and it does what @C { HwAbort }
+does if @C { cond } is @C { false }.  It is a function, not a macro, so
+its parameters must be well-defined whether @C { cond } is true or not.
+@End @SubSubAppendix
+
+@SubSubAppendix
+    @Title { Symbol tables }
+@Begin
+@LP
+A symbol table is a set of @I { entries }, each consisting of a
+@I { key }, which is a string, and a @I { value }, whose type
+is the same for all entries but is otherwise arbitrary.  One table
+may contain any number of entries.  Entries may be added, deleted,
+and retrieved by key.
+@PP
+As for Ha's arrays, and for the same reasons, Hw's symbol tables
+are structs, not pointers to structs, and the operations are
+macros.  The implementation is a linear probing hash table,
+which is essentially just an array (actually two arrays, one
+for keys, one for values).  At any moment, not all of the
+array's elements contain entries.  The table doubles in size
+when it becomes 80% full.
+hash.table. @Index { Hash table }
+symbol.table. @Index { Symbol table }
+#@PP
+#The hardest part of implementing Hw was to find a way to resize the
+#generic array of values without falling foul of the C language's
+#strict aliasing rule, which states that pointers of different types
+#should never point to overlapping memory.  The solution invokes the
+#part of the rule that says that pointers of type @C { char * } are
+#exempt from the rule, which is not a confidence-inspiring state of
+#affairs.  If you find corrupted values in your symbol tables, try
+#turning optimization off.  If the corrupted values go away, then
+#strict aliasing was the problem; please report it.
+@PP
+To define a symbol table type whose keys are strings of type
+@C { wchar_t * } and whose values have type @C { X }, where
+@C { X } is any type, write this:
+hw_table. @Index @C { HW_TABLE }
+@ID @C {
+typedef HW_TABLE(X) TABLE_X;
+}
+From now on, @C { TABLE_X } stands for any type defined by a typedef
+like this one, and @C { X } stands for the type between the parentheses
+in that typedef.  To initialize a symbol table, call
+@ID @C {
+void HwTableInit(TABLE_X table, HA_ARENA a);
+}
+To find the arena containing a given table, call
+@ID @C {
+HA_ARENA HwTableArena(TABLE_X table);
+}
+When the symbol table is no longer needed, its memory may be reclaimed by
+@ID @C {
+void HwTableFree(TABLE_X table);
+}
+This does not free @C { table } itself (@C { table } is not a pointer).
+It frees the memory used to hold the arrays of keys and values, although
+not the keys and values themselves.
+@PP
+To add an entry to a symbol table, call
+@ID @C {
+void HwTableAdd(TABLE_X table, wchar_t *key, X value);
+bool HwTableAddUnique(TABLE_X table, wchar_t *key, X value, X other);
+}
+@C { HwTableAdd } adds a new entry with the given key and value to the
+table, even if that causes the table to contain two or more entries
+with the same key.  @C { HwTableAddUnique }, on the other hand, first
+checks whether there is already an entry with the given key.  If so,
+it sets @C { other } to the value of an existing entry with the given
+key and returns @C { false } without changing the table.  If not, it
+adds the new entry and returns @C { true } without setting @C { other }.
+@PP
+Two variants of @C { HwTableAdd } and @C { HwTableAddUnique } are
+offered:
+@ID @C {
+void HwTableAddHashed(TABLE_X table, int hash_code, wchar_t *key,
+  X value);
+bool HwTableAddUniqueHashed(TABLE_X table, int hash_code, wchar_t *key,
+  X value, X other);
+}
+These are the same as the originals, except for parameter @C { hash_code },
+which is assumed to be the hash code of @C { key } (before reduction
+modulo the table size), as returned by @C { HwTableHash }:
+@ID @C {
+int HwTableHash(wchar_t *key);
+}
+Passing the hash code explicitly saves time when inserting the
+same entry into several tables.
+@PP
+Retrieval has three forms.  The first is the `contains' form, which
+merely reports whether an entry with the given key is present:
+@ID @C {
+bool HwTableContains(TABLE_X table, wchar_t *key, int pos);
+bool HwTableContainsHashed(TABLE_X table, int hash_code, wchar_t *key,
+  int pos);
+bool HwTableContainsNext(TABLE_X table, int pos);
+}
+@C { HwTableContains } returns @C { true } if @C { table } contains an
+entry with the given key, setting @C { pos } to its position in the table,
+or @C { false } if there is no such entry, in which case @C { pos } is an
+empty position.  @C { HwTableContainsHashed } is the same, except that it
+assumes that @C { hash_code } is the hash code of @C { key } (before
+reduction modulo the table size).  @C { HwTableContainsNext } assumes
+that @C { pos } is a non-empty position of @C { table }; it searches
+the table beyond that point (wrapping around to the front if necessary)
+for an entry with the same key as the one at that point.  Like
+@C { HwTableContains }, it returns @C { true } or @C { false } depending
+on whether it finds such an entry, and it changes @C { pos } to its
+position, or to an empty position.
+@PP
+The second form of retrieval is the `contains value' form, which reports
+whether an entry with the given key and value is present:
+@ID @C {
+void HwTableContainsValue(TABLE_X table, wchar_t *key, X value,
+  int pos);
+void HwTableContainsValueHashed(TABLE_X table, int hash_code,
+  X value, int pos);
+}
+@C { HwTableContainsValue } hashes the key and then compares values
+along the table using the C `@C { == }' operation, instead of comparing
+keys.  It runs very quickly since it executes no string comparisons.
+Owing to problems behind the scenes it does not return a Boolean result.
+Instead, it is syntactically a @C { for } statement which sets @C { pos }
+to the position of the entry if present.  Function @C { HwTableOccupied },
+defined below, may be used to determine the outcome, like this:
+@ID -0.5px @Break @C {
+HwTableContainsValue(table, "fred", fred, pos);
+if( HwTableOccupied(table, pos) )
+{
+  /* fred is present at position pos */
+}
+}
+@C { HwTableContainsValueHashed } is the same, except that it avoids
+hashing the key as usual.  In fact it does not need to know the key,
+so the usual @C { key } parameter is omitted.
+@PP
+The third form of retrieval is the `retrieve' form, which sets a
+@C { value } parameter to the value associated with the given key
+if found, and leaves @C { value } untouched if not:
+@ID @C {
+bool HwTableRetrieve(TABLE_X table, wchar_t *key, X value, int pos);
+bool HwTableRetrieveHashed(TABLE_X table, int hash_code, wchar_t *key,
+  X value, int pos);
+bool HwTableRetrieveNext(TABLE_X table, X value, int pos);
+}
+Apart from setting @C { value }, these are the same as the corresponding
+`contains' versions.
+@PP
+The @C { pos } parameters of retrieval functions have several uses.
+They are needed to ensure that concurrent retrievals do not interfere
+with each other.  They can be passed to
+@ID @C {
+bool HwTableOccupied(TABLE_X table, int pos);
+wchar_t *HwTableKey(TABLE_X table, int pos);
+X HwTableValue(TABLE_X table, int pos);
+}
+which return @C { true } if position @C { pos } is occupied (has an
+entry), and if so, the key and value of the entry at position @C { pos }.
+And they are used by the operations to be defined next.
+@PP
+Assuming that there is an entry at position @C { pos },
+@ID @C {
+void HwTableReplace(MTABLE_X table, int pos, X value);
+}
+replaces the entry's value, and
+@ID @C {
+void HwTableDelete(TABLE_X table, int pos);
+}
+deletes the entry.  For example,
+@ID @C {
+if( HwTableContains(table, L"fred", pos) )
+  HwTableDelete(table, pos);
+}
+deletes an entry with key @C { L"fred" }, if there is one.  Function
+@ID @C {
+void HwTableClear(TABLE_X table);
+}
+deletes every entry in the table, leaving it empty.
+@PP
+For traversal there are iterator macros in the usual style:
+@ID {0.98 1.0} @Scale @C {
+void HwTableForEachWithKey(TABLE_X table, wchar_t *key, X value, int pos)
+void HwTableForEachWithKeyHashed(TABLE_X table, int hash_code,
+  wchar_t *key, X value, int pos)
+}
+These visit each entry with a given key.  @C { HwTableForEachWithKeyHashed }
+is the same as @C { HwTableForEachWithKey } except that the user supplies
+the hash code as well as the key, as for @C { HwTableRetrieveHashed }.  For
+example, to visit every person called @C { L"fred" } in table @C { people }:
+@ID @C {
+HwTableForEachWithKey(people, L"fred", person, pos)
+{
+   ... visit person ...
+}
+}
+On each iteration, this code sets @C { person } to a person with name
+@C { L"fred" }, and @C { pos } to the position of that person in the
+table.  A similar iterator macro visits every entry of the table:
+@ID @C {
+void HwTableForEach(TABLE_X table, wchar_t *key, X value, int pos)
+}
+The entries will be visited in an essentially random order, as usual
+with hash tables.  For example, the following code counts the number
+of entries in @C { table }:
+@ID @C {
+count = 0;
+HwTableForEach(table, key, value, pos)
+  count++;
+}
+This number is not maintained automatically.  Another fairly useless
+number is
+@ID @C {
+int HwTableSize(TABLE_X table);
+}
+which is the current array size.  It will be somewhat larger than the
+current number of entries.
+@End @SubSubAppendix
+
+@SubSubAppendix
+    @Title { Narrow strings and symbol tables }
+    @Tag { hw.narrow }
+@Begin
+@LP
+This section describes Howard's Hn library.  It is the same as Hw except
+hn. @Index { Hn }
+narrow.strings @Index { Narrow strings }
+that its strings are @I narrow (have type @C { char * } instead of
+@C { wchar_t * }), so the description is brief.
+# Hn is mainly useful
+# when interfacing with operating systems, which continue to use narrow
+# strings for file names, and when generating code, since both C and IF
+# use 8-bit character sets.
+@PP
+For creating narrow strings in arena memory there are functions
+@ID @C {
+void HnStringBegin(HA_ARRAY_NCHAR anc, HA_ARENA a);
+void HnStringAdd(HA_ARRAY_NCHAR *anc, char *format, ...);
+char *HnStringEnd(HA_ARRAY_NCHAR anc);
+void HnStringVAdd(HA_ARRAY_NCHAR *anc, const char *format, va_list args)
+}
+(@C { HnStringBegin } and @C { HnStringEnd } are macros).  For either
+adding to a string in memory or adding to a file, use functions
+@ID @C {
+void HnStringAddOrPrint(HA_ARRAY_NCHAR *anc, FILE *fp,
+  const char *format, ...);
+void HnStringVAddOrPrint(HA_ARRAY_NCHAR *anc, FILE *fp,
+  const char *format, va_list args);
+}
+Other functions which create strings in arena memory are
+@ID @C {
+char *HnStringCopy(char *s, HA_ARENA a);
+char *HnStringSubstring(char *s, int start, int len, HA_ARENA a);
+char *HnStringMake(HA_ARENA a, const char *format, ...);
+char *HnStringVMake(HA_ARENA a, const char *format, va_list args);
+char *HnStringFromWide(wchar_t *s, HA_ARENA a);
+wchar_t *HnStringToWide(char *s, HA_ARENA a);
+}
+For querying strings there are
+@ID @C {
+int HnStringCount(char *s);
+bool HnStringIsEmpty(char *s);
+bool HnStringEqual(char *s1, char *s2);
+bool HnStringContains(char *s, char *substr, int *pos);
+bool HnStringBeginsWith(char *s, char *prefix);
+bool HnStringEndsWith(char *s, char *suffix);
+}
+For handling white space there are
+@ID @C {
+bool HnStringIsWhiteSpaceOnly(char *s);
+char *HnStringCopyStripped(char *s, HA_ARENA a);
+}
+@C { HnStringIsWhiteSpaceOnly } returns @C { true } if @C { s }
+is @C { NULL } or consists of white space characters only (including
+when @C { s } is empty), and @C { HnStringCopyStripped } returns
+a copy of @C { s } with any white space characters at the
+beginning or end removed; if @C { s } is @C { NULL } or there are
+no non-white space characters it returns the empty string.
+@PP
+For abort and assert there are
+@ID @C {
+void HnAbort(char *fmt, ...);
+void HnAssert(bool cond, char *fmt, ...);
+}
+A symbol table is defined by
+@ID @C {
+typedef HN_TABLE(X) TABLE_X;
+}
+and initialized, its arena returned, and freed by
+@ID @C {
+void HnTableInit(TABLE_X table, HA_ARENA a);
+HA_ARENA HnTableArena(TABLE_X table);
+void HnTableFree(TABLE_X table);
+}
+Entries are added with
+@ID @C {
+void HnTableAdd(TABLE_X table, char *key, X value);
+bool HnTableAddUnique(TABLE_X table, char *key, X value, X other);
+}
+plus the two variants
+@ID @C {
+void HnTableAddHashed(TABLE_X table, int hash_code, char *key,
+  X value);
+bool HnTableAddUniqueHashed(TABLE_X table, int hash_code, char *key,
+  X value, X other);
+}
+Hash codes are calculated with
+@ID @C {
+int HnTableHash(char *key);
+}
+Retrievals are carried out with
+@ID @C {
+bool HnTableContains(TABLE_X table, char *key, int pos);
+bool HnTableContainsHashed(TABLE_X table, int hash_code, char *key,
+  int pos);
+bool HnTableContainsNext(TABLE_X table, int pos);
+
+void HnTableContainsValue(TABLE_X table, char *key, X value,
+  int pos);
+void HnTableContainsValueHashed(TABLE_X table, int hash_code,
+  X value, int pos);
+
+bool HnTableRetrieve(TABLE_X table, char *key, X value, int pos);
+bool HnTableRetrieveHashed(TABLE_X table, int hash_code, char *key,
+  X value, int pos);
+bool HnTableRetrieveNext(TABLE_X table, X value, int pos);
+}
+The positions returned by the retrieve operations may be used in
+@ID @C {
+bool HnTableOccupied(TABLE_X table, int pos);
+char *HnTableKey(TABLE_X table, int pos);
+X HnTableValue(TABLE_X table, int pos);
+}
+To replace a value, delete an entry, or clear the table, call
+@ID @C {
+void HnTableReplace(TABLE_X table, int pos, X value);
+void HnTableDelete(TABLE_X table, int pos);
+void HnTableClear(TABLE_X table);
+}
+To iterate over all entries with a given key, use iterator macros
+@ID {0.98 1.0} @Scale @C {
+void HnTableForEachWithKey(TABLE_X table, char *key, X value, int pos)
+void HnTableForEachWithKeyHashed(TABLE_X table, int hash_code,
+  char *key, X value, int pos)
+}
+To iterate over all entries, use
+@ID @C {
+void HnTableForEach(TABLE_X table, char *key, X value, int pos)
+}
+Finally,
+@ID @C {
+int HnTableSize(TABLE_X table);
+}
+returns the size of the hash table.
+@End @SubSubAppendix
+
+#@SubSubAppendix
+#    @Title { Object tables and groups }
+#    @Tag { hw.object }
+#@Begin
+#@LP
+#An @I { object table } is a hash table indexed by non-@C { NULL }
+#pointers rather than strings.  The value of the pointer, not the
+#value of what it points to, is used to index the table.
+#@PP
+#This section describes Howard's Ho library, which implements object
+#tables, offering operations analogous to the symbol table operations
+#from Hw and Hn.
+#@PP
+#An object table is defined by
+#@ID @C {
+#typedef HO_TABLE(X) TABLE_X;
+#}
+#and initialized, its arena returned, and freed by
+#@ID @C {
+#void HoTableInit(TABLE_X table, HA_ARENA a);
+#HA_ARENA HoTableArena(TABLE_X table);
+#void HoTableFree(TABLE_X table);
+#}
+#Entries are added with
+#@ID @C {
+#void HoTableAdd(TABLE_X table, void *key, X value);
+#bool HoTableAddUnique(TABLE_X table, void *key, X value, X other);
+#}
+#plus the two variants
+#@ID @C {
+#void HoTableAddHashed(TABLE_X table, int hash_code, void *key,
+#  X value);
+#bool HoTableAddUniqueHashed(TABLE_X table, int hash_code, void *key,
+#  X value, X other);
+#}
+#Hash codes are calculated with
+#@ID @C {
+#int HoTableHash(void *key);
+#}
+#Unlike @C { HwTableHash } and @C { HoTableHash }, for efficiency
+#this function is in fact a macro.  Retrievals are carried out with
+#@ID @C {
+#bool HoTableContains(TABLE_X table, void *key, int pos);
+#bool HoTableContainsHashed(TABLE_X table, int hash_code, void *key,
+#  int pos);
+#bool HoTableContainsNext(TABLE_X table, int pos);
+#
+#void HoTableContainsValue(TABLE_X table, void *key, X value,
+#  int pos);
+#void HoTableContainsValueHashed(TABLE_X table, int hash_code,
+#  X value, int pos);
+#
+#bool HoTableRetrieve(TABLE_X table, void *key, X value, int pos);
+#bool HoTableRetrieveHashed(TABLE_X table, int hash_code, void *key,
+#  X value, int pos);
+#bool HoTableRetrieveNext(TABLE_X table, X value, int pos);
+#}
+#The positions returned by the retrieve operations may be used in
+#@ID @C {
+#bool HoTableOccupied(TABLE_X table, int pos);
+#void *HoTableKey(TABLE_X table, int pos);
+#X HoTableValue(TABLE_X table, int pos);
+#}
+#To replace a value, delete an entry, or clear the table, call
+#@ID @C {
+#void HoTableReplace(TABLE_X table, int pos, X value);
+#void HoTableDelete(TABLE_X table, int pos);
+#void HoTableClear(TABLE_X table);
+#}
+#To iterate over all entries with a given key, use iterator macros
+#@ID {0.98 1.0} @Scale @C {
+#void HoTableForEachWithKey(TABLE_X table, void *key, X value, int pos)
+#void HoTableForEachWithKeyHashed(TABLE_X table, int hash_code,
+#  void *key, X value, int pos)
+#}
+#To iterate over all entries, use
+#@ID @C {
+#void HoTableForEach(TABLE_X table, void *key, X value, int pos)
+#}
+#Finally,
+#@ID @C {
+#int HoTableSize(TABLE_X table);
+#}
+#returns the size of the table.
+#@PP
+#Ho also offers a version of the object table idea in which the
+#objects have no corresponding values.  This is useful when the
+#need is merely to build a set of objects and find out whether
+#a given object is present in the set or not.  Ho calls this
+#data structure an @I { object group }.
+#@PP
+#An object group is not generic; its unique type is @C { HO_GROUP }.
+#It is initialized, its arena returned, and freed by
+#@ID @C {
+#void HoGroupInit(HO_GROUP group, HA_ARENA a);
+#HA_ARENA HoGroupArena(HO_GROUP group);
+#void HoGroupFree(HO_GROUP group);
+#}
+#Entries are added with
+#@ID @C {
+#void HoGroupAdd(HO_GROUP group, void *key);
+#bool HoGroupAddUnique(HO_GROUP group, void *key);
+#}
+#plus the two variants
+#@ID @C {
+#void HoGroupAddHashed(HO_GROUP group, int hash_code, void *key);
+#bool HoGroupAddUniqueHashed(HO_GROUP group, int hash_code, void *key);
+#}
+#Note the absence of values.  Hash codes are calculated with
+#@ID @C {
+#int HoGroupHash(void *key);
+#}
+#which is in fact the same macro as @C { HoTableHash }.
+#Retrievals are carried out with
+#@ID @C {
+#bool HoGroupContains(HO_GROUP group, void *key, int pos);
+#bool HoGroupContainsHashed(HO_GROUP group, int hash_code, void *key,
+#  int pos);
+#bool HoGroupContainsNext(HO_GROUP group, int pos);
+#}
+#There are no @C { ContainsValue } or @C { Retrieve } operations.
+#The positions returned by the contains operations may be used in
+#@ID @C {
+#bool HoGroupOccupied(HO_GROUP group, int pos);
+#void *HoGroupKey(HO_GROUP group, int pos);
+#}
+#To delete an entry or clear the group, call
+#@ID @C {
+#void HoGroupDelete(HO_GROUP group, int pos);
+#void HoGroupClear(HO_GROUP group);
+#}
+#To iterate over all entries with a given key, use iterator macros
+#@ID {0.98 1.0} @Scale @C {
+#void HoGroupForEachWithKey(HO_GROUP group, void *key, int pos)
+#void HoGroupForEachWithKeyHashed(HO_GROUP group, int hash_code,
+#  void *key, int pos)
+#}
+#To iterate over all entries, use
+#@ID @C {
+#void HoGroupForEach(HO_GROUP group, void *key, int pos)
+#}
+#Finally,
+#@ID @C {
+#int HoGroupSize(HO_GROUP group);
+#}
+#returns the size of the group.
+#@End @SubSubAppendix
+
+@SubSubAppendix
+    @Title { Pointer tables and groups }
+    @Tag { hw.pointer }
+@Begin
+@LP
+A @I { pointer table } is like an object table in that it is a hash
+table indexed by non-@C { NULL } void pointers rather than strings.
+However, the value of what the pointer points to is used to index
+the table.  To make this work, the table needs to be given two
+functions, one to hash what the pointer points to, and one to
+compare two of those things to decide whether they are equal.
+So the user must supply two functions with these signatures:
+@ID @C {
+int KeyHash(void *p);
+bool KeyEqual(void *p1, void *p2);
+}
+Then Howard does the rest.
+@PP
+Two equal keys must have the same hash value.  In other words, if
+@C { KeyEqual(p1, p2) } returns @C { true }, then @C { KeyHash(p1) }
+and @C { KeyHash(p2) } must be equal.  Without this the pointer table
+will not work as expected.
+@PP
+There is an optional third user-defined function,
+@ID @C {
+void KeyDebug(void *p, FILE *fp);
+}
+When present, it is used by @C { HpTableDebug } below to produce a
+debug print of key @C { p } onto file { fp }.
+@PP
+This section describes Howard's Hp library, which implements pointer
+tables, offering operations analogous to the symbol table operations
+from Hw and Hn.
+@PP
+A pointer table whose keys are what is pointed to by void pointers
+and whose values have type @C { X }, for any @C { X }, is defined by
+@ID @C {
+typedef HP_TABLE(X) TABLE_X;
+}
+It is initialized, its attributes are returned, and it is freed by
+@ID @C {
+void HpTableInit(TABLE_X table, HP_HASH_FN key_hash_fn,
+  HP_EQUAL_FN key_equal_fn, HP_DEBUG_FN key_debug_fn, HA_ARENA a);
+HP_HASH_FN HpTableKeyHashFn(TABLE_X table);
+HP_EQUAL_FN HpTableKeyEqualFn(TABLE_X table);
+HP_DEBUG_FN HpTableKeyDebugFn(TABLE_X table);
+HA_ARENA HpTableArena(TABLE_X table);
+void HpTableFree(TABLE_X table);
+}
+where @C { HP_HASH_FN }, @C { HP_EQUAL_FN }, and @C { HP_DEBUG_FN }
+are the types of the three user-supplied functions described above.
+The value of @C { key_debug_fn } may be @C { NULL }, but the other
+two have to really hash a key and compare two keys for equality.
+@PP
+Entries are added with
+@ID @C {
+void HpTableAdd(TABLE_X table, void *key, X value);
+bool HpTableAddUnique(TABLE_X table, void *key, X value, X other);
+}
+plus the two variants
+@ID @C {
+void HpTableAddHashed(TABLE_X table, int hash_code, void *key,
+  X value);
+bool HpTableAddUniqueHashed(TABLE_X table, int hash_code, void *key,
+  X value, X other);
+}
+Retrievals are carried out with
+@ID @C {
+bool HpTableContains(TABLE_X table, void *key, int pos);
+bool HpTableContainsHashed(TABLE_X table, int hash_code, void *key,
+  int pos);
+bool HpTableContainsNext(TABLE_X table, int pos);
+
+void HpTableContainsValue(TABLE_X table, void *key, X value,
+  int pos);
+void HpTableContainsValueHashed(TABLE_X table, int hash_code,
+  X value, int pos);
+
+bool HpTableRetrieve(TABLE_X table, void *key, X value, int pos);
+bool HpTableRetrieveHashed(TABLE_X table, int hash_code, void *key,
+  X value, int pos);
+bool HpTableRetrieveNext(TABLE_X table, X value, int pos);
+}
+The positions returned by the retrieve operations may be used in
+@ID @C {
+bool HpTableOccupied(TABLE_X table, int pos);
+void *HpTableKey(TABLE_X table, int pos);
+X HpTableValue(TABLE_X table, int pos);
+}
+To replace a value, delete an entry, or clear the table, call
+@ID @C {
+void HpTableReplace(TABLE_X table, int pos, X value);
+void HpTableDelete(TABLE_X table, int pos);
+void HpTableClear(TABLE_X table);
+}
+To iterate over all entries with a given key, use iterator macros
+@ID {0.98 1.0} @Scale @C {
+void HpTableForEachWithKey(TABLE_X table, void *key, X value, int pos)
+void HpTableForEachWithKeyHashed(TABLE_X table, int hash_code,
+  void *key, X value, int pos)
+}
+To iterate over all entries, use
+@ID @C {
+void HpTableForEach(TABLE_X table, void *key, X value, int pos)
+}
+or
+@ID @C {
+void HpTableForEachValue(TABLE_X table, X value, int pos)
+}
+to omit retrieving each key (which can produce unwanted error
+messages about unused variables).  Function
+@ID @C {
+int HpTableSize(TABLE_X table);
+}
+returns the size of the table.  Function
+@ID @C {
+float HpTableProbeLength(TABLE_X table);
+}
+returns the average, taken over all calls to @C { HpTableAddUnique },
+@C { HpTableAddUniqueHashed }, @C { HpTableContains },
+@C { HpTableContainsHashed }, @C { HpTableRetrieve },
+@C { HpTableRetrieveHashed }, and @C { HpTableContainsNext },
+of the number of probes of non-empty table entries made by those calls.
+The result should be less than about 3; higher values are a sign that the
+hash function is not working effectively.  @C { HpTableProbeLength }
+requires macro @C { HP_DEBUG_PROBE_LENGTH }, defined at the top of file
+@C { howard_p.h }, to have value @C { 1 }; when it has value @C { 0 },
+@C { HpTableProbeLength } returns @C { -1.0 }.  This is also the
+value returned when no calls to the functions have been made.
+@PP
+Finally, function
+@ID @C {
+void HpTableDebug(TABLE_X table, int indent, FILE *fp);
+}
+produces a debug print of @C { table } onto file @C { fp } with
+the given indent.  This can be long.  It uses parameter
+@C { key_debug_fn } to produce a debug print of each key,
+unless @C { key_debug_fn } is @C { NULL }, in which case
+it prints the address of each key
+@PP
+Hp also offers a version of the pointer table idea in which the
+keys have no corresponding values.  This is useful when the
+need is merely to build a set of objects and find out whether
+a given object is present in the set or not.  Hp calls this
+data structure a @I { pointer group }.
+@PP
+A pointer group is not generic; its unique type is @C { HP_GROUP }.
+It is initialized, its arena returned, and freed by
+@ID @C {
+void HpGroupInit(HP_GROUP group, HP_HASH_FN key_hash_fn,
+  HP_EQUAL_FN key_equal_fn, HP_DEBUG_FN key_debug_fn, HA_ARENA a);
+HP_HASH_FN HpGroupKeyHashFn(HP_GROUP group);
+HP_EQUAL_FN HpGroupKeyEqualFn(HP_GROUP group);
+HP_DEBUG_FN HpGroupKeyDebugFn(HP_GROUP group);
+HA_ARENA HpGroupArena(HP_GROUP group);
+void HpGroupFree(HP_GROUP group);
+}
+Entries are added with
+@ID @C {
+void HpGroupAdd(HP_GROUP group, void *key);
+bool HpGroupAddUnique(HP_GROUP group, void *key);
+}
+plus the two variants
+@ID @C {
+void HpGroupAddHashed(HP_GROUP group, int hash_code, void *key);
+bool HpGroupAddUniqueHashed(HP_GROUP group, int hash_code, void *key);
+}
+Note the absence of values.
+@PP
+Retrievals are carried out with
+@ID @C {
+bool HpGroupContains(HP_GROUP group, void *key, int pos);
+bool HpGroupContainsHashed(HP_GROUP group, int hash_code, void *key,
+  int pos);
+bool HpGroupContainsNext(HP_GROUP group, int pos);
+}
+There are no @C { ContainsValue } or @C { Retrieve } operations.
+The positions returned by the contains operations may be used in
+@ID @C {
+bool HpGroupOccupied(HP_GROUP group, int pos);
+void *HpGroupKey(HP_GROUP group, int pos);
+}
+To delete an entry or clear the group, call
+@ID @C {
+void HpGroupDelete(HP_GROUP group, int pos);
+void HpGroupClear(HP_GROUP group);
+}
+To iterate over all entries with a given key, use iterator macros
+@ID {0.98 1.0} @Scale @C {
+void HpGroupForEachWithKey(HP_GROUP group, void *key, int pos)
+void HpGroupForEachWithKeyHashed(HP_GROUP group, int hash_code,
+  void *key, int pos)
+}
+To iterate over all entries, use
+@ID @C {
+void HpGroupForEach(HP_GROUP group, void *key, int pos)
+}
+Finally,
+@ID @C {
+int HpGroupSize(HP_GROUP group);
+}
+returns the size of the group.
+@End @SubSubAppendix
+
+@EndSubSubAppendices
+@End @SubAppendix

@@ -1,0 +1,2903 @@
+KHE diary for 2021
+==================
+
+At the end of 2019 I was in the middle of implementing the dynamic
+programming algorithm for single nurse rostering, aiming to submit
+a paper about it to PATAT 2021.
+
+30 December 2020.  Working on the BeginDay, ReceiveValue, and EndDay
+  functions.  Done for all expressions except CostSum.  All good.
+
+31 December 2020.  Kept on it.
+
+1 January 2021.  Finished INT_SUM_COMB.  Done boilerplate for
+  INT_SEQ and INT_SEQ_COMB.  Added code for building the
+  expression trees for limit active intervals monitors.
+  Made sure that the children of INT_SEQ and INT_SEQ_COMB
+  nodes have increasing last day indexes.  Removed the day
+  info type, since only its sig index field is needed now.
+  Done INT_SEQ, although it is never used.
+
+2 January 2021.  Finished INT_SEQ_COMB and reinstated the
+  code that builds the search tree.  I seem to have a complete
+  implementation now, ready to audit and test.  I started work
+  on single resource assignment on 4 November 2020, so that is
+  two months ago now.  I've struggled some days to get time to
+  do any work, which partly explains why it has taken so long.
+  Working through a careful audit, have just finished the
+  submodules that are the concrete expression types.
+
+3 January 2021.  Auditing the whole thing today.
+
+4 January 2021.  Finished auditing the whole thing today,
+  although there are still a few jobs to do.
+
+6 January 2021.  I did work yesterday, on KHE_DAILY_SCHEDULE.
+  Today I've revised the documentation, which turned out to
+  be in such good shape that I had very little to do.  Now I
+  need to finish off KHE_DAILY_SCHEDULE.
+
+7 January 2021.  Finished off KHE_DAILY_SCHEDULE today.
+
+9 January 2021.  Did some reading yesterday, and made some
+  small adjustments to the paper.  Did some more of that
+  today; I'm pretty happy with the paper as it is now.
+  Audited the new task finder code (daily schedules).
+  Added code to compare costs when a solution is adopted.
+
+12 January 2021.  Last couple of days went on various home
+  duties.  I'm struggling to find decent slabs of code.
+  Decided to write some Rolls-Royce debugging code before
+  starting to test.
+
+13 January 2021.  Wrote the Rolls-Royce debugging code, have
+  clean compile, ready to start testing.
+
+14 January 2021.  Started testing.  Fixed a few little things.
+
+15 January 2021.  OK, now I have a cost discrepancy.  I really
+  need some debugging code that works out where that discrepancy
+  is coming from.  It needs to re-run the path so it can print
+  stuff in detail.
+
+16 January 2021.  Working on KheFullSolnReRun.
+
+17 January 2021.  Implemented history properly now, that is,
+  including history after as well as history before.  Ready
+  for an audit and test.
+
+18 January 2021.  Auditing history today.  Found one bug, then
+  it started to work.  It seems to be working correctly now:
+  all 29 best solutions have the true correct cost.
+
+19 January 2021.  Decided to kick off with a graph of running
+  time for m days, 0 <= m <= n.  Have got the numbers now, I
+  need to convert them into a graph.
+
+20 January 2021.  Working on the first graph.  Decided to
+  rewrite the statistics module completely.  For one thing
+  it contains external static variables.
+
+21 January 2021.  Rewritten khe_sm_stats.c, and got it working
+  again.  Moved KheDateToday to khe_sm_timer.c and consolidated
+  all calls on Unix time functions into that file.  Brought the
+  documentation up to date with the new interface.  Have finally
+  generated a good-looking EPS file.  In fact two, one for running
+  time and one for E(m), and both are now in the paper, for a 4
+  week instance and an 8 week instance.
+
+24 January 2021.  I've been thinking about full dominance, and
+  also writing up the idea of limiting to small total cost as
+  a heuristic.  Starting to really work on full dominance today.
+
+25 January 2021.  Added a figure showing an expression tree to the
+  paper, and fixed up the full dominance section so that it does
+  not gloss over anything.  Basically ready to implement full
+  dominance.  I've started in on the boilerplate.  Implemented
+  min_assts and max_assts options.
+
+26 January 2021.  Implementing full dominance.
+
+27 January 2021.  Implementing full dominance.  Done the new
+  approach to adding dominance tests, which puts an arbitrary
+  dom test into each vertex as the vertex is created, leaving it
+  to the caller to work out which.  I've also done the working out.
+
+28 January 2021.  Finished implementing full dominance.  I now need
+  a careful audit, then I'm ready for testing.
+
+30 January 2021.  Worked over the description of full dominance in
+  the PATAT paper (again).  Then did a major reorganization, moving
+  signatures to before dominance.
+
+31 January 2021.  Auditing the revised version of the PATAT paper.
+  Seems pretty good now, I should go back to strong dominance.
+
+1 February 2021.  Done a first cut of strong dominance, but it
+  seems best if I document it carefully in the Guide.  It needs
+  to be "set out fair and square, with no contradictions".  Done
+  this, now I need to go through and compare the implementation
+  with the documentation, and finally study the documentation
+  and decide whether or not I agree with it.
+
+2 February 2021.  Verified that the dominance tests in the code
+  and the dominance tests in the documentation agree.  Also that
+  I think the tests in the documentation are correct now.
+
+3 February 2021.  Revised the testing code, ready to test strong
+  dominance.  Done some testing.  I'm getting solutions of the
+  same cost as weak dominance, so it seems that the code is
+  running well.  However it's turned out that strong dominance
+  is much faster than weak dominance!  Who would have thought it?
+  And why is it faster, given that it only reduces the size of
+  the table by a factor of 3 or 4?
+
+6 February 2021.  Various family things are getting in the way
+  at the moment.
+
+9 February 2021.  Can we pare right down so that there is just
+  one call for each node on each day it's active?  Why not?
+  If the calls are in postorder, the node can get what it
+  needs from its children, who will be all done by then.
+
+  Copied my working code to working_khe_sr_single_resource.c,
+  and now I am going to try for a one call per active node per
+  day version.  Written it up, it's basically ready to implement.
+
+13 February 2021.  Bit of a gap here, owing to family jobs to do
+  plus a cold making me low on energy.  Working on boilerplate
+  for the new, optimized version of single resource assignment.
+  Have clean compile but there is still a lot to add.
+
+15 February 2021.  Written KheSrsExprSetChildIndexes, but it
+  needs a careful audit, including a hand trace.  I've also
+  written the code that uses child indexes to retrieve the
+  child values needed by the parent.
+
+17 February 2021.  Still struggling to get time to work.
+  Removed COST_SUM type and replaced root_expr with an
+  array of expressions.
+
+  Sorting out debugging, back to a single function with a
+  combined interface.  Lots of refinements, all done.
+
+  Audited KheSrsExprSetChildIndexes, including a hand trace.
+  It seems to be working, but we'll get debug output too.
+
+18 February 2021.  Auditing the entire new khe_sr_single_resource.c;
+  KHE_SRS_FULL_SOLN is next.  It's good: only minor fixes.
+
+19 February 2021.  Completed a full audit of khe_sr_single_resource.c.
+  Working on User's Guide.  Just completed a revision of the overview
+  of the algorithm section which omits implementation details.
+
+21 February 2021.  Still working on the User's Guide.  Decided to
+  cut loose from the PATAT paper, which has its own goals and is
+  pretty good as it is.  I may have finished the User's Guide today.
+  I need to audit it and think about whether anything is missing,
+  or whether the terminology needs tightening up.
+
+22 February 2021.  Audited the User's Guide.  It's pretty good now,
+  probably good enough.  Anyway good enough to go on with.
+
+23 February 2021.  Copied running time section from the paper to the
+  User's Guide.  Done some testing, am working through a few bugs.
+  They may be all fixed now.
+
+24 February 2021.  Bugs all fixed, done some detailed analysis,
+  all is good.  HN_0 inevitably incurs a cost of 15 because of
+  history problems:  it has to start with time off because it
+  has just finished a long run, but then that run ends with only
+  2 night shifts and there is a cost of 15 for not having 3.
+
+  Implemented KHE_SRS_EXPR_BUSY_DAY, KHE_SRS_EXPR_FREE_DAY, and
+  KHE_SRS_EXPR_WORK_DAY.  All functions defined and added to the
+  various case statements, but I am not yet using them when
+  converting monitors to expression trees.
+
+25 February 2021.  Not much done today.  But I have added
+  BUSY_DAY and FREE_DAY node generation to cluster, active,
+  and limit busy times expressions.  Tested it, it seems to
+  be working first time, which is great.
+
+26 February 2021.  Added an optimization for cluster busy
+  times constraints today.
+
+  Added code to share BUSY_TIME, FREE_TIME, and WORK_TIME
+  nodes.  Ready to audit and test.
+
+27 February 2021.  Finished off code to share BUSY_TIME, FREE_TIME,
+  WORK_TIME, BUSY_DAY, FREE_DAY, and WORK_DAY nodes.  It's audited,
+  tested, and working well.
+
+28 February 2021.  Set up experiment for testing min_assts and
+  max_assts.  All done and in the paper now.
+
+  Checked performance of the hash table, and it is not very good.
+  I've got debug output which shows that it is examining 14 entries
+  during one retrieval, at times.  Surely we can do better than that.
+
+1 March 2021.  Working on hash table.  There seems to be a
+  serious problem with it, not sure what yet.  Perhaps the
+  table is not being cleared correctly?  I've set up some
+  good debug output, not run yet.
+
+2 March 2021.  Working on hash table.  Got the hash function going
+  quite well now, and sure enough weak dominance pulled ahead.  But
+  then I thought of a way to optimize strong dominance, and weak
+  dominance fell behind again.
+
+3 March 2021.  Revised how cost cutoffs are handled, all documented
+  and implemented now.  I'm ready to code up the [w, wn, unlimited]
+  experiment, by passing a longer *cost_cutoffs array to the test.
+
+4 March 2021.  Ran new code and got the same results, which is good.
+  I should do [w, wn, unlimited] test now, but I have had another
+  idea which I'll try first.
+
+5 March 2021.  Fixed up KheDataSetWrite.  All done and documented.
+
+  Gearing up for medium dominance.  Now have eq_dom_test_indexes
+  array in each day, and a pointer to the enclosing day in each
+  partial solution.  So that should be enough to implement with.
+
+6 March 2021.  Added free list of ps sets and finished off medium
+  dominance checking.  It's audited and running, but inferior.
+
+7 March 2021.  Implementing trie dominance checking.  I've done
+  most of the tricky stuff (KheSrsTrieDominates and so on), I
+  just need to do the boilerplate and call the tricky functions.
+
+8 March 2021.  Finished implementing trie dominance checking.
+  Tested; after one bug fix it's working well.  Have new graphs,
+  they are good.
+
+9 March 2021.  Found a bug with medium dominance testing and
+  fixed it.  It's now running slightly faster than strong.
+
+  Sorted monitors so that those with larger limits come first.
+  This saves memory in the trie implementation.  And it is faster.
+
+10 March 2021.  Ran the [w, wn, unlimited] test, successfully.
+  Worked through the paper (again).  It seems to be finished,
+  except that I need to do a few runs on other instances to
+  see what that produces.
+
+11 March 2021.  Set up a handy way of testing lots of instances,
+  and ran some basic tests.  Got fairly similar results, so I've
+  just said that in the paper.  The paper is finished now, although
+  I will go through it one more time.
+
+13 March 2021.  Figures inlined, ready for final audit.
+
+14 March 2021.  Final audit of dynamic programming paper completed.
+
+  Removed khe_sr_consec_resource.c from the compilation and commented
+  out its documentation in the Guide.  There was a resource
+  structural helper module, khe_sr_consec_solver.c, which I have
+  left in place, for the time being anyway.
+
+  Reviewed the User's Guide single resource section; it's good
+  enough to go on with.
+
+  Off-site backup, also released publicly (Version 2.6).
+
+  This finishes off the single resource solving that I began on
+  4 November 2020.  So that's 4 months and 11 days.
+
+15 March 2021.  Discovered that the off-site backup version did
+  not compile (I forgot to de-list an obsolete object file), so
+  I re-posted it today but left yesterday's date on it.
+
+  Returning to solving INRC2-4-030-1-6291.  Tried best of 8 with no
+  special values for any options, got this:
+
+  [ "INRC2-4-030-1-6291", 8 threads, 8 solves, 7 distinct costs, 17.5 secs:
+    0.01880 0.01905 0.01950 0.02000 0.02030 0.02045 0.02060 0.02060
+  ]
+
+  And here is the summary for the 1880 solution:
+
+    Summary 						Inf. 	Obj.
+    ---------------------------------------------------------------
+    Assign Resource Constraint (15 points) 	   		450
+    Avoid Unavailable Times Constraint (8 points) 	         80
+    Cluster Busy Times Constraint (21 points) 	   	       1050
+    Limit Active Intervals Constraint (13 points) 	   	300
+    ---------------------------------------------------------------
+      Grand total (57 points) 	   			       1880
+
+  This is also what I got on 25 October 2020, so nothing is broken.
+  But LOR is quite a lot better, here is its summary (from 15 October):
+
+    Summary 						Inf. 	Obj.
+    ---------------------------------------------------------------
+    Assign Resource Constraint (15 points) 	  	 	450
+    Avoid Unavailable Times Constraint (3 points) 	   	 30
+    Cluster Busy Times Constraint (19 points) 	   		960
+    Limit Active Intervals Constraint (11 points) 	   	255
+    ---------------------------------------------------------------
+      Grand total (48 points) 	   			       1695
+
+  There is nothing obvious, it is just generally better, although the
+  unavailable times seem to have come out rather badly.  In fact this
+  is just over the 10% we are looking for:  1880 / 1695 = 1.109.
+
+19 March 2021.  Had some family business to attend to, but that's
+  over and I'm hoping for a clear run for a while now.
+
+  Added KheClusterBusyTimesMonitorSetMinimum and ResetMinimum
+  operations that a solver can work on.
+
+20 March 2021.  Working on the cluster minimum solver.  All done,
+  needs an audit, some debug code, and testing.
+
+21 March 2021.  Working on the cluster minimum solver.  Audited
+  it and added debug code.  Also documented and implemented
+  negative time groups with minimum limits.  Ready to test.
+
+22 March 2021.  Enhanced the cluster minimum solver with
+  convenience functions for remembering monitor adjustments.
+  Added code for using the cluster minimum solver during
+  single resource solving.  Audited and ready to test.
+
+  The cluster minimum solver is working and successfully
+  increasing minimum limits for busy weekends and (somewhat
+  unexpectedly) total workload.
+
+  Solutions we are getting now from single resource assignment
+  seem to be pretty good.  Previously we were skipping weekends,
+  which was bad, now we are including them.  So we are getting
+  what was wanted.  Not bad for four days' work.
+
+23 March 2021.  Defined, documented, implemented, and used
+  KheClusterMinimumSolverSetMulti.  Also documented and
+  implemented a resource solver option rs_cluster_minimum.
+
+24 March 2021.  Audited the rs_cluster_minimum option, it's
+  ready to test.  Best of 8 without rs_cluster_minimum:
+
+  [ "INRC2-4-030-1-6291", 4 threads, 8 solves, 7 distinct costs, 20.9 secs:
+    0.01880 0.01905 0.01950 0.02000 0.02030 0.02045 0.02060 0.02060
+  ]
+
+  Best of 8 with rs_cluster_minimum:
+
+  [ "INRC2-4-030-1-6291", 4 threads, 8 solves, 7 distinct costs, 19.3 secs:
+    0.01880 0.01905 0.01950 0.02000 0.02030 0.02045 0.02060 0.02060
+  ]
+
+  No cost difference, which is interesting.  It is running a bit faster,
+  which suggests that something different is going on.
+
+26 March 2021.  Implement function for calculating the best solution
+  for a given minimum task cost reduction.  Needs testing; how?
+
+27 March 2021.  Working on khe_sr_balance.c.  I've finished it,
+  actually, and audited it.  It's ready to test.
+
+28 March 2021.  Working on khe_sr_balance.c.  I've finished it,
+  On resource type Nurse (i.e. trainees), the marginal cost is
+  0.  On resource type Nurse:HN_0 (everything except trainees),
+  the marginal cost is 30, just what I hoped it would be.
+
+31 March 2021.  Started work on khe_sr_dynamic_resource.c, a
+  generalization of khe_sr_single_resource.c that handles
+  multiple resources and reassigning limited day ranges.  So far
+  I have done the boilerplate of copying khe_sr_single_resource.c
+  and renaming everything, ready to receive the new stuff.
+
+4 April 2021.  Struggling to get started on khe_sr_dynamic_resource.c.
+  Added intervals of days and DRS resources and edges.  Basically
+  just working at random.
+
+5 April 2021.  Working away on khe_sr_dynamic_resource.c.  Changed
+  "step" to "task", understanding that a task can be a free day.
+  Could actually change EDGE to STEP now, or PARTIAL_SOLN to NODE.
+
+6 April 2021.  Working away on khe_sr_dynamic_resource.c.  Still
+  working at random.  I'm now creating one drs resource for each
+  resource of type rt, and one drs task for each proper root task
+  of type rt, and adding the tasks to the days and to the resources
+  they are assigned to, if any.
+
+7 April 2021.  Wrote KheDrsResourceInitForSolving.  It sets each
+  element of dr->fixed_tasks to a fixed task (possibly a free day)
+  if there is no choice then, and to NULL if there is a choice.
+  Also done some preparatory work for setting up solve resources
+  and solve tasks.
+
+8 April 2021.  Added resource on day type, recording everything
+  relevant to a particular resource on a particular day.  This
+  involved moving active_today and leaf_today from KHE_DRS_DAY
+  to KHE_DRS_RESOURCE_ON_DAY.  All done with a clean compile.
+  NB leaf_today is used only for common subexpression elimination.
+
+9 April 2021.  Removed expression deletion.  Removed times field
+  from DAY and removed the KHE_DRS_TIME type.  Moved dom_tests and
+  eq_dom_test_indexes from DAY to RESOURCE_ON_DAY.
+
+10 April 2021.  Tidied up generally.  Everything is in very good
+  order now.  Replaced "partial soln" by "node".  It's briefer and
+  more precise, given that the object contains parent pointers so
+  is not just a partial soln.
+
+11 April 2021.  I've replaced TASK by EDGE in nodes (formerly partial
+  solutions), and I'm working through the consequences.  All done
+  except for DoExtend, and also I need to add the extra entry to
+  each signature.  I'm now indexing signatures correctly in ExprDoDay,
+  using signature offsets (initialized at the start of each solve)
+  taken from resource on day objects.  Got KheDrsNodeDominates
+  working by concatenating resource dom_tests into day dom_tests
+  at the start of each solve.  Added the extra signature entry
+  to each resource's signature; all done including dom_tests.
+
+13 April 2021.  Sorted out dom_tests and eq_dom_test_indexes.
+  Worked through "still to do", got them all done except where
+  noted below under "to do".
+
+16 April 2021.  I've started to think seriously about the new
+  things that will be needed.
+
+  Multiple resources.  This is basically about having the expression
+  trees for each of the resources contribute to the signature.  I've
+  done quite a lot of work on this and it is close to being finished.
+  Perhaps I should push on and get it finished before doing anything
+  else.
+
+  Event resource constraints.  We can have expression trees for these,
+  just like we do for resource constraints.  The leaf nodes will have
+  the form TASK_BUSY(task, rg) which return the duration of task when
+  it is assigned a resource from rg, and 0 when not.
+
+  Limited range of days.  This is not a problem at the start,
+  because we just propagate a single solution along the cycle,
+  but it is a problem at the end, because we have many solutions
+  and we don't want to propagate them all one day at a time.  For
+  each expression tree node we need to divide its children into
+  three segments:
+
+      |---dynamic---|---semi-fixed---|---fixed---|
+
+  The dynamic children are free to take on any values, being part
+  of the neighbourhood.  The fixed children are completely past
+  the end of the neighbourhood so their values are fixed.  The
+  semi-fixed children are children which themselves possess both
+  dynamic and semi-fixed or fixed children.
+
+  We can work out where these boundaries are in advance, and we
+  can implement an algorithm which finds signatures for the
+  dynamic children as usual, and values but not signatures
+  for the semi-fixed, and summary values for the fixed.  For
+  each node type we need to work out just what this algorithm
+  is.  For example, for an OR node:
+
+     dynamic:  signatures as usual
+     semi-fixed:  get child values individually and handle them
+       as we would handle child values on other days, only doing
+       it for multiple children.
+     fixed:  take the precomputed summary values (which could be
+       an integer and also a cost) and utilize them.
+
+  We build expression trees for each resource.  We need to build
+  an expression tree for each task, so that we can update them
+  as we go, but we need to avoid duplicates.  Each task needs
+  to be updated on its first day and not thereafter.  So a
+  TASK_EXPR always covers exactly one day, however many days
+  its task covers.
+
+18 April 2021.  Further thoughts about equivalent tasks.
+
+  Two tasks are equivalent if they run at the same times, have
+  the same workloads and domains, are points of application of
+  equivalent assign resource constraints and prefer resources
+  constraints, and lie in the same event groups of the same limit
+  resources constraints.  Perhaps we could update the task groups
+  and task equivalence stuff to handle this.
+
+  Then equivalence class A is more desirable than equivalence
+  class B if, for both classes, assigning one of its tasks does
+  not influence the cost of assigning any other task, the two
+  classes would be equivalent were it not for the fact that
+  the change in cost for assigning some resource is different,
+  and for all resources, the cost drop for assigning a task
+  from class A is greater than the cost drop for assigning a
+  task from class B.
+
+  We can partition the set of all tasks into a set of
+  sequences of sets of tasks.  Each set of tasks is an
+  equivalence class as just defined.  And the sequence
+  links classes that are equivalent except for cost,
+  with biggest cost decrease first.
+
+  Then when assigning resources, we can choose one task
+  from each sequence, specifically, any task from the
+  first class in any sequence than has available tasks.
+
+  The old "task group" handles much of this, but it does not handle
+  cost differences exactly, and since it predates limit resources
+  constraints, it probably does not handle them very well.
+
+  An alternative would be to use the same task groups, but
+  to ensure that tasks subject to different limit resources
+  constraints go into different task groups.  Then we could
+  sort the tasks by decreasing cost when assigned.  We need
+  to take all constraints into account, including constraints
+  that differ through different parts of the task.
+
+  If a task is one of several derived from the same event
+  resource, and the cost function is not linear, then the
+  cost depends on assignments to the other tasks.  This
+  is basically the same problem as for limit resources
+  constraints, and the solution has to be the same:  these
+  tasks cannot lie in the same equivalence class as other
+  tasks, that is, unless the plan is to assign the same
+  resource to all of the tasks derived from a given event
+  resource - as evinced by an avoid split assignments constraint.
+
+  Wrote a "Task groups revisited" section of the resource
+  structural chapter which goes over the more exact task
+  groups that we are aiming for here.  It needs an audit
+  but it seems to be on the right track.  It should be
+  possible to build classes of equivalent tasks, sorted
+  by decreasing cost reduction.
+
+20 April 2021.  Still working on the "Task groups continued"
+  section.  Slow but steady.
+
+21 April 2021.  Still working on the "Task groups continued"
+  section.  Slow but steady.
+
+26 April 2021.  Still working on the "Task groups continued"
+  section - incredible but true.
+
+27 April 2021.  Finished "Task groups continued" and converted
+  it into a new "Task classes" section, documenting task class
+  solver and task class objects.  That new section is complete
+  and ready to implement.
+
+28 April 2021.  Revised the new "Task classes" section.  It's
+  ready to implement.  Actually I've implemented all of it
+  except KheTaskClassMake and KheTaskClassEquivalent.
+
+29 April 2021.  Working on the new khe_sr_task_class.c code
+  for finding task similarity, and revising the new "Task
+  classes" section as I go.  All good so far, boilerplate
+  all done, it's just starting to get interesting.
+
+30 April 2021.  Working on the new khe_sr_task_class.c code.
+
+1 May 2021.  Working on the new khe_sr_task_class.c code.  Wrote
+  the code to compare multi-task and single-task monitors, and
+  for making signatures.  In fact, I've done all of it except
+  for KheTaskClassMake.
+
+2 May 2021.  Working on the new khe_sr_task_class.c code.
+
+3 May 2021.  Working on the new khe_sr_task_class.c code.
+  Basically finished it, including adding code to index
+  the classes by starting time, and debug code.  Ready
+  for a final audit and test.
+
+4 May 2021.  Audit of khe_sr_task_class.c done, ready to test.
+  Tidied up dynamic solver.  Documented expression trees for
+  event resource monitors.
+
+9 May 2021.  I've spent this time "a-thinkin' and a-wonderin'",
+  but most of it (not all of it) seems to be clear in my mind now,
+  so I've started coding today.  The first step is to load task
+  classes for the open days.
+
+  I've finally tested task classes and it seems to be working
+  perfectly first time.  Now I need KHE_DRS_TASK_CLASS, containing
+  a subset of the corresponding KHE_TASK_CLASS, namely the tasks
+  that are open for assignment.
+
+  Defined new KHE_DRS_TASK and KHE_DRS_TASK_CLASS types.  Have
+  a clean compile (except for a lot of unused functions), now I
+  need to work top-down for a while, or something.
+
+  Got the interface working correctly, storing resources and
+  day ranges.  Creating KHE_DRS_TASK_CLASS objects when
+  initializing days is next.
+
+12 May 2021.  Done some programming but mainly I've been thinking
+  about it all.  It's not easy to get your head around.  I think
+  now that I might make the main loop have one iteration for each
+  open day.  An open day can take care of the closed days before
+  it (if they go back to the start of the cycle) and the closed
+  days after it (if any).
+
+  Expression trees derived from resource monitors can be constructed
+  at the start of the solve.  One object for each resource on each
+  day, which can be wheeled in when that resource and day are selected.
+  Expression trees derived from event resource monitors are harder,
+  we need to wheel in those which monitor at least one open task.
+  We need to go from task classes on open days to drs task classes,
+  and for each of their tasks to all expression tree nodes affected
+  by those tasks.  Will need a visited flag to ensure that each of
+  the affected nodes is added to each day's list of nodes at most once.
+
+13 May 2021.  More thinking.
+
+  Some er monitors may span several days, but that's not a problem.
+  But when they span several tasks, how do we ensure that they go
+  on the expression tree node list only once?  Use a visit number.
+  We build this list once for each solve, then distribute to the
+  days in the usual way.  Although possibly only the active days.
+  Distribute all of them to all their days, but then select the
+  ones that have at least one selected child?  Could do that
+  with a simple swap thingy, like in quicksort; or could do it
+  as each monitor is marked, which would be faster on the whole.
+  But we might lose the postorder thing then.  Better to fly in
+  one chunk per monitor to each day it is wanted, at the time it
+  is first marked selected.  Could even test for previous
+  presence, there won't be many er monitors per day.
+
+  KHE_DRS_EXPR_CHUNK - what I've called above a "chunk", can be
+  flown in in a single step.  One for each resource on each day,
+  constructed at the start of the solve, representing all the
+  resource monitors that are active on that day.  One for each
+  selected day of a solve, constructed at the start of each solve,
+  representing all the event resource monitors that are active on
+  that day.  Either way, contains the postordered links for the
+  expression tree nodes on each day, and information about their
+  signatures and dominance tests on that day.
+
+  On each day we need to initialize all the leaf nodes.  These
+  will not be in the postordered lists, they are done separately.
+  A few for each selected resource on each selected day (all those
+  needed for any resource; these may not all be needed for the
+  selected resources, but most of them will be), plus one for each
+  selected task on each selected day.  The edge can initialize
+  them, and then we can traverse the postordered lists.
+
+  The expression trees for er monitors can be initialized at the
+  start of the solve, and even linked to their active days.  But
+  when we solve, we need the subset that is dependent on the
+  selected tasks, so we build the chunk.
+
+14 May 2021.  More thinking.  What's holding me up?
+
+  Grouped tasks - should we break them down into their atomic parts
+  and then follow links to ASSIGNED_TASK nodes?  That would be simplest.
+  We can use the impl pointer in KHE_TASK to get to its KHE_DRS_TASK.
+  But what became of handling the entire task on its first busy day?
+  We could still do that, or not.
+
+  Initialization - where does an expression tree node get its initial
+  value from, when it is called on its first active day, or on its
+  first active day after a fixed interval?  Could we build an expression
+  tree that had no nodes for fixed days at all; one that has already
+  assimilated all the fixed information?
+
+  Chunks - what chunks of expression trees are needed?  One for each
+  resource on each day, constructed when the solver is constructed,
+  and chunks for event resource monitors, constructured at the
+  start of each solve, but is it one chunk per monitor+day, or what?
+  Building the whole structure at once avoids these questions.
+
+  A better plan:  build the whole thing from scratch at the start
+  of each solve.  Build only those parts of expression trees that
+  relate to open tasks; for the rest, build summaries.  For each
+  node being built now, either build a node or report that no node
+  is needed and supply a summary instead.
+
+  DRS_EDGE
+     ARRAY(DRS_RESOURCE, DRS_TASK)
+
+  Then we run through this array, passing off the resource and
+  task to resource constraints, and passing off the task to
+  event resource constraints:
+
+  DRS_RESOURCE:
+    For each open day:
+      ARRAY(EXPR) - a postorder list of expression nodes for resource
+	constraints for this resource on this day
+
+  DRS_TASK (represents a proper root task with its atomic descendants)
+    For each open day that the task is running:
+      KHE_TASK - the atomic task t running on this day, or NULL
+      ARRAY(EXPR) - if t != NULL, a postorder list of expression
+        nodes for event resource constraints for t on this day.
+
+  Then when we select a (DRS_RESOURCE, DRS_TASK) pair, for each
+  day that the pair is running we can get the resource constraint
+  expression nodes to update on that day, the atomic task that is
+  running on that day, and the event resource constraint expression
+  nodes to update on that day.
+
+  In each task class (DRS_TASK_CLASS) include only the first k
+  tasks, where k is the number of selected resources.  This
+  will further reduce the number of selected monitors and nodes.
+
+16 May 2021.  Starting to implement the 14 May plan today.
+
+  Signature stuff - there is just one set of signature stuff per
+  open day, stored in the day.
+
+  Given selected resources and selected days, we need to find the
+  selected monitors - those affected by these resources and days.
+  So we can easily find their total cost and subtract it from
+  the solution cost to get I, the cost of all unaffected monitors.
+  We can use I as the cost of the initial node, and then the cost
+  kept in each node will be the cost of the complete solution
+  represented by that node.
+
+  Finished revising the type declarations and fields.
+
+  Problem:  how to ensure that we visit each active internal node
+  expression for event resource monitors exactly once per day.  We
+  can do it eacily for internal nodes for resource monitors because
+  each is visited if we select the resource and not if we don't, but
+  for event resource monitor nodes a node could be selected twice,
+  if two of the tasks it monitors are selected.
+
+  One solution would be to have a single list of selected internal
+  nodes covering all selected tasks on each day.  But then nodes
+  that monitor tasks which are selected but not assigned will be
+  visited.  Actually we probably need that anyway since they might
+  have minimum limits and might need to report a cost.
+
+  Here's an idea:  leaf nodes (uniqueified) in task nodes, so they
+  will only be visited once; and internal nodes (also uniqueified,
+  but over the whole day) in day nodes, so again they will only
+  be visited once.  But we can easily find, for each internal
+  node, whether a resource is assigned to it or not.
+
+  But how do we visit task nodes for unassigned tasks?  Could add
+  each resource to its task as we go, and then traverse all tasks.
+  This would be temporary, not like edges which record the same
+  information, only permanently.  Alternatively, as each asst is
+  made, we could traverse its task's leaf nodes and set their
+  values.  Ditto for resource leaf nodes.  Could be effective,
+  since one setup could stay in place for many edges.
+
+  Brought back expression free lists and expression deletion.
+  Handling common subexpressions by deleting leaves separately.
+
+17 May 2021.  Carrying on implementing the 14 May plan.  Have clean
+  compile except for some unused functions and undefined functions.
+  Now for the hard part.
+
+18 May 2021.  Carrying on implementing the 14 May plan.  I've
+  added equality, subset, and disjoint operations between a
+  resource set and a resource group to khe_resource_set.c,
+  and finished the code for building the drs task classes.
+  Finished KheDrsTaskMake, including adding and organizing
+  the task on day objects.
+
+19 May 2021.  Checking KheTaskClassNoOverlap(tc) before making
+  a drs task class now.  Not sure what to do if there is an
+  overlap, so I'm just leaving out classes with overlaps now.
+
+20 May 2021.  Still implementing the 14 May plan.  I've done some
+  tidying up.  I've written the main loop of the solver, and now my
+  plan is to review the actual solve, i.e. KheDrsNodeSetExtendOpen,
+  so that I can be sure that the data structures do the job.
+
+21 May 2021.  Still implementing the 14 May plan.  I need to audit
+  KheDrsDayMake and KheDrsDayAddTaskClasses, then go on.
+
+23 May 2021.  Took yesterday off to referee a paper.  Still implementing
+  the 14 May plan.  Audited KheDrsDayMake, KheDrsDayAddTaskClasses,
+  and KheDrsResourceMake.  They all seem to be in good shape.
+
+24 May 2021.  Still implementing the 14 May plan.  Working on
+  KheDrsLoadEventResourceMonitors.  So far I have built the
+  uniqueified list of monitors, created one monitor converter
+  for each monitor, and added the selected tasks to the
+  monitor converters of the monitors that monitor them.
+  Now I need to build completely correct expression trees.
+
+25 May 2021.  Started work on KheDrsMonitorConverterMakeExpr.
+
+27 May 2021.  Started work on KheDrsMonitorConverterMakeExpr.
+
+28 May 2021.  Started work on KheDrsMonitorConverterMakeExpr.
+
+31 May 2021.  Had a couple of days off, for not very good reasons.
+  Motivation seems to be suffering a bit.  Realized that I can't
+  hope for truly optimal solutions when there are multi-day tasks;
+  the plan I had for it, which is to record the number of extra
+  days for each resource in the signature, does not go far enough.
+  So I've decided to say that the algorithm works with multi-day
+  tasks but that for true optimality all tasks must be single-day.
+
+  Added KhePreferResourcesConstraintDomainComplement,
+  KheDrsMonitorConverterMakePreferResourcesExpr, and
+  KheDrsMonitorConverterMakeLimitResourcesExpr.  So that's
+  KheDrsMonitorConverterMakeExpr completed now.
+
+  Also made sure that all expressions (both derived from resource
+  constraints and event resource constraints) go on a single list
+  of expressions (drs->solve_exprs), and their tricky fields are
+  set by traversing this list.
+
+1 June 2021.  Done KheDrsExprLeafSet and KheDrsExprLeafClear,
+  and various other things including KheDynamicResourceSolverAdopt.
+
+2 June 2021.  Working on steadily; fixed testing code today.
+
+5 June 2021.  I've been thinking about how to convert monitors
+  into expression trees that include only the minimum needed to
+  cover selected tasks.  For each time group, we need first day
+  and last day, then sort by first day.  Then we can use binary
+  search to find the ones that intersect a given set of sets
+  of days.  It probably doesn't matter all that much.
+
+  Wrote documentation for monitor framing.  Ready to implement.
+
+6 June 2021.  Implementing monitor framing.  Documented KHE sets,
+  because I expect to be using them.
+
+7 June 2021.  Implementing monitor framing.
+
+9 June 2021.  Implementing monitor framing.  All done and audited,
+  also added some debug code.  So ready to test.  Also took an
+  off-site backup of KHE today.
+
+10 June 2021.  Audited monitor framing (again).  Started tooling
+  up for using monitor framing in the dynamic programming solver.
+  So far I am creating the framer and adding the days to it.
+
+16, 18 June 2021.  I've been thinking hard and this is what I have
+  come up with.  The data structure is basically a set of
+  expression trees.  There is one tree for each monitor in the
+  solution (omitting event monitors and avoid split assignments
+  and limit idle times monitors as usual).  Each node stores
+  its parent and its index in that parent's list of children.
+  An external node is closed when its value is determined by the
+  assignment of a non-selected task, and open otherwise.  An
+  internal node is closed when all of its children are closed,
+  and open otherwise.  When it is closed, it stores its own
+  value, known as its "closed value".  When it is open, it
+  may store a value temporarily, known as its "open value",
+  in the same field used for the closed value.
+
+  Divide the sequence of days into a single initial interval,
+  consisting of the first run of closed days, followed by a
+  sequence of "day runs".  One day run consists of one open day
+  followed by as many closed days as possible.  Often their number
+  will be zero.  Each solution will need to be able to generate a
+  signature for each day run, indexed by its first (open) day but
+  representing the state of the solution on its last day.
+
+  Actually we don't really care when closed days are taken into
+  account.  In INT_SUM nodes, for example, it would be fine for
+  the values of all closed days to be added to the history value
+  and form an initial value.
+
+  For a node x the operations are basically
+
+    NodeInit(x)
+      Initialize x, assuming that the entire solution is closed.
+      This can be a part of the creation of x.
+
+    NodeChildHasOpened(x, y, y_index, y_closed_value)
+      Inform x that its child y, whose index in x is y_index,
+      has just become open.  Since y is now open it has no
+      closed value, but y_closed_value is the closed value it
+      had just before it became open.  This operation will
+      cause x to become open (if it is not open already),
+      because a node with an open child must itself be open.
+      (External nodes are opened directly.)
+
+    NodeChildHasClosed(x, y, y_index, y_fixed_value)
+      Inform x that its child y, whose index in x is y_index and
+      whose fixed value is y_fixed_value, has just become closed.
+      Here x must be open, and it will become closed if y was its
+      only open child.  (External nodes are closed directly, and are
+      passed an assignment, possibly of NULL, when that is done.
+      They calculate their closed values based on this assignment.)
+
+    NodeDoDayRun(x, day_run, old_sig, &new_sig)
+      Assuming that old_sig contains x's value before day_run,
+      update &new_sig to contain x's value after day_run,
+      assuming that x's children have all already been
+      updated in this way.  This is basically the old DoDay,
+      although for a day run rather than for a single day.
+
+  Each node knows its active days as usual, and for each
+  active day except the last it knows its signature position,
+  although those are only assigned to it at the start of each
+  solve.  That can be done in a single traversal and takes
+  negligible time compared with the actual solve.  That
+  traversal also builds the expression tree by selecting
+  the open root nodes.
+
+  There is no point in storing a separate list of expressions
+  for each resource.  The expressions open on each day have to
+  be found by searching upwards from the external nodes of
+  selected tasks on each day.  This is to completely avoid
+  traversing expressions for unselected days.
+
+  Need separate internal node and external node types.  Internal
+  nodes have one parent, externals have several.  Internal nodes
+  have NodeChildHasOpened and NodeChildHasClosed; external nodes
+  have NodeOpen and NodeClose.
+
+  NB have to remember to close all open tasks when adopting,
+  including tasks that were not selected for assignment.
+
+  Always adopt at the end of the solve?  Why not, it's simpler.
+  So we begin by opening all selected tasks and end by closing
+  them all again, using the assignments of the best solution to
+  decide how to close them.  As we close them we do the assignments,
+  so that the closed data structure is in sync with the solution.
+
+  The main remaining problem is to find a postordered list of
+  active nodes for each day of a given solve.  We could assign
+  each node a postorder index during creation, and then after
+  we find the nodes for each day while setting up for a solve
+  (by searching upwards from the internal nodes for that day)
+  we could sort them by increasing postorder index.  Then we
+  could run through this list and assign a signature index
+  for that day to each non-final node.
+
+  Each child node has a single final open day, and on that day
+  it must make its final value available in its value field.
+  Each parent must be open on all of the final open days of
+  its children, and on each of its open days it must visit
+  each child for which that day is the final open day and
+  retrieve the value.
+
+  But the final open day depends on the solve, because different
+  solves open different days.  So we need to set the solve
+  interval in each node at the start of the solve, and it
+  must start on an open day and end on an open day.
+
+  Make one list of all open internal nodes, and one list for
+  each day, of the internal nodes which are open on that day.
+  These per-day lists can be made during the course of a
+  single traversal of the main list, as usual.
+
+  In principle there are five expression types:
+
+      IEXPR[x] where x could be INT, FLOAT, or COST
+      EEXPR[x] where x could be INT or FLOAT
+
+  But we also need SEQ[EEXPR] although we could have
+  two lists, SEQ[EEXPR[INT]] and SEQ[EEXPR[FLOAT]].
+  Another possibility is to store the float as an
+  int, by multiplying it by 100.  Then all external
+  node values will be INT.  And we might be able to
+  avoid IEXPR[COST] by reporting costs as they come
+  up rather than having the parent retrieve them,
+  like we are doing now.  Then we can simply use
+
+    EXPR
+      IEXPR
+      EEXPR
+
+  and every expression has an integer value.  Another
+  option would be
+
+    EXPR
+      IEXPR
+        IEXPR_INT
+        IEXPR_FLOAT
+        IEXPR_COST
+      EEXPR
+        EEXPR_INT
+        EEXPR_FLOAT
+        EEXPR_COST
+
+  although not all of these would be required.
+
+20 June 2021.  Starting to code at last.  I've decided to keep the
+  existing EXPR types for now, to avoid a lot of boilerplate work.
+
+  Changed SolverMake to make a drs task for each proper root task
+  in task_class_solver, and put them all into an array indexed by
+  task index, for quick mapping between tasks and drs tasks.  It
+  also creates a drs resource object for each resource of type rt.
+  Started adding expressions; done KheDrsAddAssignResourceMonitor.
+
+21 June 2021.  Updated code to convert monitors into expression
+  trees.  All done, treating event resource and resource monitors
+  uniformly.  Deleted monitor framing.
+
+22 June 2021.  Merged int-valued and float-valued expressions
+  into one type, by including a union within the struct.  All
+  implemented and compiling cleanly.  This allows for a
+  different inheritance structure, one that separates internal
+  and external nodes.
+
+  Added parent pointers to expressions.  I've decided to stick with
+  a single expression type for the moment, with an array of parents.
+  I can optimize it later, if that seems worthwhile.
+
+23 June 2021.  Wrote stub branches of KheDrsExprInternalChildHasOpened
+  and KheDrsExprInternalChildHasClosed.  They need to be filled in.
+
+24 June 2021.  KheDrsExprBusyTimeClose et al. written.  I need to use
+  their parent functions (ExprExternalOpen and ExprExternalClose) and
+  remove the if statements inside them.
+
+25 June 2021.  Finished all branches of KheDrsExprExternalClose.
+
+27 June 2021.  Decided to create everything in advance, and have
+  all_x arrays to hold all the x's and open_x arrays to hold the
+  open (for solving) x's.  Just finished KheDynamicResourceSolverMake.
+  It needs an audit,
+
+29 June 2021.  Audited KheDynamicResourceSolverMake, all good.
+  Changed KheTaskClassSolverMake to accept an arena, this being
+  more convenient for calling it from the dynamic resource solver.
+
+30 June 2021.  Audited KheDrsAddClusterBusyTimesMonitor and its
+  siblings, all seems fine.  Wrote KheDrsSolveOpen and KheDrsSolveClose,
+  but these are just initial versions.
+
+  Changed EDGE to contain an array of drs task on day objects, which
+  is more exact (although equivalent) to having an array of drs task
+  objects.  Also changed all the corresponding code, successfully.
+
+2 July 2021.  Wrote KheDrsTaskAssign(dt, dr) and KheDrsTaskUnAssign(dt)
+  and called KheDrsTaskAssign(dt, dr) when creating drs tasks.
+
+3 July 2021.  Wrote KheDrsResourceOpen and generally made progress on
+  opening for solving.
+
+4 July 2021.  Added sorting of open expressions by postorder index,
+  but at present I'm still not yet opening expressions.
+
+5 July 2021.  I started work on khe_sr_dynamic_resource.c on
+  31 March 2021, which is three months ago.  Yikes.
+
+  Wrote KheDrsExprOrChildHasOpened and KheDrsExprOrChildHasClosed.
+  Both seem to be good stuff.  I should be able to carry on in the
+  same style, except for INT_SEQ_COMB.
+
+  We have KheDrsExprBusyTimeClose but not KheDrsExprBusyTimeOpen.
+  Why not?  Because KheDrsExprExternalOpen does not need to
+  distinguish cases, apparently.
+
+  When expressions are first created, they are created in the open
+  state, because this is the easiest to initialize:  the closed
+  state has nothing to record, and the value is undefined.  Once
+  all expressions are created, we run through all the external
+  nodes and close them.  This propagates upwards and closes all
+  the internal nodes, as well as building their closed states.
+  In KheDynamicResourceSolverMake, wrote code to close resource
+  oriented and task oriented external nodes at the end of the make.
+
+10 July 2021.  Took a few days off for refereeing.  Finished off
+  KheDrsSolverOpen today, except that there is some old code at
+  the end of it that I have to re-position.  Also I am not opening
+  KHE_DRS_EXPR_INT_SEQ_COMB; that will be hard work.
+
+11 July 2021.  Who is open?  Resource constraints for open resources
+  on open days.  Event resource constraints on open days.  These are
+  known in advance, but what is not known in advance is the closed
+  state.  So opening and closing could have more to do with closed
+  states than with finding open nodes.
+
+     At the start of DoDay:
+
+       if( !e->open )
+       {
+         /* first touch of this node on this solving visit */
+	 for each open day interval I
+	 {
+	   I2 = I intersect (days when e is active)
+	   for each day d of I2
+	     for each child node child_e that reports its value on d
+	   e->closed_state "-=" child_e->closed_value
+	 }
+	 e->open = true
+       }
+
+    At end of run when a solution is adopted:
+
+       if( e->open )
+       {
+         /* first touch of this node on this closing visit */
+	 for each open day interval I
+	 {
+	   I2 = I intersect (days when e is active)
+	   for each day d of I2
+	     for each child node child_e that reports its value on d
+	   e->closed_state "+=" child_e->closed_value
+	 }
+	 e->closed_value = f(e->closed_state)
+	 e->open = false
+       }
+
+    Here closed_state is always true and contains the state derived
+    from all the closed children.  If the node itself is closed this
+    will be a complete closed state from which the node's value is
+    completely determined.  If the node is open, the closed state
+    will contribute to but not completely determine the value.
+
+    Perhaps it would be better for all nodes to report their
+    changed values to their parent.  This is needed anyway if
+    we go for a global COST_SUM.
+
+    ***
+    Each open node has to tell its parent the day that it will
+    be reporting its final value, and the closed value that it
+    is withdrawing.  The reporting day is the last open day
+    equal to or preceding the last active day; because on that
+    day nothing more is needed to find the final value.  Each
+    closed node tells its parent nothing, to save setup time.
+
+    When children are sorted by reporting day, their order can be
+    the same as when they are sorted by last active day, although
+    there may be more cases of equality.
+    ***
+
+12 July 2021.  Thinking about implementing yesterday's *** stuff.
+  Using day_range instead of first_day_index and last_day_index
+  in expressions.  Can add solve_day_range easily later.
+
+    KHE_DRS_DAY_RANGE KheDrsDayRangeToSolveRange(drs, ddr);
+
+  When we open a node, we can call this to set its solve range,
+  and then report solve_range.last to the parent.  Or we could
+  let the solve range accumulate, and report the last one to the
+  parent on a subsequent pass.
+
+  Pass 1 - work out which nodes are open, and sort them by
+  postorder index.
+
+  Pass 2 - in postorder, each open node reports itself to its
+  parent, with its index, old value, and reporting day (solve day).
+  We accumulate solve days and report the largest to the parent.
+  We can also assign various indexes at this point, because we
+  have the solve days.
+
+  Changed open_index to solve_day_index wherever it occured.
+
+  Started to implement these ideas in KheDrsExprOpenPhase1 and
+  KheDrsExprOpenPhase2.  Between them they open all expression
+  nodes and get the solve ranges into the nodes.  They need to
+  do more, but that's a good start.
+
+14 July 2021.  Initializing internal_today, dom_tests, and
+  eq_dom_test_indexes now, during KheDrsExprOpenPhase2.  I've
+  finally removed sig_len from KHE_DRS_DAY.
+
+15 July 2021.  Initialising child indexes in KheDrsExprOpenPhase2.
+
+16 July 2021.  Now handling closed state correctly when opening
+  nodes.  (But not yet INT_SEQ_COMB, obviously.)
+
+  Implemented KheDrsExprOrEvalDay, defining several useful
+  macros along the way.  Ready to carry it through to the
+  other internal node types.
+
+  Finished KheDrsExprEvalDay for all node types except INT_SEQ_COMB,
+  and I'm now calling it from the solve code.  It's a milestone.
+  Finally, finally, I'm beginning to get somewhere.
+
+  Removed e->day_range, we use only e->open_day_range now.
+
+17 July 2021.  Thoughts about open and closed nodes, and closed_state:
+
+    When a node is open, its value is undefined, except that briefly
+    when it is first opened it retains the value that it had when it
+    was closed, and briefly while evaluating days it contains its value
+    in the current solution.
+
+    When a node is closed, its value is defined and is its value in
+    the current solution.  (There is always a current solution at the
+    moment a node is closed.)
+
+    Irrespective of whether or not a node is open, its closed_state
+    field is defined and holds a summary of the values of the closed
+    children of the node.  When all children are closed this summary
+    is sufficient to determine the value of the node.
+
+18 July 2021.  Adding in the branches of KheDrsExprClosedStateAdd and
+  KheDrsExprSetValueFromClosedState.  All done, except not INT_SEQ_COMB
+  which will have to wait.
+
+19 July 2021.  Working top-down on KheDrsSolveClose.  I've done a first
+  draft but there is a lot wrong with it.  KheDrsResourceCloseOnDay is
+  not called, for example, and the closed_asst fields are not set.
+
+20 July 2021.  Not really up to the complexities of KheDrsSolveClose
+  today, so I've spent some time commenting out obsolete code, to do
+  with freeing objects, expressions mainly.  Also removed some
+  obsolete expression closing code that was causing some confusion.
+
+21 July 2021.  Working on KheDrsSolverClose.  I've made a pretty good
+  stab at it today.  It needs auditing, in parallel with KheDrsSolverOpen.
+
+23 July 2021.  Updated all the external nodes, they now have task_on_day
+  and resource_on_day fields.
+
+24 July 2021.  Done KheDrsExprSetClosedValue, done its branches, used
+  it at the end of the solve, and removed all the more or less
+  equivalent old code.  Sorted out expression opening.  All expressions
+  are opened, but only internal ones go on internal_today lists.
+
+25 July 2021.  Done a careful audit of opening, solving, and closing.
+
+  Expression construction in the closed state.  After resources and
+  tasks are constructed, they are in the closed state:  their
+  closed_asst fields reflect the initial assignments of resources
+  to tasks, and their open fields are initialized to false.  So we
+  can use SetClosedValue on the external nodes to set the closed
+  values of external nodes.  Done for KheDrsExprBusyTimeMake, and
+  could easily be done for the other external expression nodes.
+
+26 July 2021.  Working on adding KheDrsExprInitEnd and building
+  expression trees bottom-up.  External nodes all done, so I'm
+  up to making all calls to KheDrsExprOrMake obey the rules.
+
+27 July 2021.  Finished adding KheDrsExprInitEnd and building
+  expression trees bottom-up.  So now expression tree creation
+  leaves all nodes in the closed state.  Looked over the still
+  to do points; apart from INT_SEQ_COMB they are all minor.
+
+28 July 2021.  Sorted out day->node_set.  Removed drs->solve_state;
+  there is no need for it now.
+
+  Sorted out KheDrsTaskAssign, KheDrsTaskUnAssign, KheDrsTaskClose,
+  and KheDrsTaskOpen, although they need an audit.  Invariant:  if
+  a drs task is open, its KHE task is unassigned.
+
+29 July 2021.  Audited  KheDrsTaskAssign, KheDrsTaskUnAssign,
+  KheDrsTaskClose, and KheDrsTaskOpen.  All seem good.
+
+  Optimal assignment of several resources using dynamic programming
+  -----------------------------------------------------------------
+  Running the algorithm
+  Overview of the algorithm and terminology
+  Tasks and resources (including open and close, and task classes)
+  Expression trees (including node types and trees for XESTT monitors)
+  Opening and closing
+  Nodes, signatures, and edges
+  From one partial timetable to the next
+  Dominance testing
+  Running time
+
+30 July 2021.  Working on documentation.
+
+31 July 2021.  Working on documentation.
+
+1 August 2021.  Working on documentation.  Finished the tasks section
+  today; it needs an audit.
+
+2 August 2021.  Working on documentation - expressions.
+
+3 August 2021.  Working on documentation - expressions.
+
+4 August 2021.  Working on documentation - expressions.
+
+5 August 2021.  Working on documentation - expressions.
+
+6 August 2021.  Working on documentation - expressions.
+
+7 August 2021.  Working on documentation - expression signatures.
+  Removed type KHE_DRS_EDGE.
+
+8 August 2021.  Looked into removing the day field of KHE_DRS_NODE.
+  But it seems impossible, because the function for hashing a node
+  uses it, and it has access to the node and nothing else.
+
+9 August 2021.  Working on the signatures section.
+
+10 August 2021. Finished the signatures section, it's rather good.
+  I'm beginning to suspect that dominance testing is the logical
+  thing to document next.  Flown in old dominance testing section,
+  have to audit it and fix it up for the new context.
+
+11 August 2021.  Documenting dominance testing.  All done and
+  audited.  Also done the main solver code, needs an audit.
+
+12 August 2021.  Moved most of what I've written to an appendix
+  and repaginated it.
+
+13 August 2021.  Changed KHE_DRS_NODE to KHE_DRS_SOLN in code
+  and documentation.  Auditing the new Appendix.
+
+15 August 2021.  Working on running time section of the new
+  appendix.  It needs an audit.
+
+16 August 2021.  Audited the non-Appendix part and the running
+  time section of the new appendix.  Also wrote the expression
+  types section.
+
+17 August 2021.  Finished the expression trees section of the
+  appendix, which finishes the appendix.  Audited the non-appendix
+  part and the expression types part of the appendix.  Coordinated
+  section numbers in makefile and khe_solvers.h with the section
+  numbers in the user's guide.  Made off-site backup.
+
+19 August 2021.  Took a day off to do other jobs.  Today I
+  converted solve_final_solns into solve_final_soln and then
+  moved it out of the solver object to a local variable in
+  the Solve function.  Also verifying solution costs now,
+  and pruning nodes whose cost exceeds the initial cost.
+
+20 August 2021.  Documented a design for a VLSN search using
+  the dynamic resource solver.  Ready to implement.
+
+21 August 2021.  Working on khe_sr_dynamic_vlsn.c.
+
+22 August 2021.  Working on khe_sr_dynamic_vlsn.c.  Added a
+  soln_limit parameter to the solve, plus other useful things.
+  Designed, documented, and implemented KHE_RANDOM_GENERATOR.
+
+23 August 2021.  Finished khe_sr_dynamic_vlsn.c.  Added the
+  rs_drs_off option.  Added KHE_DRS_DOM_NONE to code and docs.
+
+24 August 2021.  Designed, documented, implemented, and audited
+  the test function, KheDynamicResourceSolverTest.
+
+25 August 2021.  Documented the fact that even constraints with
+  minimum limits do not report a cost until that cost is clearly
+  not going to go away, preserving monotonicity.  Also looked
+  into the issue of task unassignments changing the solution
+  cost during opening, concluded that there is no problem, and
+  added a paragraph about it to the Appendix.
+
+  Canonical order for types and submodules
+  ----------------------------------------
+
+  This is based on the general ordering that we always use:
+  instances (times, resources, events, constraints), solutions,
+  except that resources come before times because the implementation
+  opens resources before days.
+
+    (resources)
+    KHE_DRS_RESOURCE_ON_DAY
+    KHE_DRS_RESOURCE
+
+    (times)
+    KHE_DRS_DAY_RANGE
+    KHE_DRS_DAY
+
+    (events)
+    KHE_DRS_TASK_ON_DAY
+    KHE_DRS_TASK
+    KHE_DRS_TASK_CLASS
+
+    (constraints)
+    KHE_DRS_DOM_TYPE (?)
+    KHE_DRS_DOM_TEST
+    KHE_DRS_EXPR (followed by expression subtypes)
+
+    (solutions)
+    KHE_DRS_SOLN
+    KHE_DRS_SOLN_LIST
+    KHE_DRS_SOLN_TRIE
+    KHE_DRS_SOLN_SET
+
+    KHE_DYNAMIC_RESOURCE_SOLVER
+
+26 August 2021.  Working through khe_sr_dynamic_resource.c.
+  Reorganization complete (now 10130 lines), debug is next.
+  I wrote "Started work on khe_sr_dynamic_resource.c" on
+  31 March 2021, so that's almost 5 months ago.
+
+  Reorganized the debug code, all done now except that I
+  plan to reorganize and unify the expression debug code.
+
+27 August 2021.  Working on expression debug code.  Finished
+  KheDrsExprDoDebug and all its branches, now I need to redo
+  KheDrsExprDebug.  Should I have two functions, one for with
+  and one for without solutions?  It might be simpler in the end.
+
+28 August 2021.  Rewrote KheDrsExprDebug and KheDrsExprDebugSoln.
+  Much better now, much more shared code, as it should be.  Also
+  audited and adjusted the VLSN search, which is now in good shape.
+
+29 August 2021.  Audited the Appendix today.  It is now in very
+  good correspondence with the implementation.  Decided definitely
+  to not have a KHE_DRS_EXPR_COST_SUM type.
+
+31 August 2021.  Thinking about initial costs.  It's quite tricky
+  because the nodes pass partial costs up when they know them.
+
+1 September 2021.  I've written a section of the Appendix which clears
+  up initial costs and partial costs.  I need to make it concrete for
+  the various expression types now.
+
+2 September 2021.  Now storing cost values in root expressions and using
+  them to get the right initial solution cost, except I'm not adding in
+  c(e, x0) yet.  Where does that come from?
+
+3 September 2021.  Thinking about c(e, x0).
+
+4 September 2021.  Thinking about c(e, x0).
+
+5 September 2021.  Implementing total closed cost.  The types
+  affected are:
+
+    KHE_DRS_EXPR_COST
+      Closed cost should be calculated along with closed state.
+      But at present this type has no closed state.  It can
+      store its closed child's value as its closed state,
+      or 0 if the child is open.
+
+    KHE_DRS_EXPR_INT_SUM_COMB
+      Closed cost is a simple function of closed state.
+
+    KHE_DRS_EXPR_INT_SEQ_COMB
+      Closed cost should be calculated along with closed state.
+
+  Suppose we just store the old closed cost, and then when
+  something changes, we find the new closed cost, report the
+  difference, and replace the old closed cost with the new
+  closed cost.  Would this work for everyone?  When the node
+  opens, closed cost drops to 0.  But then we forget good stuff.
+
+  Suppose we ensure that these three types have a closed state
+  which is a function of the values of its closed children.  And
+  suppose that the closed cost can be deduced from the closed
+  state.  Then closed state can be kept up to date as children
+  are opened and closed, and each time it changes we can find the
+  change in closed cost and report it.  KHE_DRS_EXPR_INT_SUM_COMB is
+  doing this now, and it seems to be working.
+
+  The state of a node is a summary of the values of its children,
+  not itself the value, but sufficient to calculate the value,
+  and easy to update as the children't values change.
+
+  The closed state of a node is the state of the node when only
+  its closed children are taken into account.
+
+7 September 2021.  Analysing the effects of all this stuff on the
+  INT_SUM_COMB code.  They are non-trivial, especially if we want
+  to handle min limit costs as well as possible, that is, reporting
+  a cost when there are insufficient open children remaining to
+  get us to to the minimum limit.
+
+8 September 2021.  Working on INT_SUM_COMB.  It all seems to be
+  done, except for KheDrsExprIntSumCombEvalDay.
+
+10 September 2021.  Decided to copy the last section of my history
+  paper and adjust it to the INT_SUM_COMB case.  Currently working
+  on that.
+
+11 September 2021.  Finished copying the last section of my history
+  paper and adjusting it to the INT_SUM_COMB case.  It needs an
+  audit, but it looks like it's ready to implement.
+
+12 September 2021.  Audited the new documentation for INT_SUM_COMB.
+  It's ready to implement now.
+
+13 September 2021.  Implementing INT_SUM_COMB today.  Fixed up a
+  couple of small things first:  removed open_children_count, and
+  am now storing all three history values, not two.
+
+14 September 2021.  Implemented INT_SUM_COMB today.  It needs a
+  careful audit now.
+
+15 September 2021.  Working on KHE_DRS_COMB_TYPE code today.
+
+16 September 2021.  Working on KHE_DRS_COMB_TYPE code (actually,
+  documentation) today.  Finished the documentation, it needs
+  an audit, and also I need to think about what happens when
+  things go negative, if they ever do.
+
+17 September 2021.  Fixed use of "active" in two senses.  Can't get
+  rid of "active time group", so got rid of "active expression".
+  Audited INT_SUM_COMB section, it looks ready to implement now.
+  Could include the implementation in the documentation, perhaps.
+
+19 September 2021.  In INT_SUM_COMB, implemented the KHE_DRS_COMB_TYPE
+  reductions to the signature value.  Also audited the documentation
+  and tightened it up quite a lot.
+
+20 September 2021.  Changed "closed cost" to "starting cost".  Also
+  audited the section again, and audited the INT_SUM_COMB submodule.
+
+21 September 2021.  Finally sorted out open child indexes and ai,
+  bi, and ci.  Also added KheDrsExprIntSumCombEvalDay to the
+  documentation.  It's beautiful now.
+
+22 September 2021.  Looked into soln_group and ps_soln_group, fixed
+  it for the next release, and emailed the user who reported it.
+  Wrote up adjustment to min_limit dominance test, and implemented
+  what I wrote.  It needs an audit, however.
+
+23 September 2021.  Audited the adjustment to the min_limit
+  dominance test, and added an algebraic proof.  However it could
+  still do with another audit, some time when my brain is clearer.
+  Documented the non-implementation of EXPR_COST.
+
+24 September 2021.  Replaced EXPR_COST expressions with EXPR_INT_SUM_COMB
+
+25 September 2021.  Thinking about removing SetClosedValue.  But
+  it does not work for leaf nodes so I've decided against it.
+  Audited the documentation.  Removed best_of.  Changed INT_SUM_COMB
+  to INT_SUM_COST, and INT_SEQ_COMB to INT_SEQ_COST.  Also changed
+  COMB_TYPE to ADJUST_TYPE.  Started auditing the code.
+
+27 September 2021.  Auditing the code.  I've made a few small changes.
+
+28 September 2021.  Auditing the code.  Now avoiding creating a solution
+  until we are ready to test it.  It's quite a lot better.
+
+29 September 2021.  Auditing the code.  Working on event resource
+  and resource monitors.  Now returning a NULL solver when there are
+  task overlaps.  I've documented it, saying (truly) that there are
+  implementation problems in trying to carry on.
+
+1 October 2021.  Auditing the code.  Got right through to the end,
+  a few things marked for investigation along the way.  Checked
+  user's guide for missing cross references, all good now.  Tidied
+  up running_time_per_day.  Looked into the adjusted_min_limit code
+  I'd added to the limit active intervals monitor code, but could
+  make no sense of it, so I've deleted it.
+
+  Removed the dr_index parameter parameter of KheDrsResourceOnDayIsFixed
+  and replaced it by an open_resource_index attribute of drs resources.
+  This means I need a KheDrsResourceClose operation, but it seems best.
+  I've updated the documentation too, here and in a few other places
+  that I noticed it was out of date.  Audited soln->cost, it seems OK.
+
+  Off-site backup today.  I started work on khe_sr_dynamic_resource.c
+  on 31 March 2021, which is six months ago.  Yikes.
+
+5 October 2021.  Taken a few days off, doing not much.  Today I start
+  work on the final frontier, INT_SEQ_COST.  Starting by reviewing
+  what needs to be done, and thinking about the closed state.  The
+  file contains 10552 lines today.
+
+6 October 2021.  Still thinking about INT_SEQ_COST.  But working on
+  d(C_{i-1}).
+
+7 October 2021.  Finished d(C_{i-1}) and then audited the whole
+  INT_SUM_COST section.  It's in very good shape now.
+
+8 October 2021.  Back to INT_SEQ_COST.
+
+9 October 2021.  Back to INT_SEQ_COST.
+
+11 October 2021.  Working on algebra for INT_SEQ_COST.
+
+12 October 2021.  Still working on algebra for INT_SEQ_COST.
+
+14 October 2021.  Still working on documentation for INT_SEQ_COST.
+
+19 October 2021.  Took a few days off to do various things, partly
+  so that I could freshen up a bit.  Looked over what I've written,
+  it seems to be all there.  So time to (tentatively) implement.
+
+27 October 2021.  I've had some time off doing various things, including
+  refereeing three papers.  Back at work today.  Wrote the type
+  declarations for closed sequences.  Wrote KheDrsExprIntSeqCostEvalDay,
+  it seems pretty good but it needs an audit.
+
+28 October 2021.  Audited KheDrsExprIntSeqCostEvalDay.  It seems pretty
+  good.  So it's "just" the opening and closing now.  Good stuff.
+
+30 October 2021.  Working on sorting the open children of INT_SEQ_COST
+  expressions.  Worked out what to do, documented it, and implemented it.
+  Also did some good work on the algebra.  The costs it defines slightly
+  improve on what I've been using up do now, so I need to adjust EvalDay
+  to do what it says.  Identified and resolved an issue with the Step
+  cost function, which can lead to a decrease in cost when two active
+  intervals become one.
+
+31 October 2021.  Audited yesterday's work.  It's in good shape now,
+  and I'm ready to start work on adjusting EvalDay to implement it.
+
+1 November 2021.  Working on KheDrsExprIntSeqDev.  It's written, now
+  it needs an audit, and I might need to audit the documentation too,
+  and think it all over.  Could it be simpler?
+
+3 November 2021.  Audited KheDrsExprIntSeqDev and documentation, it's
+  coming along.  It's messier than I would like, but the audit did
+  not throw up any simplifications.
+
+5 November 2021.  Working on EvalDay.
+
+6 November 2021.  Working on EvalDay.
+
+7 November 2021.  Working on documentation.  Did some exploratory
+  implementing, will do more.
+
+8 November 2021.  Implementing the new algebra.  Quite a lot of
+  good stuff going on.  KheDrsAUIntervalMerge is next.
+
+9 November 2021.  Working on steadily.  Sorted out the problem
+  with removing open children when closing.  I'm no longer doing
+  that, but now eisc has the index of the first unremoved open
+  child available for ChildHasClosed to use.  Finished
+  KheDrsExprIntSeqCostChildHasOpened and
+  KheDrsExprIntSeqCostChildHasClosed, they need an audit.
+
+10 November 2021.  Worked on the documentation, also handled the
+  case where an a-interval immediately to the right of a changed
+  child changes its unassigned_precedes field.
+
+12 November 2021.  Audited everything so far.  The logical sequence is
+  closed seq, a-interval, au-interval, so made sure everything follows
+  that order.  Changed a few function names to make them shorter and
+  clearer.  Corrected confusion over 'history_before' and 'history';
+  it's 'history' we want.  Just KheDrsExprIntSeqCostEvalDay left to do.
+
+13 November 2021.  Made a first attempt at KheDrsExprIntSeqCostEvalDay;
+  have clean compile but I am not confident about it; I need to audit
+  it carefully.
+
+14 November 2021.  Sorted out history in detail, and documented my
+  understanding.  It's really very simple.  Auditing
+  KheDrsExprIntSeqCostEvalDay is next.
+
+17 November 2021.  Audited KheDrsExprIntSeqCostEvalDay, all good but
+  optimization of active_len is still to do.  Decided to try to bring
+  INT_SUM_COST and INT_SEQ_COST closer together, starting with a new
+  section of the documentation that covers what is common to both.
+
+19 November 2021.  Still working on the documentation, trying to
+  bring INT_SUM_COST and INT_SEQ_COST closer together.
+
+20 November 2021.  Still working on the documentation, trying to
+  bring INT_SUM_COST and INT_SEQ_COST closer together.  I've
+  managed to scrape together four pages of common material,
+  which is worthwhile I think.
+
+21 November 2021.  Still working on the documentation.
+
+22 November 2021.  Still working on the documentation.  Finished
+  INT_SUM_COST, it needs an audit but it's pretty darn good, and
+  started on INT_SEQ_COST.
+
+23 November 2021.  Finished the INT_SEQ_COST documentation, it
+  seems pretty good too.
+
+24 November 2021.  Starting a full audit of all the documentation,
+  including making sure that code excerpts are up to date and
+  cover everything significant.  Currently in the middle of the
+  dominance testing section (page 46).
+
+25 November 2021.  Up to B15 (p64).
+
+25 November 2021.  Finished auditing the documentation.  Now
+  terminating searches for au-intervals early, as soon as the
+  length reaches L.  All done and documented.  Off-site backup.
+  I started work on khe_sr_dynamic_resource.c on 31 March 2021,
+  which is eight months ago.  Yikes.
+
+30 November 2021.  I was planning to take a day or two off, then
+  I caught a cold and the two days turned into four.  Audited
+  KheDynamicResourceVLSNSolve and documentation today.  All good.
+  Added debug code to KheDynamicResourceVLSNSolve.  Did my very
+  first run, did not get very far, but anyway it's a start.
+  There is a logic problem with first_open_child_index.
+
+1 December 2021.  Decided that the first_open_child_index problem
+  was that ChildHasClosed was not suitable to call when adding a
+  new child, because it takes a child away from open chilren.  So
+  I've added a specialized KheDrsExprAddChild.  All done.
+
+  Did a bit of debugging.  I now have a clean run with 0 solves.
+
+2 December 2021.  Did a careful audit of the task classes
+  documentation and checked that the task classes debug
+  output agrees with it.  All seems well there.  Also did an
+  audit of the task classes implementation, it's very good.
+  Also got a pretty good debug print of the dynamic resource
+  solver in its closed state, including some expressions.
+
+3 December 2021.  More testing.  Fixed one small bug.
+
+5 December 2021.  Struggling with motivation, thanks to a cold
+  plus uncertainty about the best way forward from here.  Added
+  KheMeetId and KheTaskId to the platform, done and documented.
+  Made a really good function for debug prints of solutions; it's
+  done and ready to test.
+
+6 December 2021.  Fiddled with the timetable printing function, and
+  now it is is working well on a small example.
+
+  Constraint:23 should be 5 from history plus 1 active makes
+  6, but it seems to be storing 5 in the signature.  No!  All
+  good!  The maximum is 5, so it has been adjusted.  Great.
+
+7 December 2021.  Negative costs.  Something wrong with INT_SUM_COST
+  implementation of assign resource constraints, possibly.  Removed
+  the start_cost field, which seemed likely to be the problem, and
+  indeed the negative costs went away.
+
+9 December 2021.  Debugging.  Going steadily.
+
+10 December 2021.  Debugging.  Going steadily.  Sorted out the
+  invariant of KHE_DRS_SOLN and audited all the code that depends
+  on it.  There was one mistake, in KheDrsSolnResourceIsAssigned.
+  Got a clean run, saying "no final solution" which is correct
+  because solutions which are not actually better get pruned.
+
+11 December 2021.  Still debugging.  Found an interesting case
+  where the start cost could be higher.  This line:
+
+    solve_start_cost 0.02020 sum+= 0.00030 - 0.00060 (Constraint:10/TR_28)
+
+  is correct because the first weekend now has an open Sat so is
+  itself open and we have lost one busy weekend.  The weekend must
+  in fact be busy, because Sun is busy, but we don't do it that way.
+
+15 December 2021.  The last few days have been filled with other
+  business.  Finished KheDrsSolnDebugTimetable, it seems to be
+  working well.
+
+16 December 2021.  Got DEBUG_LAST_EDGE flag going.  It gives a detailed
+  debug print of one edge, the last edge before the limit ends solving.
+  Checked carefully through the output for two edges, all seems correct.
+
+  Did a long run, 4 resources and 8 days, but no improvement:
+  KheArchiveParallelSolve returning (223.6 secs elapsed).  But
+  who knows if it's working correctly?  Perhaps starting with
+  a poor solution would be a better test.
+
+17 December 2021.  Hacked up general_solve and sr_combined so that
+  the dynamic solver is called immediately after time sweep.
+  Hopefully it will find a better solution starting from there.
+
+  KheDrsTaskOpen is crashing because it assumes that all its
+  days are open.  But in fact only the first of its days is open.
+  Now opening all the days, then all the task classes.
+
+20 December 2021.  Started work on rerun check today.  Wrote
+  KheDrsRerun and a lot of other stuff, basically all done,
+  but I need to audit it.
+
+  In the documentation, changed "solving proper" to "searching".
+
+  Decided to continue calculating costs during closing.  They
+  are not needed but they make yet another check that all is well.
+
+  Revised spec in documentation to make things a lot clearer.
+  Implemented it, have clean compile.  Also using #if RERUN to
+  ensure that no rerun fields or code is compiled when RERUN is 0.
+
+22 December 2021.  Rerun code done and audited.  After some fiddling
+  with the debug output I got this:
+
+    [ KheDrsRerun checking cost expressions:
+      open_and_search_cost 0.00015, monitor cost 0.00030 (Constraint:17/TR_28)
+      open_and_close_cost  0.00000, monitor cost 0.00030 (Constraint:17/TR_28)
+      open_and_search_cost 0.00060, monitor cost 0.00090 (Constraint:23/TR_28)
+      open_and_close_cost  0.00030, monitor cost 0.00090 (Constraint:23/TR_28)
+    ] KheDrsRerun
+
+  So working out what has happened here is the next thing to do.
+  Both constraints are limit active intervals constraints that
+  apply to TR_28; neither has TR_28 in its history list.
+
+23 December 2021.  Wrote DEBUG_OPEN_AND_SEARCH_COST and
+  DEBUG_OPEN_AND_CLOSE_COST and used them in
+  KheDrsExprIntSumCostChildHasOpened.  Looks like a
+  good template for getting the debug output I need.
+
+24 December 2021.  Carrying on with generating detailed targeted
+  debug output.  Did some massive tidying up.  Audited and ready
+  to test.
+
+25 December 2021.  Got some seriously detailed debug output at
+  last, and it seems to reveal some serious errors in the cost
+  calculations.  Next step:  trace them in detail.  Made some
+  progress, fixed one bug but there seems to be another.
+
+  Changed KHE_DRS_RERUN to KHE_DRS_PACKED_SOLN, it will work better
+  when using it for the initial solution.
+
+26 December 2021.  Working on packed solutions and rerunning.  Going
+  very well, not much more to do.  Redone the famous three checks at
+  the end of closing, but there are only two now.  All written and
+  documented.
+
+  Sorted out confusion over the term "initial solution" - it is the
+  solution before opening.  The solution before searching we are now
+  calling the "root solution".  Code and documentation up to date here.
+
+  Just did a test which seems to have worked.  But I need to get some
+  more debug output, including timetables, and do more tests.  Wrote
+  KheDrsPackedSolnDebug and I'm calling it now.
+
+27 December 2021.  Looking into why the new best solution was not
+  found again on the rerun.  I've observed that the two paths are
+  the same up to and including 1Fri:
+
+    day 1Fri 317.23525 0.0.0.0.5.0.0.0.0.0.4.0.4.0.4.0.0.1.0.0.4.0.0.0.0.1.0.0.0.0.3.0.0.0.5.0.2.0.0.1
+    day 1Fri 317.23525 0.0.0.0.5.0.0.0.0.0.4.0.4.0.4.0.0.1.0.0.4.0.0.0.0.1.0.0.0.0.3.0.0.0.5.0.2.0.0.1
+
+  but that they diverge on 1Sat:
+
+    day 1Sat 317.23590 1.0.0.0.0.1.1.1.0.0.1.1.5.0.5.0.5.0.1.1.0.1.0.0.4.0.0.0.0.2.0.0.0.0.0.0.3.0.1.0.5.0.1.1.0.1.0.0
+    day 1Sat 317.23540 1.0.0.0.0.1.1.1.0.0.1.1.5.0.5.0.5.0.1.1.0.1.0.0.4.0.0.0.0.2.0.0.0.0.0.0.3.0.0.0.0.1.0.0.0.0.0.0
+
+  A more detailed debug shows that the tasks are the same right through.
+  So what could the problem be?  Is there any other state that could
+  explain the change?  That 5 vs 0 near the end is a smoking gun.
+  It is at position 40:
+
+    INT_SEQ_COST(Constraint:21/TR_25, LINEAR)
+
+  Consecutive working days (min 3, max 5).
+
+  The problem, as more debug output shows, is that IntSeqCostEvalDay thinks
+  that its child is active on that day, even though it is in reality inactive.
+  This suggests an uninitialized variable in the child (an OR node).
+
+  Which expression node is it?
+
+28 December 2021.  Attempting to fix the bug by calling KheDrsExprLeafClear
+  from KheDrsExprOpen.  It makes sense, and it works!  I've documented
+  it as well.
+
+29 December 2021.  Revised the documentation, adding a more detailed
+  explanation of how external expressions differ from internal expressions.
+  Also repaginated it.  Rewrote the "Reruns" section.  Off-site backup.
+
+30 December 2021.  Thinking about pruning during SolnExtend.  Basically
+  worked out what to do, but not how to organize it.
+
+31 December 2021.  Revised task classes to return asst_cost and
+  non_asst cost.  Documented, clean compile, and audited, ready
+  to run.  Then I need to use asst_cost and non_asst_cost in the
+  dynamic solver.  If asst_cost is too high, don't try the task;
+  if non_asst_cost is too high, must try the task.
+
+  Done a complete implementation of must-assign tasks.  Needs
+  an audit and testing.
+
+
+Passed forward to 2022
+======================
+
+  Dynamic resource solver
+  -----------------------
+
+  Done a complete implementation of must-assign tasks.  Needs
+  an audit and testing, and documenting.  Perhaps add drs->tmp_cost.
+
+  When extending soln, the available cost is
+
+    delta = drs->init_soln_cost - soln->cost
+
+  As we assign each task we need to find the cost of that
+  assignment, something that task classes can give us but
+  that we don't have right now.  We can add that to soln->cost,
+  and if the cost exceeds drs->init_soln_cost we know that we
+  can't use that class.  But that is not the main game.
+
+  For each class we need to know the number of unassigned tasks
+  whose non-assignment would add at least delta to soln->cost.
+  Summed over all tasks we get asst_reqd_count, the number of
+  assignment-required tasks (tasks that must be assigned.  If
+  rc is the number of open resources, then we can assign at most
+  (rc - asst_reqd_count) resources to non-assignment-required
+  tasks, including non-assignments (free days).  So for each
+  task class we need to know whether the assignment on offer is
+  a fixed or non-fixed task, and if it is non-assignment-required
+  we only allow it if we have not reached our limit on the number
+  of non-assignment-required tasks.
+
+  We could store the needed fields in day objects,
+  or even in drs alongside tmp_prev_tasks.  We might
+  even have a DAY_ASST type to handle all this stuff.
+  Initialize it at the start of SolnExtend.
+
+  For each unassigned task we need its cost of non-assignment.
+  This is a constant, it could be stored globally somewhere,
+  say in a global array.  Then when we are given a task from
+  a class, we can retrieve its cost of non-assignment and
+  go from there.  This will be useful both initially, to
+  find the number of fixed tasks, and as we extend, to
+  find whether a particular task is fixed or not.
+
+  What are the fields of KHE_DRS_TASK_CLASS used for?
+
+    orig_task_class - used to get the domain only
+    day_range - to check that a task's day range is a subset of
+      one of the open day ranges, when deciding whether to open it
+    all_tasks - all tasks in class, but DRS tasks, not KHE tasks
+      If we eliminate this we are going to need a fast way to
+      get from a KHE task to a DRS task (we already have this).
+    unassigned_tasks - unassigned tasks
+    tmp_used - number of this class's tasks in current edge.
+
+  Altogether I think we are going to have to place the new code
+  within the dynamic module, not within the task class module.
+  Too many linkages to specifically dynamic concepts.
+
+  Testing the dynamic solver.  Found and fixed several bugs so far.
+
+  Pruning during generation.
+
+  I'll need to do some old-fashioned code tuning.  I could test for
+  cost exceeding the best so far at the end of each cost expression
+  and abandon if so.  There must be other optimizations out there,
+  for example a clone of INT_SEQ_COST for when the cost function is
+  not step.  And looking through the code generally would help.  But
+  not until I'm confident that what I have now is working correctly.
+
+  Testing ./doit in tt/nurse/solve.
+
+  Other
+  -----
+
+  Withdraw old attempts at task classes (see first paragraph
+  of task classes documentation).
+
+  Reference in paper I refereed to dynamic programming solver?
+
+  Speaking generally, we now have two new solvers to play with:
+  the single resource solver, and the cluster minimum solver.
+  Our mission is to make the best use we can of both.  We can
+  run the cluster minimum solver once at the start and have its
+  results permanently used throughout the rest of the solve.  And
+  we can use KheSingleResourceSolverBest in conjunction with a
+  balance solver to select a best solution from the single
+  resource solver, and adopt that solution.  But when should we
+  run single resource solving, and which resource(s) should we
+  select for single resource solving?  For example:
+
+  * Run single-resource solving on a fixed percentage of the
+    resources (with highest workload limits) before time sweep,
+    and then omit those resources from the time sweep.
+
+  * Find optimal timetables for several resources over a subset
+    of the interval, and use that as the basis for a VLSN search.
+
+  Explore possible uses for the now-working cluster minimum
+  solver.  Could it be run just before time sweep?  Could
+  the changed minimum limits remain in place for the entire
+  solve?  Also look at the solutions we are getting now from
+  single resource assignment.  If one resource is already
+  assigned, does that change the solve for the others?
+
+  Make the cluster minimum solver take account of history.
+
+  OK, what about this?  Use "extended profile grouping" to group all
+  tasks into runs of tasks of the same shift type and domain.  Then
+  use resource packing (largest workload resources first) to pack
+  the runs into the resources.  Finish off with ejection chains.
+  This to replace the current first stage.  Precede profile grouping
+  by combinatorial grouping, to get weekend tasks grouped together.
+  Keep a matching at each time, so that unavailable times of other
+  resources are taken into account, we want the unassigned tasks at
+  every time to be assignable to the unpacked resources at that time.
+  At least it's different!
+
+  After INRC2-4-030-1-6291 is done, INRC2-4-035-0-1718 would be good to
+  work on.  The current results are 21% worse, giving plenty to get into.
+
+  Event timetables still to do.  Just another kind of dimension?
+  But it shows meets, not tasks.
+
+  Ideas:
+
+    * Some kind of lookahead during time sweep that ensures resources
+      get the weekends they need?  Perhaps deduce that the max limit
+      implies a min limit, and go from there?
+
+    * Swapping runs between three or more resources.  I tried this
+      but it seems to take more time than it is worth; it's better
+      to give the extra time to ejection chains
+
+    * Ejection beams - K ejection chains being lengthened in
+      parallel, if the number of unrepaired defects exceeds K
+      we abandon the repair, but while it is less we keep going
+      Tried this, it has some interest but does not improve things.
+
+    * Hybridization with simulated annealing:  accept some chains
+      that produce worse solutions; gradually reduce the temperature.
+
+  Decided to just pick up where I left off, more or less, and go to
+  work on INRC2-4-030-1-6291.  I'm currently solving in just 5.6
+  seconds, so it makes a good test.
+
+  Fun facts about INRC2-4-030-1-6291
+  ----------------------------------
+
+  * 4 weeks
+
+  * 4 shifts per day:  Early (1), Day (2), Late (3), and Night (4)
+    The number of required ones varies more or less randomly; not
+    assigning one has soft cost 30.
+
+  * 30 Nurses:
+
+       4 HeadNurse:  HN_0,  ... , HN_3
+      13 Nurse:      NU_4,  ... , NU_16
+       8 Caretaker:  CT_17, ... , CT_24
+       5 Trainee:    TR_25, ... , TR_29
+
+    A HeadNurse can also work as a Nurse, and a Nurse can also work
+    as a Caretaker; but a Caretaker can only work as a Caretaker, and
+    a Trainee can only work as a Trainee.  Given that there are no
+    limit resources constraints and every task has a hard constraint
+    preferring either a HeadNurse, a Nurse, a Caretaker, or a Trainee,
+    this makes Trainee assignment an independent problem.
+
+  * 3 contracts: Contract-FullTime (12 nurses), Contract-HalfTime
+    (10 nurses), Contract-PartTime (8 nurses).  These determine
+    workload limits of various kinds (see below).  There seems
+    to be no relationship between them and nurse type.
+
+  * There are unavailable times (soft 10) but they are not onerous
+
+  * Unwanted patterns: [L][ED], [N][EDL], [D][E] (hard), so these
+    prohibit all backward rotations.
+
+  * Complete weekends (soft 30)
+
+  * Contract constraints:                   Half   Part   Full    Wt
+    ----------------------------------------------------------------
+    Number of assignments                   5-11   7-15  15-20*   20
+    Max busy weekends                          1      2      2    30
+    Consecutive same shift days (Early)      2-5    2-5    2-5    15
+    Consecutive same shift days (Day)       2-28   2-28   2-28    15
+    Consecutive same shift days (Late)       2-5    2-5    2-5    15
+    Consecutive same shift days (Night)      3-5    3-5    3-5    15
+    Consecutive free days                    2-5    2-4    2-3    30
+    Consecutive busy days                    2-4    3-5    3-5    30
+    ----------------------------------------------------------------
+    *15-20 is notated 15-22 but more than 20 is impossible.
+
+  Currently giving XUTT a rest for a while.  Here is its to do
+  list, prefixed by + characters:
+
+  +Can distinct() be used for distinct times?  Why not?  And also
+  +using it for "same location" might work.
+
+  +I've finished university course timetabling, except for MaxBreaks
+  +and MaxBlock, which I intend to leave for a while and ponder over
+  +(see below).  I've also finished sports scheduling except for SE1
+  +"games", which I am waiting on Bulck for but which will not be a
+  +problem.
+
+  +MaxBreaks and MaxBlock
+  +----------------------
+
+    +These are challenging because they do the sorts of things that
+    +pattern matching does (e.g. idle times), but the criterion
+    +which determines whether two things are adjacent is different:
+
+      +High school timetabling - adjacent time periods
+      +Nurse rostering - adjacent days
+      +MaxBreaks and MaxBlock - intervals have gap of at most S.
+
+    +It would be good to have a sequence of blocks to iterate over,
+    +just like we have some subsequences to iterate over in high
+    +school timetabling and nurse rostering.  Then MaxBreaks would
+    +utilize the number of elements in the sequence, and MaxBlock
+    +would utilize the duration of each block.
+
+    +We also need to allow for future incorporation of travel time
+    +into MaxBreaks and MaxBlock.  Two events would be adjacent if
+    +the amount of time left over after travelling from the first
+    +to the second was at most S.
+
+    +Assuming a 15-week semester and penalty 2:
+
+    +MaxBreaks(R, S):
+
+	+<Tree val="sum|15d">
+	    +<ForEach v="$day" from="Days">
+		+<Tree val="sum:0-(R+1)|2">
+		    +<ForEachBlock v="$ms" gap="S" travel="travel()">
+			+<AtomicMeetSet e="E" t="$day">
+			+<Tree val="1">
+		    +</ForEachBlock>
+		+</Tree>
+	    +</ForEach>
+	+</Tree>
+
+    +MaxBlock(M, S):
+
+	+<Tree val="sum|15d">
+	    +<ForEach v="$day" from="Days">
+		+<Tree val="sum:0-M|2">
+		    +<ForEachBlock v="$ms" gap="S" singles="no" travel="travel">
+			+<AtomicMeetSet e="E" t="$day">
+			+<Tree val="$ms.span:0-M|1s">
+		    +</ForEachBlock>
+		+</Tree>
+	    +</ForEach>
+        +</Tree>
+
+    +Actually it might be better if each iteration produced a meet set.
+    +We could then ask for span and so forth as usual.  There is also
+    +a connection with spacing(a, b).  In fact it would be good to
+    +give a general expression which determines whether two
+    +chronologically adjacent meets are in the same block.
+    +Then we could use "false" to get every meet into a separate
+    +block, and then spacing(a, b) would apply to each pair of
+    +adjacent blocks in the ordering.  If "block" has the same
+    +type as "meet set", we're laughing.
+
+    +I'll let this lie fallow for a while and come back to it.
+
+  +Rather than sorting meets and defining cost functions which
+  +are sums, can we iterate over the sorted meets?
+
+  +The ref and expr attributes of time sequences and event sequences
+  +do the same thing.
+
+  +There is an example of times with attributes in the section on
+  +weighted domain constraints.  Do we want them?  How do they fit
+  +with time pattern trees?  Are there weights for compound times?
+
+  +Moved history from Tree to ForEachTimeGroup.  This will be
+  +consistent with pattern matching, and more principled, since
+  +history in effect extends the range of the iterator.  But
+  +what to do about general patterns?  We need to know how each
+  +element of the pattern matches through history.
+
+  +Could use tags to identify specific task sets within patterns.
+
+  Install the new version of HSEval on web site, but not until after
+  the final PATAT 2020 deadline.
+
+  In the CQ14-13 table, I need to see available workload in minutes.
+
+  Fun facts about instance CQ14-13
+  --------------------------------
+
+  * A four-week instance (1Mon to 4Sun) with 18 times per day:
+
+      a1 (1),  a2 (2),  a3 (3),  a4 (4),  a5 (5),
+      d1 (6),  d2 (7),  d3 (8),  d4 (9),  d5 (10),
+      p1 (11), p2 (12), p3 (13), p4 (14), p5 (15),
+      n1 (16), n2 (17), n3 (18)
+
+    There are workloads, presumably in minutes, that vary quite a bit:
+
+      a1 (480),  a2 (480),  a3 (480),  a4 (600),  a5 (720),
+      d1 (480),  d2 (480),  d3 (480),  d4 (600),  d5 (720),
+      p1 (480),  p2 (480),  p3 (480),  p4 (600),  p5 (720),
+      n1 (480),                        n2 (600),  n3 (720)
+
+    480 minutes is an 8-hour shift, 720 minutes is 12 hours.
+
+  * 120 resources, with many hard preferences for certain shifts:
+
+      Preferred-a1 Preferred-a2 Preferred-a3 Preferred-a4 Preferred-a5
+      Preferred-d1 Preferred-d2 Preferred-d3 Preferred-d4 Preferred-d5
+      Preferred-p1 Preferred-p2 Preferred-p3 Preferred-p4 Preferred-p5
+      Preferred-n1 Preferred-n2 Preferred-n3
+
+    although most resources have plenty of choices from this list.
+    Anyway this leads to a huge number of prefer resources constraints.
+
+  * There are also many avoid unavailable times constraints, some for
+    whole days, many others for individual times; hard and soft.
+
+  * Unwanted patterns (hard).  In these patterns, a stands for
+    [a1a2a3a4a5] and so on.
+
+      [d4][a]
+      [p5][adp4-5]
+      [n1][adp]
+      [n2-3][adpn3]
+      [d1-3][a1-4]
+      [a5d5p1-4][ad]
+
+    This is basically "day off after a sequence of night shifts",
+    with some other stuff that probably matters less; a lot of it
+    is about the 480 and 720 minute shifts.
+
+  * MaxWeekends (hard) for most resources is 2, for some it is 1 or 3.
+
+  * MaxSameShiftDays (hard) varies a lot, with fewer of the long
+    workload shifts allowed.  NB this is not consecutive, this is
+    total.  About at most 10 of the shorter, 3 of the longer.
+    Doesn't seem very constraining, given that typical workloads
+    are 15 or 16 shifts.
+
+  * Many day or shift on requests, soft with varying weights (1-3).
+
+  * Minimum and maximum workload limits in minutes (hard), e.g.
+
+      Minutes           480-minute shifts
+      -----------------------------------------------------------
+      3120 - 3840
+      4440 - 5160
+      7440 - 8160        15.5 - 17.0
+      7920 - 8640        16.5 - 18.0
+
+    The last two ranges cover the great majority of resources.
+    These ranges are quite tight, especially for hard constraints.
+
+  * MinConsecutiveFreeDays 2 (hard) for most resources, 3 (hard)
+    for a few.
+
+  * MaxConsecutiveBusyDays 5 (hard) for most resources, 6 (hard)
+    for a few.
+
+  * MinConsecutiveBusyDays 2 (hard), for all or most resources.
+
+  Decided to work on CQ14-13 for a while, then tidy up, rerun,
+  and submit.
+
+  What does profile grouping do when the minimum limits are
+  somewhat different for different resources, and thus spread
+  over several constraints?
+
+  INRC1-ML02 would be a good test.  It runs fast and the gap is
+  pretty wide at the moment.  Actually I worked on it before (from
+  8 November 2019).  It inspired KhePropagateUnavailableTimes.
+
+  Fun facts about INRC1-ML02
+  --------------------------
+
+    * 4 weeks 1Fri to 4Thu
+
+    * 4 shifts per day: E (1), L (2), D (3), and N (4).  But there are
+      only two D shifts each day, so this is basically a three-shift
+      system of Early, Late, and Night shifts.
+
+    * 30 Nurses:
+
+        Contract-0  Nurse0  - Nurse7
+        Contract-1  Nurse8  - Nurse26
+        Contract-2  Nurse27 - Nurse29
+
+    * Many day and shift off requests, all soft 1 but challenging.
+      I bet this is where the cost is incurred.
+
+    * Complete weekends (soft 2), no night shift before free
+      weekend (soft 1), identical shift types during weekend (soft 1),
+      unwanted patterns [L][E], [L][D], [D][N], [N][E], [N][D],
+      [D][E][D], all soft 1
+
+    * Contract constraints         Contract-0    Contract-1   Contract-2
+      ----------------------------------------------------------------
+      Assignments                    10-18        6-14          4-8
+      Consecutive busy weekends       2-3     unconstrained     2-3
+      Consecutive free days           2-4         3-5           4-6
+      Consecutive busy days           3-5         2-4           3-4
+      ----------------------------------------------------------------
+
+      Workloads are tight, there are only 6 shifts to spare, or 8 if
+      you ignore the overloads in Nurse28 and Nurse29, which both
+      GOAL and KHE18x8 have, so presumably they are inevitable.
+
+
+  Do something about constraints with step cost functions, if only
+  so that I can say in the paper that it's done.
+
+  In INRC2-4-030-1-6291, the difference between my 1880 result and
+  the LOR17 1695 result is about 200.  About 100 of that is in
+  minimum consecutive same shift days defects.  Max working weekends
+  defects are another problem, my solution has 3 more of those
+  than the LOR17 solution has; at 30 points each that's 90 points.
+  If we can improve our results on these defects we will go a long
+  way towards closing the gap.
+
+  Grinding down INRC2-4-030-1-6291 from where it is now.  It would
+  be good to get a better initial solution from time sweep than I am
+  getting now.  Also, there are no same shift days defects in the
+  LOR17 solution, whereas there are
+
+  Perhaps profile grouping could do something unconventional if it
+  finds a narrow peak in the profile that really needs to be grouped.
+
+  What about an ejection chain repair, taking the current runs
+  as indivisible?
+
+  My chances of being able to do better on INRC2-4-030-1-6291
+  seem to be pretty slim.  But I really should pause and make
+  a serious attack on it.  After that there is only CQ to go,
+  and I have until 30 January.  There's time now and if I don't
+  do it now I never will.
+
+  Better to not generate contract (and skill?) resource groups if
+  not used.
+
+  Change KHE's general policy so that operations that change
+  nothing succeed.  Having them fail composes badly.  The user
+  will need to avoid cases that change nothing.
+
+  Are there other modules that could use the task finder?
+  Combinatorial grouping for example?  There are no functions
+  in khe_task.c that look like task finding, but there are some
+  in khe_resource_timetable_monitor.c:
+
+    KheResourceTimetableMonitorTimeAvailable
+    KheResourceTimetableMonitorTimeGroupAvailable
+    KheResourceTimetableMonitorTaskAvailableInFrame
+    KheResourceTimetableMonitorAddProperRootTasks
+
+  KheTaskSetMoveMultiRepair phase variable may be slow, try
+  removing it and just doing everything all together.
+
+  Fun facts about COI-Musa
+  ------------------------
+
+  * 2 weeks, one shift per day, 11 nurses (skills RN, LPN, NA)
+
+  * RN nurses:  Nurse1, Nurse2, Nurse3,
+    LPN nurses: Nurse4, Nurse5,
+    NA nurses:  Nurse6, Nurse7, Nurse8, Nurse9, Nurse10, Nurse11
+
+  Grinding down COI-HED01.  See above, 10 October, for what I've
+  done so far.
+
+  It should actually be possible to group four M's together in
+  Week 1, and so on, although combinatorial grouping only tries
+  up to 3 days so it probably does not realize this.
+
+  Fun facts about COI-HED01
+  -------------------------
+
+    * 31 days, 5 shifts per day: 1=M, 2=D, 3=H, 4=A, 5=N
+
+    * Weekend days are different, they use the H shift.  There
+      is also something peculiar about 3Tue, it also uses the
+      H shift.  It seems to be being treated like a weekend day.
+      This point is reflected in other constraints, which treat
+      Week 3 as though it had only four days.
+
+    * All demand expressed by limit resources constraints,
+      except for the D shift, which has two tasks subject
+      to assign resource and prefer resources constraints.
+      The other shifts vary between about 7 and 9 tasks.  But
+      my new converter avoids all limit resources constraints.
+
+    * There are 16 "OP" nurses and 4 "Temp" nurses.
+      Three nurses have extensive sequences of days off.
+      There is one skill, "Skill-0", but it contains the
+      same nurses as the OP nurses.
+
+    * The constraints are somewhat peculiar, and need attention
+      (e.g. how do they affect combinatorial grouping?)
+
+        [D][0][not N]  (Constraint:1)
+          After a D, we want a day off and then a night shift (OP only).
+	  Only one nurse has a D at any one time, so making this should
+	  not be very troublesome.
+
+	[not M][D]  (Constraint:2)
+	  Prefer M before D (OP only), always seems to get ignored,
+	  even in the best solutions.  This is because during the
+	  week that D occurs, we can't have a week full of M's.
+	  So really this constraint contradicts the others.
+
+	[DHN][MDHAN]  (Constraint:3)
+	  Prefer day off after D, H, or N.  Always seems to be
+	  satisfied.  Since H occurs only on weekends, plus 3Tue,
+	  each resource can work at most one day of the weekend,
+	  and if that day is Sunday, the resource cannot work
+	  M or A shifts the following week (since that would
+	  require working every day).  Sure enough, in the
+	  best solution, when an OP nurse works an H shift on
+	  a Sunday, the following week contains N shifts and
+	  usually a D shift.  And all of the H shifts assigned
+	  to Temp nurses are Sunday or 3Tue ones.
+
+	Constraint:4 says that Temp nurses should take H and
+	D shifts only.  It would be better expressed by a
+	prefer resources constraint but KHE seems happy
+	enough with it.
+
+	Constraint:5 says that assigning any shift at all to
+	a Temp nurse is to be penalized.  Again, a prefer
+	resources constraint would have been better, but at
+	present both KHE and the best solution assign 15 shifts
+	to Temp nurses, so that's fine.
+
+	The wanted pattern is {M}{A}{ND}{M}{A}{ND}..., where
+	{X} means that X only should occur during a week.
+	This is for OP nurses only.  It is expressed rather
+	crudely:  if 1 M in Week X, then 4 M in Week X.
+	This part of it does not apply to N, however; it says
+	"if any A in Week X, then at least one N in Week X+1".
+	So during N weeks the resource usually has less than
+	4 N shifts, and this is its big chance to take a D.
+
+	OP nurses should take at least one M, exactly one D,
+	at least one H, at most 2 H, at least one A, at least
+	one N.  These constraints are not onerous.
+
+    * Assign resource and prefer resources constraints specify:
+
+        - There is one D shift per day
+
+    * Limit resources constraints specify
+
+        Weekdays excluding 3Tue
+
+        - Each N shift must have exactly 2 Skill-0 nurses.
+
+	- Each M shift and each A shift must have exactly 4
+	  Skill-0 nurses
+
+	- There are no H shifts
+
+	Weekend days, including 3Tue
+
+	- Each H shift must have at least 2 Skill-0 nurses
+
+	- Each H shift must have exactly 4 nurses altogether
+
+	- There are no M, A, or N shifts on 3Tue
+
+	- There are no M, A, or N shifts on weekend days
+
+    * The new converter is expressing all demands with assign
+      resource and prefer resources constraints, as follows:
+
+      D shifts:
+
+        <R>NA=s1000:1</R>
+	<R>A=s1000:1</R>
+
+	So one resource, any skill.
+
+      H shifts (weekends and 3Tue):
+
+        <R>NA=s1000+NW0=s1000:1</R>
+	<R>NA=s1000+NW0=s1000:2</R>
+	<R>NA=s1000:1</R>
+	<R>NA=s1000:2</R>
+	<R>A=s1000:1</R>
+
+	So 2 Skill-0 and 2 arbitrary, as above
+
+      M and A shifts (weekdays not 3Tue):
+
+        <R>NA=s1000+NW0=s1000:1</R>
+	<R>NA=s1000+NW0=s1000:2</R>
+	<R>NA=s1000+NW0=s1000:3</R>
+	<R>NA=s1000+NW0=s1000:4</R>
+	<R>W0=s1000:1</R>
+	<R>W0=s1000:2</R>
+	<R>W0=s1000:3</R>
+	<R>W0=s1000:4</R>
+	<R>W0=s1000:5</R>
+
+	So exactly 4 Skill-0, no limits on Temp nurses
+
+      N shifts (weekday example)
+
+        <R>NA=s1000+NW0=s1000:1</R>
+	<R>NA=s1000+NW0=s1000:2</R>
+	<R>W0=s1000:1</R>
+	<R>W0=s1000:2</R>
+	<R>W0=s1000:3</R>
+	<R>W0=s1000:4</R>
+	<R>W0=s1000:5</R>
+
+      Exactly 2 Skill-0, no limits on Temp nurses.
+
+  It would be good to have a look at COI-HED01.  It has
+  deteriorated and it is fast enough to be a good test.
+  Curtois' best is 136 and KHE18x8 is currently at 183.
+  A quick look suggests that the main problems are the
+  rotations from week to week.
+
+  Back to grinding down CQ14-05.  I've fixed the construction
+  problem but with no noticeable effect on solution cost.
+
+  KheClusterBusyTimesConstraintResourceOfTypeCount returns the
+  number of resources, not the number of distinct resources.
+  This may be a problem in some applications of this function.
+
+  Fun facts about CQ14-05
+  -----------------------
+
+    * 28 days, 2 shifts per day (E and L), whose demand is:
+
+           1Mon 1Tue 1Wed 1Thu 1Fri 1Sat 1Sun 2Mon 2Tue 2Wed 2Thu
+        ---------------------------------------------------------
+        E   5    7    5    6    7    6    6    6    6    6    5
+        L   4    4    5    4    3    3    4    4    4    6    4
+        ---------------------------------------------------------
+        Tot 9   11   10   10   10    9   10   10   10   12    9
+
+      Uncovered demands (assign resources defects) make up the
+      bulk of the cost (1500 out of 1543).  Most of this (14 out
+      of 15) occurs on the weekends.
+
+    * 16 resources named A, B, ... P.  There is a Preferred-L
+      resource group containing {C, D, F, G, H, I, J, M, O, P}.
+      The resources in its complement, {A, B, E, K, L, N}, are
+      not allowed to take late shifts.
+
+    * Max 2 busy weekends (max 3 for for resources K to P)
+
+    * Unwanted pattern [L][E]
+
+    * Max 14 same-shift days (not consecutive).  Not hard to
+      ensure given that resource workload limits are 16 - 18.
+
+    * Many day or shift on requests.  These basically don't
+      matter because they have low weight and my current best
+      solution has about the same number of them as Curtois'
+
+    * Workload limits (all resources) min 7560, max 8640
+      All events (both E and L) have workload 480;
+      7560 / 480 = 15.7, 8640 / 480 = 18.0, so every resurce
+      needs between 16 and 18 shifts.  The Avail column agrees.
+
+    * Min 2 consecutive free days (min 3 for resources K to P)
+
+    * Max 5 consecutive busy days (max 6 for resources K to P)
+
+    * Curtois' best is 1143.  This represents 2 fewer unassigned
+      shifts (costing 100 each) and virtually the same other stuff.
+
+  Try to get CQ14-24 to use less memory and produce better results.
+  But start with a smaller, faster CQ14 instance:  CQ14-05, say.
+
+  In Ozk*, there are two skill types (RN and Aid), and each
+  nurse has exactly one of those skills.  Can this be used to
+  convert the limit resources constraints into assign resource
+  and prefer resources constraints?
+
+  Grinding down COI-BCDT-Sep in general.  I more or less lost
+  interest when I got cost 184 on the artificial instance, but
+  this does include half-cycle repairs.  So more thought needed.
+  Could we add half-cycle repairs to the second repair phase
+  if the first ended quickly?
+
+  KheCombSolverAddProfileGroupRequirement could be merged with
+  KheCombSolverAddTimeGroupRequirement if we add an optional
+  domain parameter to KheCombSolverAddTimeGroupRequirement.
+
+  Fun facts about COI-BCDT-Sep
+  ----------------------------
+
+    * 4 weeks and 2 days, starting on a Wednesday
+
+    * Shifts: 1 V (vacation), 2 M (morning), 3 A (afternoon), 4 N (night).
+
+    * All cover constraints are limit resources constraints.  But they
+      are quite strict and hard.  Could they be replaced by assign
+      resource constraints?  (Yes, they have been.)
+
+	  Constraint            Shifts               Limit    Cost
+	  --------------------------------------------------------
+          DemandConstraint:1A   N                    max 4      10
+	  DemandConstraint:2A   all A; weekend M     max 4     100
+	  DemandConstraint:3A   weekdays M           max 5     100
+	  DemandConstraint:4A   all A, N; weekend M  max 5    hard
+	  DemandConstraint:5A   weekdays M           max 6    hard
+	  DemandConstraint:6A   all A, N; weekend M  min 3    hard
+	  DemandConstraint:7A   all N                min 4      10
+	  DemandConstraint:8A   all A; weekend M     min 4     100
+	  DemandConstraint:9A   weekday M            min 4    hard
+	  DemandConstraint:10A  weekday M            min 5     100
+	  --------------------------------------------------------
+
+      Weekday M:   min 4 (hard), min 5 (100), max 5 (100), max 6 (hard),
+      Weekend M:   min 3 (hard), min 4 (100), max 4 (100), max 5 (hard)
+      All A:       min 3 (hard), min 4 (100), max 4 (100), max 5 (hard)
+      All N:       min 3 (hard), min 4 (10),  max 4 (10),  max 5 (hard)
+
+    * There are day and shift off constraints, not onerous
+
+    * Avoid A followed by M
+
+    * Night shifts are to be assigned in blocks of 3, although
+      a four block is allowed to avoid fri N and sat free.  There
+      are hard constraints requiring at least 2 and at most 4
+      night shifts in a row.
+
+    * At least six days between sequences of N shifts; the
+      implementation here could be better, possibly.
+
+    * At least two days off after five consecutive shifts
+
+    * At least two days off after night shift
+
+    * Prefer at least two morning shifts before a vacation period and
+      at least one night shift afterwards
+
+    * Between 4 and 8 weekend days
+
+    * At least 10 days off
+
+    * 5-7 A (afternoon) shifts, 5-7 N (night) shifts
+
+    * Days shifts (M and A, taken together) in blocks of exactly 3
+
+    * At most 5 working days in a row.
+
+  Work on COI-BCDT-Sep, try to reduce the running time.  There are
+  a lot of constraints, which probably explains the poor result.
+
+  Should we limit domain reduction at the start to hard constraints?
+  A long test would be good.
+
+  In khe_se_solvers.c, KheAddInitialTasks and KheAddFinalTasks could
+  be extended to return an unassign_r1_ts task set which could then be
+  passed on to the double repair.  No great urgency, but it does make
+  sense to do this.  But first, let's see whether any instances need it.
+
+  Also thought of a possibility of avoiding repairs during time sweep,
+  when the cost blows out too much.  Have to think about it and see if
+  it is feasible.
+
+  Take a close look at resource matching.  How good are the
+  assignments it is currently producing?  Could it do better?
+
+  Now it is basically the big instances, ERRVH, ERMGH, and MER
+  that need attention.  Previously I was working on ERRVH, I
+  should go back to that.
+
+  Is lookahead actually working in the way I expect it to?
+  Or is there something unexpected going on that is preventing
+  it from doing what it has the potential to do?
+
+  UniTime requirements not covered yet:
+
+    Need an efficient way to list available rooms and their
+    penalties.  Nominally this is done by task constraints but
+    something more concise, which indicates that the domain
+    is partitioned, would be better.
+
+    Ditto for the time domain of a meet.
+
+    SameStart distribution constraint.  Place all times
+    with the same start time in one time group, have one
+    time group for each distinct starting time, and use
+    a meet constraint with type count and eval="0-1|...".
+
+    SameTime is a problem because there is not a simple
+    partition into disjoint sets of times.  Need some
+    kind of builtin function between pairs of times, but
+    then it's not clear how this fits in a meet set tree.
+
+    DifferentTime is basically no overlap, again we seem
+    to need a binary attribute.
+
+    SameDays and SameWeeks are cluster constraints, the limit
+    would have to be extracted from the event with the largest
+    number of meets, which is a bit dodgy.
+
+    DifferentDays and DifferentWeeks just a max 1 on each day
+    or week.
+
+    Overlap and NotOverlap: need a binary for the amount of
+    overlap between two times, and then we can constrain it
+    to be at least 1 or at most 0.  NB the distributive law
+
+       overlap(a+b, c+d) = overlap(a, c) + overlap(a, d)
+         + overlap(b, c) + overlap(b, d)
+
+    but this nice property is not going to hold for all
+    binary attributes.
+
+    Precedence: this is the order events constraint, with
+    "For classes that have multiple meetings in a week or
+    that are on different weeks, the constraint only cares
+    about the first meeting of the class."  No design for
+    this yet.
+
+    WorkDay(S): "There should not be more than S time slots
+    between the start of the first class and the end of the
+    last class on any given day."  This is a kind of avoid
+    idle times constraint, applied to events rather than to
+    resources (which for us is a detail).
+      One task or meet set per day, and then a special function
+    (span or something) to give the appropriate measure.  But
+    how do you define one day?  By a time group.
+
+    MinGap(G): Any two classes that are taught on the same day
+    (they are placed on overlapping days and weeks) must be at
+    least G slots apart.  Not sure what to make of this.
+    I guess it's overlap(a, b, extension) where extension
+    applies to both a and b.
+
+    MaxDays(D): "Given classes cannot spread over more than D days
+    of the week".  Just a straight cluster constraint.
+
+    MaxDayLoad(S): "Given classes must be spread over the days
+      of the week (and weeks) in a way that there is no more
+      than a given number of S time slots on every day."  Just
+      a straight limit busy times constraint, measuring durations.
+      But not the full duration, rather the duration on one day.
+
+      This is one of several indications that we cannot treat
+      a non-atomic time as a unit in all cases.
+
+    MaxBreaks(R,S): "MaxBreaks(R,S) This constraint limits the
+      number of breaks during a day between a given set of classes
+      (not more than R breaks during a day). For each day of week
+      and week, there is a break between classes if there is more
+      than S empty time slots in between."  A very interesting
+      definition of what it means for two times to be consecutive.
+
+    MaxBlock(M,S): "This constraint limits the length of a block
+      of consecutive classes during a day (not more than M slots
+      in a block). For each day of week and week, two consecutive
+      classes are considered to be in the same block if the gap
+      between them is not more than S time slots."  Limit active
+      intervals, interpreted using durations rather than times.
+
+  A resource r is busy at some time t if that time overlaps with
+  any interval in any meet that r is attending.
+
+  Need a way to define time *groups* to take advantage of symmetries.
+  e.g. 1-15{MWF}3 = {1-15M3, 1-15W3, 1-15F3}.  All doubles:
+  [Mon-Fr][12 & 23 & 45 & 67 & 78] or something.
+  {MWF:<time>} or something.  But what is the whole day anyway?
+  All intervals, presumably. {1-15:{MTWRF:1-8}
+
+  See 16 April 2019 for things to do with the XUTT paper.
+
+  It's not clear at the moment how time sweep should handle
+  rematching.  If left as is, without lookahead, it might
+  well undo all the good work done by lookahead.  But to
+  add lookahead might be slow.  Start by turning it off:
+  rs_time_sweep_rematch_off=true.  The same problem afflicts
+  ejection chain repair during time sweep.  Needs thought.
+  Can the lookahead stuff be made part of the solution cost?
+  "If r is assigned t, add C to solution cost".  Not easily.
+  It is like a temporary prefer resources monitor.
+
+  Here's an idea for a repair:  if a sequence is too short, try
+  moving it all to another resource where there is room to make
+  it longer.  KheResourceUnderloadAugment will in fact do nothing
+  at all in these cases, so we really do need to do something,
+  even an ejecting move on that day.
+
+  Working over INRC2-4-030-1-6753 generally, trying to improve
+  the ejection chain repairs.  No luck so far.
+
+  Resource swapping is really just resource rematching, only not
+  as good.  That is, unless there are limit resources constraints.
+
+  The last few ideas have been too small beer.  Must do better!
+  Currently trying to improve KHE18's solutions to INRC2-4-035-2-8875.xml:
+
+    1 = Early, 2 = Day, 3 = Late, 4 = Night
+    FullTime: max 2 weekends, 15-22 shifts, consec 2-3 free 3-5 busy
+    PartTime: max 2 weekends,  7-15 shifts, consec 2-5 free 3-5 busy
+    HalfTime: max 1 weekends,  5-11 shifts, consec 3-5 free 3-5 busy
+    All: unwanted [4][123], [3][12], complete weekends, single asst per day
+    All: consec same shift days: Early 2-5, Day 2-28, Late 2-5, Night 4-5
+
+    FullTime resources and the number of weekends they work in LOR are:
+
+      NU_8 2, NU_9 1, CT_17 1, CT_18 0, CT_20 1, CT_25 1, TR_30 2, TR_32 3
+
+    NB full-time can only work 20 shifts because of max 5 busy then
+    min 2 free, e.g. 5-2-5-2-5-2-5-2 with 4*5 = 20 busy shifts.  But
+    this as it stands is not viable because you work no weekends.  The
+    opposite, 2-5-2-5-2-5-2-5 works 4 weekends which is no good either.
+    Ideally you would want 5-2-5-4-5-2-5, which works 2 weekends, but
+    the 4 free days are a defect.  More breaks is the only way to
+    work 2 weekends, but that means a lower workload again.  This is
+    why several of LOR's full-timers are working only 18 hours.  The
+    conclusion is that trying to redistribute workload overloads is
+    not going to help much.
+
+    Resource types
+
+    HeadNurse (HN_*) can also work as Nurse or Caretaker
+    Nurse     (NU_*) can also work as Caretaker
+    Caretaker (CT_*) works only as Caretaker
+    Trainee   (TR_*) works only as Trainee
+
+  "At least two days off after night shift" - if we recode this,
+  we might do better on COI-BCDT-Sep.  But it's surprisingly hard.
+
+  Option es_fresh_visits seems to be inconsistent, it causes
+  things to become unvisited when there is an assumption that
+  they are visited.  Needs looking into.  Currently commented
+  out in khe_sr_combined.c.
+
+  For the future:  time limit storing.  khe_sm_timer.c already
+  has code for writing time limits, but not yet for reading.
+
+  Work on time modelling paper for PATAT 2020.  The time model
+  is an enabler for any projects I might do around ITC 2019,
+  for example modelling student sectioning and implementing
+  single student timetabling, so it is important for the future
+  and needs to be got right.
+
+  Time sets, time groups, resource sets, and resource groups
+  ----------------------------------------------------------
+
+    Thinking about whether I can remove construction of time
+    neighbourhoods, by instead offering offset parameters on
+    the time set operations (subset, etc.) which do the same.
+
+    Need to use resource sets and time sets a lot more in the
+    instance, for the constructed resource and time sets which
+    in general have no name.  Maybe replace solution time groups
+    and solution resource groups altogether.  But it's not
+    trivial, because solution time groups are used by meets,
+    and solution resource groups are used by tasks, both for
+    handling domains (meet and task bounds).  What about
+
+      typedef struct khe_time_set_rec {
+          SSET elems;
+      } KHE_TIME_SET;
+
+    with SSET optimized by setting length to -1 to finalize.
+    Most of the operations would have to be macros which
+    add address-of operators in the style of SSET itself.
+
+       KHE_TIME_SET KheTimeSetNeighbour(KHE_TIME_SET ts, int offset);
+
+    would be doable with no memory allocation and one binary
+    search (which could be optional for an internal version).
+
+    I'm leaving this lie for now, something has to be done
+    here but I'm not sure what, and there is no great hurry.
+
+  There is a problem with preparing once and solving many times:
+  adjustments for limit resources monitors depend on assignments
+  in the vicinity, which may vary from one call to another.  The
+  solution may well be simply to document the issue.
+
+  At present resource matching is grouping then ungrouping during
+  preparation, then grouping again when we start solving.  Can this
+  be simplified?  There is a mark in the way.
+
+  Document sset (which should really be khe_sset) and khe_set.
+
+  I'm slightly worried that the comparison function for NRC
+  worker constraints might have lost its transitivity now that
+  history_after is being compared in some cases but not others.
+
+  Look at the remaining special cases in all.map and see if some
+  form of condensing can be applied to them.
+
+  Might be a good idea to review the preserve_existing option in
+  resource matching.  I don't exactly understand it at the moment.
+
+  There seem to be several silly things in the current code that are
+  about statistics.  I should think about collecting statistics in
+  general, and implement something.  But not this time around.
+
+  KheTaskFirstUnFixed is quite widely used, but I am beginning to
+  suspect that KheTaskProperRoot is what is really wanted.  I need
+  to analyse this and perhaps make some conceptual changes.
+
+  Read the full GOAL paper.  Are there other papers whose aims
+  are the same as mine (which GOAL's are not)?  If so I need
+  to compare my results with theirs.  The paper is in the 2012
+  PATAT proceedings, page 254.  Also it gives this site:
+
+    https://www.kuleuven-kulak.be/nrpcompetition/competitor-ranking
+
+  Can I find the results from the competition winner?  According to
+  Santos et al. this was Valouxis et al, but their paper is in EJOR.
+
+  Add code for limit resources monitors to khe_se_secondary.c.
+
+  In KheClusterBusyTimesAugment, no use is being made of the
+  allow_zero option at the moment.  Need to do this some time.
+
+  Generalize the handling of the require_zero parameter of
+  KheOverloadAugment, by allowing an ejection tree repair
+  when the ejector depth is 1.  There is something like
+  this already in KheClusterOverloadAugment, so look at
+  that before doing anything else.
+
+  There is an "Augment functions" section of the ejection chains
+  chapter of the KHE guide that will need an update - do it last.
+
+  (KHE) What about a general audit of how monitors report what
+  is defective, with a view to finding a general rule for how
+  to do this, and unifying all the monitors under that rule?
+  The rule could be to store reported_deviation, renaming it
+  to deviation, and to calculate a delta on that and have a
+  function which applies the delta.  Have to look through all
+  the monitors to see how that is likely to pan out.  But the
+  general idea of a delta on the deviation does seem to be
+  right, given that we want evaluation to be incremental.
+
+  (KHE) For all monitors, should I include attached and unattached
+  in the deviation function, so that attachment and unattachment
+  are just like any other update functions?
+
+  Ejection chains idea:  include main loop defect ejection trees
+  in the major schedule, so that, at the end when main loop defects
+  have resisted all previous attempts to repair them, we can try
+  ejection trees on each in turn.  Make one change, produce several
+  defects, and try to repair them all.  A good last resort?
+
+  Ejection chains idea:  instead of requiring an ejection chain
+  to improve the solution by at least (0, 1), require it to
+  improve it by a larger amount, at first.  This will run much
+  faster and will avoid trying to fix tiny problems until there
+  is nothing better to do.  But have I already tried it?  It
+  sounds a lot like es_limit_defects.

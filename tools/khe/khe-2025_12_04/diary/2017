@@ -1,0 +1,2405 @@
+KHE diary for 2017
+------------------
+
+1 January 2017.  Done a careful check through the output generated
+  for comp1/long01.xml.  Also turned some things on just to check
+  them.  Everything in comp1 seems to be working now.  Started
+  testing comp2.
+
+2 January 2017.  Worked on generating prefer resources constraints
+  for skills, which I somehow forgot to do before.  Got most of it
+  done, but with some gaps, and everything needs a careful audit.
+
+3 January 2017.  Sorted out what to do, more or less.  Working
+  on a new type, nrc_demand.c.
+
+4 January 2017.  New code for generating event resource constraints,
+  based on type NRC_DEMAND, all written and tested, except not for
+  preferred workers yet.  I've also done the code to generate smaller
+  event groups, which increases the file size but should make it
+  faster to load.
+
+5 January 2017.  Finished generating prefer resources constraints
+  for skills, with per-worker costs.  Audited everything, it seems
+  fine, or anyway fine enough to go on to solutions.  So I then
+  designed an interface for NRC solutions and implemented and
+  documented it.
+
+6 January 2017.  Wrote code to convert NRC solutions into KHE
+  solutions.  Also wrote code to generate comp2 solutions, which
+  I have examples of.  I now need to test comp2 solutions.
+
+7 January 2017.  Finished revising main(), and have stub solution
+  conversion functions now in the model files, which need to be
+  fleshed out into actual converters.
+
+8 January 2017.  Completed new and better main(), with new command
+  line options and easier addition of new models.  Generated an
+  archive with one comp2 instance and one comp2 solution in it, and
+  tested it agains HSEval, also modifying HSEval at the same time
+  to produce more suitable output.  Going well, have done quite a
+  few miscellaneous tests, need something more systematic now.
+
+9 January 2017.  Carried out enough tests, right through to HSEval,
+  to show that things are basically working.  Started work on
+  history now, by adding KheClusterBusyTimesConstraintAddHistory
+  and KheLimitActiveIntervalsConstraintAddHistory to khe.h and
+  documenting them in the KHE guide.  Also added their XML forms
+  to the HSEval documentation.  Have to implement them now.
+
+10 January 2017.  Brought the PATAT paper up to date.  Decided to
+  implement history by means of a lookup array in the constraint,
+  and did it, including documentation.  Now I just need to use
+  history in the monitors.
+
+12 January 2017.  Wrote some stuff for the impl chapter of the KHE
+  guide, about unlinked deviation.  Am currently auditing all the
+  monitors to see how they stack up against this stuff, and also
+  whether they have an m->deviation field, and if not why not:
+
+  khe_assign_resource_monitor.c
+
+      Review done.  When not attached, it monitors no tasks, and
+      hence its unlinked deviation is 0.  Has m->deviation.
+
+  khe_assign_time_monitor.c
+
+      Review done.  Like khe_assign_resource_monitor, with meets not tasks.
+
+  khe_avoid_clashes_monitor.c
+
+      Review done.  When not attached, it is not linked to its timetable
+      monitor, and its unlinked deviation is 0.  During attachment, its
+      timetable monitor calls KheAvoidClashesMonitorChangeClashCount
+      once for each clashing position in the timetable, and after that
+      it calls KheAvoidClashesMonitorFlush once.
+
+  khe_avoid_split_assignments_monitor.c
+
+      Review done.  The unlinked deviation is 0, because when unlinked
+      the monitor monitors no tasks, hence there are no resources and
+      no multiplicities.  Has no m->deviation field; instead, the
+      number of multiplicities minus one is the deviation.
+
+  khe_avoid_unavailable_times_monitor.c
+
+      Review done.  The unlinked deviation is 0, because without a
+      timetable to monitor there can be no usage of unavailable times.
+      Like the avoid clashes monitor this gets attached to its
+      timetable monitor.  But the timetable monitor looks for a time
+      group monitor for the times, and attaches that time group
+      monitor, then attaches this monitor to its time group monitor.
+      This in turn generates a call to KheMonitorAddBusyAndIdle,
+      which calls KheAvoidUnavailableTimesMonitorAddBusyAndIdle.
+
+  khe_cluster_busy_times_monitor.c
+
+      Review done.  When unlinked, there is no timetable, no time
+      group monitors, and no active time groups, so the unlinked
+      deviation is
+
+          KheClusterBusyTimesDev(m, 0)
+
+      i.e. the cost assuming that there are 0 active time groups.
+      This can easily be non-zero, when m->minimum or m->history
+      is non-zero.
+
+      KheClusterBusyTimesMonitorAddTimeGroupMonitor is basically
+      a red herring:  m->time_group_monitors is used only for
+      diagnosis, not for cost calculations.
+
+  khe_distribute_split_events_monitor.c
+
+      Review done.  Unlinked deviation is m->minimum.  Uses a
+      delta_deviation variable to good effect, but also has
+      m->deviation.
+
+  khe_evenness_monitor.c
+
+      Review done.  Unlinked deviation is 0, no m->deviation field
+      but the deviation is either 0 or 1.
+
+  khe_group_monitor.c
+
+      Attach/detach not offered.
+
+  khe_limit_active_intervals_monitor.c
+
+      Still to do - I have to think hard about history.
+      The assumption here is that it is monitoring no time groups.
+      So there can be no bad time groups and no defective intervals,
+      until history is taken into account, at which point care will
+      be needed to get things right.  Again, the stored time group
+      monitors are used only for diagnosis, not cost calculations.
+      For cost calculations we need an array of pointers to active
+      intervals, nothing more.
+
+  khe_limit_busy_times_monitor.c
+
+      Review done.  When unattached, there are no time group monitors so
+      any sum over the set of these monitors, for example the unlinked
+      deviation, will be 0.  I had (m->allow_zero ? 0 : m->minimum), but
+      this was a mistake on my part, fortunately never publicly released
+      since it only dates from the addition of m->allow_zero.
+
+  khe_limit_idle_times_monitor.c
+
+      Review done.  It keeps track of the current number of idle
+      times (summed over all time groups) in m->new_total_idle_count,
+      and whenever it changes it does a flush which saves this value
+      in m->total_idle_count.
+
+      The unlinked deviation was wrong, I had it at 0 but it should
+      have been (and is now) m->minimum.  Fortunately this problem
+      corrects itself on the first AddBusyAndIdle.
+
+  khe_limit_workload_monitor.c
+
+      Review done.  Also had the unlinked deviation wrong here,
+      now fixed, and again it was correcting on the first change.
+
+  khe_link_events_monitor.c
+
+      Review done.  Unlinked deviation is 0.
+
+  khe_monitor.c
+
+      Abstract supertype.
+
+  khe_order_events_monitor.c
+
+      Review done.  Unlinked deviation is 0.
+
+  khe_ordinary_demand_monitor.c
+
+      Review done.  Unlinked deviation is 0.
+
+  khe_prefer_resources_monitor.c
+
+      Review done.  Unlinked deviation is 0.
+
+  khe_prefer_times_monitor.c
+
+      Review done.  Unlinked deviation is 0.
+
+  khe_split_events_monitor.c
+
+      Review done.  Interestingly, this one already had a non-zero
+      unlinked deviation, which it was handling perfectly correctly.
+
+  khe_spread_events_monitor.c
+
+      Review done. Has quite a complex non-zero unlinked deviation.
+
+  khe_time_group_monitor.c
+
+      When unattached, it is as though the timetable was empty.  When
+      attached it gets one call to KheTimeGroupMonitorAssignNonClash
+      for each busy time, followed by KheTimeGroupMonitorFlush.
+
+  khe_timetable_monitor.c
+  khe_workload_demand_monitor.c
+
+      Haven't checked these ones, I have what I need.
+
+20 January 2017.  I've been working on a paper about history.  It's
+  all written now except the conclusion.  But I probaby need to let
+  it lie fallow for a while, in particular I am not sure what to
+  do about y_i (which could be called resource future), and I am
+  tending to require a explicit cost to be passed in if it is to
+  be subtracted to avoid double counting.
+
+25 January 2017.  I now have a very well-thought-out paper on
+  history which I could submit to PATAT2018.  I now need to
+  implement its ideas in full within XESTT and KHE.
+
+26 January 2017.  Changed the HSEval spec to what the history
+  paper says, although I did not repeat all the cost adjustment
+  stuff.  Now need to implement the new syntax and semantics.
+
+27 January 2017.  Started implementing the revised history spec
+  in KHE.  Have documented it for cluster busy times constraints,
+  and added it, including reading and writing.  Monitors are next.
+
+30 January 2017.  Back in the email world today.  Gerhard is fine
+  about my proposal for resource double counting in XHSTT, so I've
+  documented that on the HSEval spec pages for the next release.
+
+31 January 2017.  Sent to_post_greet09 to Gerhard and Greet today,
+  after posting current versions of both papers on the project page.
+  Currently working on khe_cluster_busy_times_monitor.c, it may be
+  all done (except for cost adjustment), but it needs an audit.
+
+2 February 2017.  Audited khe_cluster_busy_times_constraint.c
+  and khe_cluster_busy_times_monitor.c, seems to be all OK for
+  processing history now.  Have to do active intervals next.
+  Done the boilerplate so far.
+
+3 February 2017.  Working on implementing history in limit
+  active intervals monitors.  Rewrote the paper so that it
+  separates the basics from cost adjustment.  It seems to be
+  an improvement.
+
+5 February 2017.  Further improvements to the paper, but I've
+  struck a snag with history in limit active intervals monitors,
+  which I've described in to_post_greet11.
+
+6 February 2017.  Sent to_post_greet11 to Gerhard and Greet.
+
+9 February 2017.  Revised the XESTT history spec today, to
+  provide what's really needed.  Implemented everything
+  except the semantics of limit active intervals monitors;
+  but worked out what to do there (there are three steps to
+  carry out) and made a start on doing it.
+
+12 February 2017.  khe_limit_active_intervals_monitor.c all
+  done and audited, except that addition of the history
+  interval when attaching and its removal when detaching
+  are still to do.
+
+13 February 2017.  Finished khe_limit_active_intervals_monitor.c
+  history stuff, although it needs a careful audit and test.
+  Took a break from that and looked over the comp2 conversion.
+  Found a few glitches but it seems to be working well now.
+
+14 February 2017.  Audited nrc_constraint.c, it all looks good
+  now, including converting history.
+
+15 February 2017.  Now supplying history_before and history_after.
+
+16 February 2017.  Based on one small test, NRConv seems to be
+  generating correct history options to its constraints.
+
+17 February 2017.  Looked over HSEval's evaluation of one
+  solution for comp2, fiddled with the format, all seems fine.
+
+19 February 2017.  Added solution reading function for comp1,
+  based on the example file from Appendix E of the competition
+  documentation.  Clean compile but not tested.
+
+23 February 2017.  Have Santos's comp1 solutions sorted out now,
+  thanks to a zip file they sent me.  But will work on the solver
+  paper for a while before going back to that.  Did that today.
+
+25 February 2017.  Still working on the solver paper.
+
+26 February 2017.  Back to converting comp1 and the Santos
+  solutions.  I've built one archive but it crashes HSEval
+  on a limit busy times constraint with AllowZero = false.
+
+27 February 2017.  Took KHE backup 2017_02_27 in preparation
+  for revising KHE to remove time group monitors.  Working on
+  that, have made good progress, currently in the middle of
+  khe_timetable_monitor.c.  The idea is to set up all the
+  monitored time groups at the start, before solving begins;
+  they are there whether monitors are attached or not.
+
+1 March 2017.  Working on replacing KHE_TIME_GROUP_MONITOR
+  by the non-monitor KHE_MONITORED_TIME_GROUP, and at the
+  same time speeding up attachment and detachment of resource
+  monitors by avoiding searching for time groups within
+  timetable monitors by storing KHE_MONITORED_TIME_GROUP
+  objects within the other monitors.
+
+  Have clean compile of tm except KheMonitorAssignNonClash
+  and KheMonitorUnAssignNonClash; but there is still a lot
+  of careful work to do, e.g. around attaching and detaching
+  timetable monitors.
+
+2 March 2017.  Have a clean compile of the whole system, but tm
+  still needs work.
+
+3 March 2017.  Audited khe_timetable_monitor.c, made it flush
+  monitored time groups at every step of time assignment, since
+  otherwise we have no way of working out which ones to flush.
+  Separated khe_monitored_time_group.c from khe_timetable_monitor.c
+  Removed old_busy_count and old_idle_count from monitored time groups.
+  After a careful audit, khe_monitored_time_group.c is in good
+  shape now.
+
+4 March 2017.  Audited khe_timetable_monitor.c again, and sorted
+  out attaching and unattaching, including documenting it.  So
+  it's in pretty good shape now.  Allowing group monitors to be
+  attached and detached, although it does nothing substantial.
+  Have made a rule that only detached monitors may be deleted,
+  and am now detaching all monitors before deleting them, so
+  my problems deleting monitors should be over.  Updated the
+  KHE documentation, it's all good now.
+
+5 March 2017.  Reviewed the history paper and its implementation,
+  it all seems good.  Did some debugging and now have the whole
+  pipeline working, with Santos's solutions in it.  Hurrah!
+
+7 March 2017.  Tried but failed to find an uninitialized variable
+  which might have been causing the bug.
+
+8 March 2017.  Implemented and documented the new regime for handling
+  strings.  Sadly, it didn't fix the bug.  Spent the rest of the day
+  looking through all kinds of code, with no result, although I did
+  do some useful tidying up along the way.
+
+12 March 2017.  Still trying to fix the bug, although I've had a
+  couple of days off doing other things.  I'm removing parts of
+  the code and seeing whether the bug goes away.
+
+13 March 2017.  Working in timetable.c to make a non-incremental
+  version of the planning timetable function.  Half done.
+
+14 March 2017.  I've now established that a non-incremental
+  implementation that calls the same functions works, so the
+  problem is in the incremental stuff somewhere.  But where?
+
+16 March 2017.  Have decided to abandon the bug search, I've
+  tried everything I can think of with no success.  If it
+  manifests itself in another way some time, I can go after
+  it again then.
+
+  Tidying up the printing of constraint violation descriptions,
+  they are now quite a lot easier to read.
+
+17 March 2017.  Found that nrconv was omitting to generate constraints
+  for shift-off and shift-on requests, even though the code to do it
+  was all written.  Generating them now, and guess what - I'm getting
+  the same costs as on Santos's web page.  Brilliant.
+
+18 March 2017.  Found that my costs were higher on some instances,
+  so I've assembled the files of evidence ready to send to Toffolo.
+
+19 March 2017.  Done a careful hand check of the HSEval evaluation
+  of Toffolo's solution to long_late05.xml, and the discrepancy is
+  holding up.  Done all the conversions and found 8 instances where
+  the HSEval evaluation disagrees with Toffolo's.  Sent my evidence
+  to Toffolo, also a separate email saying that I have been unable
+  to retrieve the solution to instance long_hidden04.  It gives
+  "file not found" from the link on their page, and it was not in
+  the zip file I received a few weeks ago (I just checked).
+
+20 March 2017.  Received ack from Toffolo promising a response
+  later.  Sent email to Tim Curtois asking him about solutions.
+
+21 March 2017.  Received email from Tim Curtois giving me a link
+  to his CQ14 solutions that was always there, apparently.
+  Started work converting Curtois's 24.  Converted Instance 10,
+  got cost (16, 4361) when it should have been (0, 4361).  Also
+  fixed a bug in detaching limit workload monitors.
+
+22 March 2017.  Realized that the (16, 4361) should have been
+  (0, 4361) because of how he models things at the boundary.
+  So I've changed NRConv to do it his way, by tweaking the
+  history values of the affected constraints.  Done, tested,
+  verified, and documented in the papers.
+
+  Also sent an email to Tim, asking for his EJOR paper, for an
+  explanation of his solution file names, and for his thinking
+  on history.
+
+25 March 2017.  Downloaded a new set of solutions from the
+  GOAL web site.  Generating what I hope will be the final
+  versions of the converted archives.  Still two discrepancies,
+  described in goal_solns_3/to_toffolo05, which I've mailed off.
+  One of them seems to be his problem, the other one is mine.
+
+  Read Burke and Curtois (2014).  It has little that is new,
+  except that it tests the branch-and-price and ejection chain
+  algorithms on (not quite all of) the INRC1 instances, and
+  gets very good results.  Also it gives what I can take as
+  a canonical list of instances prior to CQ14.
+
+  NRC is now accepting all dates in the format "%d-%d-%d" and
+  normalizing all dates to format "%04d-%02d-%02d".
+
+27 March 2017.  Altered NRConv to handle multiple solution groups
+  in a way that should make converting Curtois's rather mysterious
+  CS14 solutions viable.  Now have to convert those solutions.
+
+28 March 2017.  Sorted out the remaining two discrepancies in
+  the GOAL solutions, although the one for sprint_late05 is a
+  matter of how you interpret the identical shifts on weekends
+  constraint - is it violated on incomplete weekends or not?
+  I've emailed him asking for his opinion about this.
+
+  Decided that there are too many time groups being generated
+  for filling neighbourhoods, and documented a plan to do less.
+
+29 March 2017.  Implemented the plan to generate fewer time
+  groups by generating fewer neighbourhoods, but I then
+  discovered that my neighbourhood generating code was
+  erroneous anyway, because each neighbourhood is shared
+  among all the time groups in the neighbourhood.  So I
+  am still generating too many time groups.  Why so many?
+  Because of a memory overwrite fault in my code for
+  displaying an LSet, now fixed.
+
+  I have actually completely converted Instance21 now, thanks
+  to remembering the LSet hash values, which sped up rehashing;
+  but it is taking too long, so I will drop neighbourhoods from
+  avoid unavailable times constraints, to save time.
+
+  Hurrah, I've converted all 24 instances - but it's slow.
+
+30 March 2017.  Here is the Jenkins hash function:
+
+    uint32_t jenkins_one_at_a_time_hash(const uint8_t* key, size_t length) {
+      size_t i = 0;
+      uint32_t hash = 0;
+      while (i != length) {
+	hash += key[i++];
+	hash += hash << 10;
+	hash ^= hash >> 6;
+      }
+      hash += hash << 3;
+      hash ^= hash >> 11;
+      hash += hash << 15;
+      return hash;
+    }
+
+  I tried something like this, but it did not improve my hashing.
+  At present I can handle all 24 instances, and it may have
+  improved somewhat, but it is still too slow.
+
+31 March 2017.  Started work on the lset trie, it's a bit of a
+  mess but I'm making progress.  Expanding a bucket node into
+  an internal node is the main remaining thing, but the insert
+  function is poorly structured at the moment (I need to keep
+  the address of ltn somewhere), so there is work to do.
+
+2 April 2017.  Redoing the lset trie code to something more
+  or less equivalent but less messy.  All written and audited,
+  ready to test.
+
+3 April 2017.  Trie code seems to be working, and I was able
+  to convert all of CQ14.  It's still pretty slow:
+
+    real	1m5.111s
+    user	0m24.100s
+    sys		0m2.624s
+
+  but at least it got there.
+
+4 April 2017.  Have decided to replace lsets by arrays of
+  short time indexes in time groups.  This will be a 1-for-1
+  replacement throughout KHE, invisible to the user.  Arrays
+  are better when the cycle is long, and by including an offset
+  I hope to get shifted arrays very cheaply.
+
+5 April 2017.  Finished sset.c, including design, implement,
+  document, and test.  It's ready to use.  I may need a
+  TABLE_SSET type yet.  Although the initial plan is to
+  define a distinct neighbourhood for each user-defined time
+  group except for singletons, so no lookups are required.
+  It would be good for day time groups, though, to share
+  a neighbourhood.
+
+  Wouldn't you know it, optimizing pos_in_nhood to take
+  account of compactness was enough to get instance 24
+  handled reasonably quickly:
+
+    real	0m19.128s
+    user	0m17.076s
+    sys		0m1.756s
+
+  But this is still slow enough to make it worthwhile to
+  press on with ssets.
+
+  Sorted out how to handle checking that the time groups
+  referenced by limit idle times constraints are compact; I
+  now do it when finalizing, and KheInstanceMakeEnd returns
+  a bool which will be false when there is a problem.
+
+6 April 2017.  Sorted out compactness check; I'm now doing it
+  during finalizing, and only then.  Worked through KHE in
+  general, using SSets for the times of time groups.  I had
+  to use SSets for resource groups as well, owing to the way
+  stuff was passed from both types to demand nodes (which now
+  also contain SSets).  I've also implemented and documented
+  an SSET_TABLE type which uses a trie structure to implement
+  tables indexed by SSets.  Have a clean compile, although there
+  are a couple of things left behind, marked "still to do".
+  I've backed up the state just before starting to use SSets,
+  in khe-2017_04_05.tar.gz.
+
+  Changed KheResourceGroupSetResourcesArrayInternal to
+  KheResourceGroupFinalize, and similarly for the equivalent
+  function for event groups.
+
+7 April 2017.  Sorted out finalization of resources and resource
+  groups.  The only wrinkles are that resources have to be
+  finalized after constraints, and that partitions may need to
+  be set twice in resource groups, if partitions are inferred.
+
+  Implemented the test function for SSET_TABLE and verified
+  that tables are working correctly.
+
+  Decided to have a table of all user-defined time groups in the
+  instance, and a table of all neighbourhoods, which will naturally
+  include the singleton time groups' shared neighbourhood.
+
+8 April 2017.  Have clean compile of new plan, but the slice
+  and shift operation has some placeholder parameters, and
+  altogether everything needs a careful audit.
+
+  Defined a new internal function, KheTimeGroupMakeAndFinalize,
+  and used it to replace many other things, which was good.  It
+  implements the idea, now stated clearly in the Guide, that in
+  all cases, before KHE creates a time group automatically it
+  checks whether there is a user-defined time group with the
+  same value, and uses that instead if so.
+
+9 April 2017.  Audited and tidied up time neighbourhoods, to
+  the point where khe_time_group_nhood.c was hardly needed as
+  as separate file, so I merged it into khe_time_group.c and
+  made all its functions static except KheTimeGroupNHoodDelete.
+  Tested and apparently working, it converted all of CQ14 in
+
+      real	0m4.153s
+      user	0m4.028s
+      sys	0m0.120s
+
+  which is a reasonable amount of time at last, finishing off
+  the time neighbourhoods detour that began on 29 March.
+
+10 April 2017.  Added with_monitors parameter to speed up
+  loading solutions when we don't want their costs.  This
+  allowed me to load all of Curtois's instances and solutions
+  in a few seconds.
+
+  Setting the number of extra event resources to opt_cover + 22
+  produces error message
+
+      nrconv Solutions/Instance22.Solution.516686_1.roster:12:426565:
+        cannot find a free slot to assign in shift 21Mon:d1
+
+  This points to <Assign><Day>140</Day><Shift>d1</Shift>, which
+  seems right.  The line of SECTION_COVER for this day is
+
+      140,d1,1,100,1
+
+  that is, there is a demand for just one d1.  But a search of
+  solution file Solutions/Instance22.Solution.516686_1.roster
+  for the string "<Assign><Day>140</Day><Shift>d1</Shift>"
+  produces 25 matches.
+
+  Added and documented with_monitors parameter to solution creation
+  in KHE, as a way of speeding up solution loading.
+
+  Mailed Tim Curtois asking about (1) missing Branch and Price
+  solutions (2) sanity of solutions, giving a case where 25
+  nurses are assigned to a shift requesting one nurse (see
+  10 April 2017 above for the details), (3) distinguishing
+  10 minute ejection chains from 60 minute ejection chains.
+
+  Now converting all CQ14 instances and solutions in 11.7s, with
+  these warning messages along the way:
+
+    nrconv Solutions/Instance7.Solution.1056_1.roster:45:0: parsing finished
+    nrconv Solutions/Instance7.Solution.1056_2.roster:45:0: parsing finished
+    nrconv Solutions/Instance7.Solution.1056_3.roster:45:0: parsing finished
+    nrconv Solutions/Instance8.Solution.1315.roster:79:0: parsing finished
+
+  Added running times to the CQ14 conversion, seems to be working.
+
+11 April 2017.  Worked on the new model of models, and partly
+  implemented it.
+
+12 April 2017.  Got the new model working on CQ14, seems good.  Next
+  job:  selecting only some of the solutions, the best ones for
+  each instance/algorithm.  Since NRConv is not finding costs I
+  need to put the cost from the file name into some metadata and
+  use that as the basis for removing all but one solution for
+  each instance in each soln group.
+
+13 April 2017.  Optimizing timetable monitors by adding time cells
+  at first attachment, not before.  But it did not allow me to
+  convert CQ14, so I went back to the plan of taking the costs
+  from the file names and keeping just one best solution for
+  each instance in each soln group.  Implemented and seems to
+  be working.
+
+  Implemented abbreviated event resources.  This reduced the size
+  of file CQ14.xml from 152,675,226 characters to 52,313,880, which
+  is a reduction to 34% of the original size.  Even so the events
+  still dominate.  I tried shortening the role names but got only
+  10% from that so decided against it.  The best way to reduce the
+  size further is to have fewer event resources in each event,
+  which means less pandering to poor solutions.
+
+  Tried a limit of opt_cover + 2.  This rejected 84 solutions
+  out of 372, which seems reasonable.  So let's stick with that.
+  I've documented it all in the PATAT18 paper.  Also documented
+  how Curtois's solutions are selected and classified.
+
+14 April 2017.  Trying "khe -w" on the CQ14 archives.  Had to sort
+  out a mess with metadata, now done.  Command "khe -w CQ14_24.xml"
+  runs successfully now, taking about 3 seconds.  The next step
+  is to try to load archives with large solutions.
+
+  Trying "khe -w CQ14s.xml" which loads instance 24 and one soln
+  to that instance.  KheSolnMake is taking forever at the moment,
+  although it does eventually run to the end (129 secs) and produce
+  debug output saying that the cost is 0.48777, which is remarkable
+  considering that that is Curtois's cost for this soln as well.
+  Hurrah, loaded CQ14s.xml in 6.4 seconds by speeding up the
+  search for monitored time groups inside timetable monitors.
+  And CQ14.xml, which includes all the instances and many
+  solutions, in 10.5 seconds.  So there's a big success.
+
+16 April 2017.  Removed "with_monitors" option from KHE and its
+  documentation, since we can now load solutions quickly.
+
+  Started work on kml_read.c.  Going well although the design is a
+  bit scrappy.  In the middle of KmlParseContent, not much to
+  do after that.
+
+18 April 2017.  Continuing with kml_read.c.  Have changed it to
+  a more conventional parsing style, retaining one character of
+  lookahead in the state variable.  Also moved reference parsing
+  out of KmlNextChar, which was the wrong place for it.  All
+  written, well organized, and with a clean compile; it now
+  needs an audit and test.
+
+19 April 2017.  Finished the parser, done some testing.  After
+  fixing one silly bug it seems to be working, but I have to
+  do some more testing to be sure.
+
+20 April 2017.  Continued testing the new parser.  It still
+  takes about 10 seconds to produce CQ14.xml, so there has
+  been no significant loss of time in abandoning buffering.
+  And every solution parses; the 4 "parsing finished" errors
+  have gone away.  And HSEval evaluates CQ14.xml, rather
+  slowly, and gets exactly the same costs as the costs in
+  Curtois's file names (I just checked them all).
+
+  Converted INRC1 to the new interface to NRConv, with
+  instance and solution model files.  Revised the identical
+  shifts on weekends constraint to do it Toffolo's way, and
+  checked that I get the same results as he does.  Displayed
+  a timetable and did not get the bug I got before - hurrah!
+
+  Looked into analyzing instances to see whether any of the shift
+  types always occur together, and so can be combined into common
+  events with different demands.  It's tricky and apparently
+  would not simplify the CQ instances much, because there are
+  many shift-off requests for one shift type but not the other.
+
+21 April 2017.  Off-site backup of NRConv, including KHE.  Started
+  work on bcv.c.
+
+22 April 2017.  Boilerplate all done on bcv.c (I've cloned inrc1.c
+  and will now evolve it into BCV).  Added optional names to
+  shift-type sets, needed by BCV.
+
+  Spotted in BCV-A.12.2.xml:
+
+    <WeekendDefinition>FridaySaturdaySundayMonday</WeekendDefinition>
+
+24 April 2017.  More boilerplater for BCV.  AddMasterWeights written,
+  it stores master (default?) weights in an MTABLE.  Discovered that
+  SkillGroups is not used.
+
+  Added NrcWorkerAddStartDay and NrcWorkerAddEndDay, implemented
+  them using avoid unavailable time constraints, documented them,
+  and used them in bcv.c.
+
+25 April 2017.  Working on AddContractsAndContractConstraints.
+
+26 April 2017.  Still working on AddContractsAndContractConstraints.
+
+27 April 2017.  Still working on BCV conversion.  Reorganized bcv.c,
+  it's now in better shape, but there is still a lot to do.
+
+3 May 2017.  Have abandoned the BCV conversion, owing to the large
+  amount of detail.  Starting work now on the Curtois original
+  instances.  So far I've created a clone of inrc1.c called coi.c
+  with all the names changed and the old code deleted.
+
+4 May 2017.  Working on COI.  There are some queer corners but
+  no deal breakers so far.
+
+6 May 2017.  Still working on COI.  More or less finished it.
+
+7 May 2017.  Started trying to convert instances.  As expected,
+  I'm encountering quite a lot of small problems.  Implemented
+  CoverWeights, although it may be a bit flaky.
+
+8 May 2017.  Am now handling the main cases convered by patterns.
+  I've actually completed reading of Ozkarahan.ros and Musa.ros.
+  Heaven knows how successfully, but it's something.
+
+9 May 2017.  Carrying on manfully.  Am now getting through about
+  four instances before striking trouble.
+
+10 May 2017.  Carrying on manfully.  GPost.ros is the current
+  working spot.  So I'm "successfully" converting 6 instances so far.
+
+11 May 2017.  Still working on GPost.ros.  It has some quadratic
+  cost functions so I added a cost_fn parameter to NrcConstraintMake.
+  All implemented and documented.
+
+12 May 2017.  Did the coding for detecting pattern constraints that
+  limit the number of busy weekends.  QMC-1.ros is the new sticking
+  point, so NRConv is "successfully" converting 8 of 21 instances now.
+
+  Decided to omit QMC-1.ros temporarily while I ask Tim Curtois
+  about the anomalous shift "O", which represents a day off.  But
+  I suppose it is clear enough what to do in the end.
+
+14 May 2017.  Working on generalizing limit workload constraints.
+  I've finished khe_limit_workload_constraint.c, next I have to
+  update its monitor.
+
+15 May 2017.  Now have a clean compile of KHE, HSEval, and NRConv
+  replacing khe_timetable_monitor.c by khe_event_timetable_monitor.c
+  and khe_resource_timetable_monitor.c.  All done and documented.
+  Also updated KheLimitWorkloadConstraintWrite, which I forgot before.
+
+16 May 2017.  Implemented KheMonitoredTimeGroupTableDelete and the
+  copy functions in khe_resource_timetable_monitor.c (I seem to have
+  not done them before).  Finalized the spec of the employee
+  scheduling limit workload constraint, ready to implement.
+
+18 May 2017.  Creeping towards the new implementation of the limit
+  workload constraint.  A monitored time group is now notified of
+  all changes to its resource's timetable at the times of its time
+  group, and it keeps a running total of the workload.  So if I can
+  only get the limit workload monitors attached to it, they can
+  easily get the workloads they need from it.
+
+19 May 2017.  Now have clean compile of new version of limit workload
+  monitors.  I've also sorted out what to do when no time groups are
+  added:  add the full time group when finalizing, but don't write
+  it.  This means that monitor creation has no special cases.  Also
+  I've modified NRConv to use the new version, and am now getting
+  past the previous sticking point.
+
+21 May 2017.  Cleaned up and generalized pattern constraint conversion
+  in coi.c, and briefly documented it in pap_nrconv.  Now converting
+  all instances except those I previously decided to omit and the
+  very last one, MER.ros.
+
+22 May 2017.  Working back through the omitted instances, at present
+
+    $ ./cvt
+    nrconv ORTEC01.ros:74:7: instance omitted, this <Match> not implemented
+    nrconv ORTEC02.ros:91:7: instance omitted, this <Match> not implemented
+    nrconv ERMGH.ros:6416:26: instance omitted, <TimePeriod> not implemented
+    nrconv CHILD.ros:6960:10: instance omitted, <TimePeriod> not implemented
+    nrconv ERRVH.ros:8939:5: instance omitted, <TimePeriod> not implemented
+    nrconv HED01.ros:254:1: instance omitted, <Conditionals> not implemented
+    nrconv MER.ros:22790:26: instance omitted, <TimePeriod> not implemented
+
+  Since fixed ORTEC01.ros but ORTEC02.ros has another weekends issue.
+
+23 May 2017.  Sorted out and implemented the truth about weekends:  the
+  identity is (A and B) or (A and not B) or (not A and B) = A or B.
+  After implementing that, we have these leftovers:
+
+    $ ./cvt
+    nrconv ORTEC02.ros:91:7: instance omitted, this <Match> not implemented
+    nrconv ERMGH.ros:6416:26: instance omitted, <TimePeriod> not implemented
+    nrconv CHILD.ros:6960:10: instance omitted, <TimePeriod> not implemented
+    nrconv ERRVH.ros:8939:5: instance omitted, <TimePeriod> not implemented
+    nrconv HED01.ros:254:1: instance omitted, <Conditionals> not implemented
+    nrconv MER.ros:22790:26: instance omitted, <TimePeriod> not implemented
+
+24 May 2017.  Sorted out and documented the problem with weekends;
+  ORTEC02 is indeed unconvertible.
+
+25 May 2017.  Finished documenting my experiences in converting the
+  COI instances.  It's time to move on to their solutions.
+
+29 May 2017.  Had a few days off.  Converting solutions, going well.
+
+30 May 2017.  Reviewed Curtois's web site and paper and made sure I
+  have all the instances (including variants) in canonical order.
+
+  Starting work on comparing costs.  So far, I have successfully
+  used the solution to the first instance (COI-Ozkarahan) to sort
+  out a problem with generating pattern constraints.
+
+31 May 2017.  Now have the correct cost (0) for the solution to
+  COI-Ozkarahan.  Spent quite a lot of time getting nicer resource
+  timetables for employee scheduling instances in cases where the
+  resource has at most one task per day.
+
+1 June 2017.  Still working on solution comparisons.  Fixed a bug
+  with cover constraints when there is Min, Preferred, and no Max,
+  and got Musa working; but the other combinations probably have
+  corresponding bugs.  Done quite a lot to improve the defect tables:
+  reorganized their columns, and made it possible to pass source
+  instance labels through to KHE as constraint names.  Seems to work.
+
+2 June 2017.  Adjusted the defect tables a bit, to show the constraint
+  Id as well as the name.  They look pretty good now.
+
+  Added set operations for worker-sets.  Documented and implemented
+  worker-set trees, need to test them now.
+
+4 June 2017.  Applying worker-set trees to individual covers
+  reveals that the three Ikegami instances are lost to incompatible
+  worker-sets.  But handling them is a pain even in cases like
+  Azaiez where they can, in principle, be handled.
+
+6 June 2017.  Sorted out lower bounds for the new versions of the
+  limit busy times and limit workload constraints.  For the limit
+  busy times constraints it turns out that the lower bound is the
+  same for all legal offsets.  For the limit workload constraint
+  I decided that lower bounds for arbitrary time groups were too
+  hard, and just limited it to cases where the monitor monitors
+  the whole cycle.
+
+  Started work on the limit resources constraint, by documenting
+  it in HSEval.  Implementation is under way.  I have what seems
+  to be a correct final version of limit_resources_constraint.c.
+  I need to document it, then go on to its monitors.
+
+7 June 2017.  Gerhard approves of the limit resources constraint,
+  which is lucky given that I've already spent a day implementing
+  it.  Got right to the end, including limit resources monitors.
+  Also checked that limit resources constraints are not needed
+  for formats other than the Curtois original instances.
+
+8 June 2017.  Designed the NRC interface to the limit resources
+  monitor, and documented the design.  Replaced the consecutive
+  parameter of NrcConstraintMake by two new limit types (should
+  have done it long ago).  Documented the limit resources monitor.
+  Started implementing the NRC demand constraint.  All done except
+  NrcDemandConstraintConvert.
+
+9 June 2017.  Implemented NrcDemandConstraintConvert.  It went well:
+  I've been able to express clearly what is common, and handle min
+  and max in a single constraint where possible.
+
+11 June 2017.  Revised the NRConv paper to reflect the current
+  state.  It's too long, I wish I could reduce its size.  Added
+  optional start and end times to shift types, and used them in
+  coi.c.  Building shift sets based on time intervals is next.
+
+12 June 2017.  Audited yesterday's effort and converted it into
+  a function that reads a complete set of cover requirements.
+  Now I need to decide what to generate.  Can also test for
+  overlapping day-sets.
+
+13 June 2017.  Implemented a plausible heuristic for the number
+  of demands needed by each shift, and added those demands.  Also
+  adding demand constraints now, but there is a problem with
+  preferred.
+
+14 June 2017.  Now have clean compile of NRConv using coi_limit.c
+  and coi_cover.c.
+
+16 June 2017.  Still working on coi_cover.c.
+
+17 June 2017.  Finished the new design for sorting out day covers,
+  including melding them as required.  Ready to test.
+
+18 June 2017.  Code for converting ERMGH is all written now,
+  although I have not checked the output.  I also designed and
+  implemented NrcUnwantedPatternConstraintMake, which optimizes
+  the case where an unwanted pattern has all terms equal.
+
+19 June 2017.  Retrofitted NrcUnwantedPatternConstraintMake to
+  inrc1.c and cq14.c.  Worked over pap_nrconv yet again.
+
+20 June 2017.  Added implementations of <AutoAllocate> and
+  <FixedAssignments>.  Also added preassigned workers to NRC.
+
+21 June 2017.  Almost done the specials for ORTEC02.ros.  I
+  just have to implement CoiORTEC02SpecialMaxThreeBusyWeekends.
+
+22 June 2017.  Done CoiORTEC02SpecialMaxThreeBusyWeekends.
+  Done CHILD.ros, ERRVH.ros, and MER.ros specials, they were
+  the same busy weekends stuff as in ERMGH.
+
+  Implemented "If the Var tag is used then the constraint becomes a
+  boolean variable which can be referenced in the Conditional
+  constraints. As a variable it is not considered in solution
+  feasibility or the penalty function.  It can only effect feasibility
+  and the penalty function value through the Conditional constraints."
+
+  Decided to omit HED01b.ros because Curtois omits it in his paper.
+  Started on HED01.ros, all done except CoiHED01SpecialConditionals,
+  and even there I have built the necessary day-sets.
+
+24 June 2017.  Finished CoiORTEC02SpecialMaxThreeBusyWeekends; let's
+  hope it works!  Also did a few quick things to read some Cpu time
+  entries that were being rejected, and increased the demand count
+  in each event by 1 to handle one solution with an overloaded
+  shift.  That seems to be the end of writing code to convert COI.
+
+25 June 2017.  Fixed a problem with passing quadratic cost functions
+  down the pipeline, that fixed ORTEC01 and ORTEC02.
+
+26 June 2017.  Continuing to fix problems that are causing faults in
+  evaluation.  I've documented time intervals, implemented them, and
+  used them in coi.c.
+
+28 June 2017.  My first attempt at time intervals was not quite right,
+  so now I've implemented and documented another.  It fixed most of
+  the problems, only MER.ros has a discrepancy now.
+
+30 June 2017.  Found and fixed the problem that was sending MER wrong,
+  just a simple bug.  Made reduction to best solutions optional.  Just
+  one discrepancy now.
+
+1 July 2017.  Worked on fixing the out-by-one-day bug.  Wrote the code,
+  centred on NrcTimeIntervalShiftSet.  It needs an audit and test.
+
+2 July 2017.  Finished the coding to fix the out-by-one-day bug.
+  Quite a job in the end.  All audited and it works correctly on
+  CHILD.Solution.154.roster!  But then other discrepancies cropped
+  up, which I tracked down to a simple bug, now fixed.  There are
+  now no discrepancies in cvt2.
+
+3 July 2017.  Verified that all solutions have the correct costs.
+  So that completes my work on the Curtois original instances.
+  Revised the NRConv paper yet again; I have to stop doing that.
+
+4 July 2017.  Looked over Part A of the NRConv documentation and
+  revised a few things.  Part B is what I really have to work on.
+
+6 July 2017.  Implemented NRC_PENALTY throughout NRC, have a clean
+  compile of both NRC and NRConv.  All documented, too.
+
+8 July 2017.  Reviewed the history and solver papers.  Made a
+  very rough start on documenting the Curtois original instances
+  conversion.
+
+9 July 2017.  Finished documenting the Curtois original instances
+  conversion, including a run through the code to make sure that
+  I have not missed anything interesting.
+
+10 July 2017.  Finished documenting all the conversions in
+  Chapter 4 of the NRConv guide.
+
+11 July 2017.  Made index.html today, it's beautiful.
+
+12 July 2017.  Finished tidying up the nurse rostering web site,
+  getting it into more or less its final form, as now documented
+  in file xestt/README.  Sorted out the first line of instance
+  and solution models.  Removed save_ and old_ files and also
+  removed all commented-out code from NRC.
+
+13 July 2017.  Tested "xestt/make", fixed a few small things,
+  then it all seemed to work.  I've re-evaluated the archives
+  and they all seem fine.  Tried packing it up, it came to
+  8.4M, which is probably doable.  Made off-site backup of
+  xestt to unish2.  Sent to_post_greet16.
+
+15 July 2017.  Revised the solver paper, added some interesting
+  stuff about the definition of a clash, and also how to repair
+  a limit resources constraint.  But I need to do some real work.
+
+17 July 2017.  Finally started solving.  Fixed several small
+  problems, the worst being that when you split the cycle meet
+  you ask for time domains which are neighbours of neighbours,
+  but in order to speed things up I previously removed neighbours
+  of neighbours.  Got an actual set of solutions for archive
+  INRC1-Long.xml.  They are not competitive with the GOAL
+  solutions at the moment, but it's a start.  Run time is good:
+  61 seconds for 15 instances.
+
+  Started work on the augment function for limit active intervals
+  constraints, but did not get very far, because I was reviewing
+  the information that the limit active intervals monitor supplies,
+  and revising it and its documentation.  Should be OK to use now.
+
+20 July 2017.  New VPN system for backups seems to work now.  Started
+  KheEventTimetableMonitorMake and KheEventTimetableMonitorDelete.
+
+22 July 2017.  Finished KheEventTimetableMonitorDelete.  Designed,
+  documented, and implemented KHE_TIME_PARTITION, and used it
+  in KheTaskEjectingMoveResource.  Also designed, documented, and
+  implemented KheTimePartitionMakeCommon, which will return a
+  suitable time partition if there is one.  Now have to add an
+  ejector option to pass in a time partition, then actually pass it.
+
+23 July 2017.  Implemented everything that means I just have to
+  set a KHE_OPTIONS option to get the ejection chain solvers to
+  use time partitions.  And I'm actually using it, after consulting
+  the instance model, so it should be tried whenever doing ejection
+  chain resource repairs in nurse rostering.
+
+  Designed, implemented, and documented an ejection chain solver
+  option for an event timetable monitor, and used it in
+  KheEjectionChainRepairResources.
+
+24 July 2017.  Done a fair amount of tidying up in khe_se_solvers.c.
+  Functions which carry out one or more augments, i.e. which contain
+  calls to KheEjectorRepairBegin and KheEjectorRepairEnd, now all
+  have names ending in Augment.
+
+  Added some stuff to the solver paper about overload augment and
+  underload augment.
+
+25 July 2017.  Added a require_zero parameter to KheOverloadAugment.
+  Did some more tidying up in khe_se_solvers.c, using helper functions
+  to reduce the real estate taken up by debug prints.
+
+26 July 2017.  More tidying up around KheOverloadAugment and
+  KheUnderloadAugment.  Now, the etm code in KheUnderloadAugment
+  does not just avoid clashes, it also avoids incompatible times.
+
+27 July 2017.  "Specifically, for each task assigned to the resource
+  during the time group, it tries all ejecting moves of the task to
+  the other resources of its domain, unless there is no assign
+  resource constraint for the task's event, in which case it merely
+  tries an unassignment."  Implemented the "unless" part of this.
+
+  Looked through KheOverloadAugment and KheUnderloadAugment again,
+  they seem ready to use now.
+
+28 July 2017.  Now using KheOverloadAugment and KheUnderloadAugment
+  as they should be used to repair cluster busy times constraints.
+  KheLimitBusyTimesAugment uses them correctly already; for resource
+  repair it is fine as is, but it looks as though more could be
+  done with time repair.   Limit workload is also fine as is.
+
+29 July 2017.  Gave KheLimitActiveIntervalsMonitorDefectiveInterval
+  a better interface, one more convenient for use during solving.
+  All implemented and documented.
+
+30 July 2017.  Finished off the augment functions for all the
+  resource constraints.  The limit resources augment function
+  is next, then I will be ready for some serious testing.
+
+31 July 2017.  Finished KheLimitResourcesAugment, although it needs
+  an audit.  Looked over the WITH_EXTRA_LIMIT_BUSY_TIMES_REPAIRS
+  part of KheLimitBusyTimesAugment.  To begin with, it is turned
+  off, and also it assumes that allow_zero is always true, which
+  is no longer the case.  So I'm scrapping it now.
+
+1 August 2017.  Audited KheLimitResourcesAugment.  Designed,
+  documented, and implemented a classification of the functions
+  in khe_se_solvers.c, including changing some function names
+  and moving some functions around in the file.
+
+2 August 2017.  Done some testing, the results are not very good.
+  Revised NRConv to produce more descriptive names.  Doing some
+  detailed analysis of INRC1-LH03, where GOAL has 38 and KHE18
+  has 86.  A lot of KHE18's defects look as though they ought to
+  be easy to fix; but then GOAL has many similar defects and they
+  were not able to fix theirs.  Investigation continues.
+
+4 August 2017.  Finished streamlining the command line options.
+  Tried KHE18x8 on INRC1-LH03, but the solutions all had cost
+  either 86 or 93.  So no joy there.
+
+  Here are summaries of the solution state before and after
+  Stage 1 ejection chains repair (NB stage 2 only runs if there
+  are avoid split assignments constraints, which there aren't
+  in nurse rostering):
+
+    in Stage1 before repair:
+    [ Soln (instance "INRC1-LH03", diversifier 0, cost 0.00334)
+      Soln                              Defects          Cost
+      -------------------------------------------------------
+      ClusterBusyTimesMonitor                31       0.00043
+      LimitBusyTimesMonitor                 100       0.00134
+      LimitActiveIntervalsMonitor            75       0.00157
+      -------------------------------------------------------
+      Total                                 206       0.00334
+    ]
+
+    KheGeneralSolve2018 after Nurses assignment (parts 1 and 2) (3.39 secs):
+    [ Soln (instance "INRC1-LH03", diversifier 0, cost 0.00086)
+      Soln                              Defects          Cost
+      -------------------------------------------------------
+      ClusterBusyTimesMonitor                 1       0.00001
+      LimitBusyTimesMonitor                  25       0.00035
+      LimitActiveIntervalsMonitor            39       0.00050
+      -------------------------------------------------------
+      Total                                  65       0.00086
+    ]
+
+  It's clear from this that ejection chain repair is doing
+  a significant amount of useful work, and is successfully
+  repairing all three kinds of defects.  So there is nothing
+  obviously wrong.
+
+5 August 2017.  Discovered that time partitions are not being
+  created.  Fixed the problems (there were lots), giving
+
+    KheGeneralSolve2018 after Nurses assignment (parts 1 and 2) (3.35 secs):
+    [ Soln (instance "INRC1-LH03", diversifier 0, cost 0.00077)
+      Soln                              Defects          Cost
+      -------------------------------------------------------
+      LimitBusyTimesMonitor                  21       0.00031
+      LimitActiveIntervalsMonitor            34       0.00046
+      -------------------------------------------------------
+      Total                                  55       0.00077
+    ]
+
+  which is a bit better.  GOAL's result is 38.
+
+  Changed MArrayContains so that it does not modify the array.
+  It was not thread-safe as it was.
+
+6 August 2017.  Documented a time sweep algorithm in detail,
+  sufficient to form the basis of an implementation.  Done
+  the boilerplate for calling it, including selecting it
+  instead of resource packing when the model is employee
+  scheduling, and started work on the algorithm itself.
+  Also upgraded khe_sr_time_partition.c to provided what is
+  needed for time sweep.  All done and documented.
+
+7 August 2017.  Worked on khe_sr_time_sweep.c, got most of
+  it done.
+
+8 August 2017.  Finished and audited khe_sr_time_sweep.c, ready
+  for testing.
+
+9 August 2017.  Did a first test of khe_sr_time_sweep.c.  Got this:
+
+    KheGeneralSolve2018 at end (5.70 secs elapsed):
+    [ Soln (instance "INRC1-LH03", diversifier 0, cost 0.00120)
+      Soln                              Defects          Cost
+      -------------------------------------------------------
+      ClusterBusyTimesMonitor                12       0.00012
+      LimitBusyTimesMonitor                  16       0.00020
+      LimitActiveIntervalsMonitor            74       0.00088
+      -------------------------------------------------------
+      Total                                 102       0.00120
+    ]
+
+  Not an encouraging start.
+
+  Decided to switch to a weakly typed options object.  It is now
+  all designed, documented, and implemented, but is not being
+  used yet.
+
+10 August 2017.  Finished the documentation for the new weakly
+  typed options.  Implemented the options code itself, and used
+  it in general and parallel so far.
+
+11 August 2017.  Converting all the solvers to the new style of
+  options.  Done several including resource_pair.
+
+12 August 2017.  Finished converting the solvers to the new style
+  of options.
+
+14 August 2017.  Finished auditing all the options.  Made time_partition
+  an object rather than a Boolean, and wrote a helper function that
+  creates one the first time it is needed.
+
+15 August 2017.  Sorted out ejector objects and option copying.
+  Added more diversity to the resource repair augment functions.
+  Current performance of time sweep etc. is now
+
+    KheGeneralSolve2018 at end (4.95 secs elapsed):
+    [ Soln (instance "INRC1-LH03", diversifier 0, cost 0.00123)
+      Soln                              Defects          Cost
+      -------------------------------------------------------
+      ClusterBusyTimesMonitor                17       0.00017
+      LimitBusyTimesMonitor                  22       0.00028
+      LimitActiveIntervalsMonitor            64       0.00078
+      -------------------------------------------------------
+      Total                                 103       0.00123
+    ]
+
+  Trying best of 8 gives 0.00118.
+
+16 August 2017.  Resource rematching is contributing nothing
+  at the moment, but it might do better if it used time
+  partitions.  However I took a different tack and tried
+  redoing the time sweep.  It did produce a small improvement,
+  to 0.00118.  So then I iterated the redo while things were
+  improving, and got this:
+
+    redo 0.00199 --> 0.00155
+    redo 0.00155 --> 0.00141
+    redo 0.00141 --> 0.00131
+    redo 0.00131 --> 0.00126
+    redo 0.00126 --> 0.00125
+    redo 0.00125 --> 0.00125
+
+  In other words, it was worth redoing five times.  The final
+  cost after repair was 114, which is the best so far using
+  time sweep.  But I can get 74 from most_constrained, which is
+  a blow.  It is the ejection chain repair algorithm that is
+  getting the improvement, starting from 334 it drops to 74.
+  Had to reduce the depth limit to get resource matching to
+  work, it produced a fairly poor result that ejection chains
+  reduced to 113.
+
+17 August 2017.  Discovered that limit active intervals monitors
+  were not being included in the initial list of defective monitors
+  requiring repair.  Fixing that seems to have made no difference at
+  all - still 113.  However my debug output shows that bulk moves
+  are being identified now, although I still have to actually do them.
+
+  Also discovered that monitors were being sorted by increasing
+  cost rather than by decreasing cost.  Fixing that made things
+  slightly worse, up to 115.  What a start?
+
+  Bulk moves seem to be working, at least the individual repairs
+  are working, but they did no good at all, which seems odd.  But
+  I have some debug output that shows that each of these repairs
+  creates 5 or 6 new defects.  Here are the most_constrained results:
+
+    KheGeneralSolve2018 at end (8.65 secs elapsed):
+    [ Soln (instance "INRC1-LH03", diversifier 0, cost 0.00086)
+      Soln                              Defects          Cost
+      -------------------------------------------------------
+      ClusterBusyTimesMonitor                 1       0.00002
+      LimitBusyTimesMonitor                  24       0.00033
+      LimitActiveIntervalsMonitor            43       0.00051
+      -------------------------------------------------------
+      Total                                  68       0.00086
+    ]
+
+  Best of 8 gives 74.  GOAL's result is 38.
+
+18 August 2017.  Discovered that the identical shift types during
+  weekend constraint had a problem, it was penalizing twice when
+  the resource was busy at two different shift types on the same
+  weekend.  The problem and how to fix it are documented now in
+  the NRConv guide, and the fix is implemented and seems to work.
+
+19 August 2017.  Current state after yesterday's stuff:
+
+    KheGeneralSolve2018 at end (9.92 secs elapsed):
+    [ Soln (instance "INRC1-LH03", diversifier 6, cost 0.00078)
+      Soln                              Defects          Cost
+      -------------------------------------------------------
+      ClusterBusyTimesMonitor                 5       0.00005
+      LimitBusyTimesMonitor                  17       0.00023
+      LimitActiveIntervalsMonitor            45       0.00050
+      -------------------------------------------------------
+      Total                                  67       0.00078
+    ]
+
+  This is best of 8, the first soln has cost 94.
+
+  Working on targeted debug output from the ejection chains solver.
+  So far I have written and tested the code that sets a debug_monitor
+  option.  Now I need to use that option within the ejector.
+
+20 August 2017.  KheMonitorId and KheSolnRetrieveMonitor functions
+  defined, documented, and implemented.  I've also got the ejector
+  and the augment functions to a point where it would be worth
+  testing the new debug arrangement.
+
+  Using the new debug arrangement, I managed to track down one
+  problem, which was that the task tree was setting domains to
+  obey soft as well as hard constraints, and never loosening
+  them except for unassigned slots.  After fixing that the cost
+  went up but I did get rid of all but one of the too many
+  consecutive weekends problems, which is some kind of win.
+
+  Ran a comparison of GOAL vs KHE18 on the long instances; the
+  result is in tt/nurse/solve/goal_vs_khe18.xml.  In general
+  KHE18 is about 50% worse, sometimes more.  It's not too bad
+  but one could not call it competitive, except in run time --
+  GOAL often runs for hours, KHE18 always in less than one minute.
+
+  Designed and implemented the -r option, which allows multiple
+  solves of one archive with different options.
+
+23 August 2017.  Implemented type KHE_TASK_SET that was documented
+  yesterday, and used it throughout khe_se_solvers.c.  Also
+  implemented KheEjectingTaskSetMoveAugment and used it in the
+  old place where KheEjectingTaskSetMove was called, and in one
+  new place, directly within the augment function for limit
+  active intervals monitors, to move an entire under-sized
+  sequence to another resource.
+
+24 August 2017.  Tested the new task set repair.  When repairing a
+  limit active intervals interval that is too short, it moves the
+  entire sequence to another resource.  On best of 8 it reduced
+  the cost from 105 to 104, which could be just a random change.
+  Still, it makes sense so we'll stick with it and keep working.
+
+  Got best of 8 down to 98 by allowing true ejecting moves.  Or
+  with time sweep, 93.  Still a long way from GOAL's 38.
+
+  Started work on routinely repairing limit active intervals
+  constraints by moving sequences of tasks, rather than individual
+  tasks.  Implemented AllPositive and AllNegative functions, which
+  should help with this, as well as a task set augment function.
+
+26 August 2017.  Careful audit of KheBusyIntervalTooLongAugment.
+  It looks very good now.  Also wrote KheFreeIntervalTooLongAugment,
+  it too seems pretty good.
+
+27 August 2017.  Rewrote the limit active intervals augment code
+  that I have so far to use a simple interval data type.  This has
+  made the code much more readable.  Did the last two of the four
+  augment functions, and audited all four, so ready to test now.
+
+28 August 2017.  First run with new code.  Using most-constrained,
+  best of 1 had cost 128, best of 8 had cost 90.  With time sweep
+  the numbers were 92 and 88.
+
+  Added cutoff indexes and cutoff times to limit active intervals
+  monitors.  After much fiddling I got an improvement in the first
+  pass from 181 to 148.  With redoing, I got a crash.
+
+31 August 2017.  Finished a careful audit of cutoff indexes in
+  limit active intervals constraints, ready to test.  On the usual
+  test, LH03.xml, with no cutoff index and redoing:
+
+    redo 0.00185 --> 0.00126
+    redo 0.00126 --> 0.00113
+    redo 0.00113 --> 0.00098
+    redo 0.00098 --> 0.00096
+    redo 0.00096 --> 0.00095
+    redo 0.00095 --> 0.00095
+
+  With cutoff index and redoing:
+
+    redo 0.00149 --> 0.00095
+    redo 0.00095 --> 0.00080
+    redo 0.00080 --> 0.00077
+    redo 0.00077 --> 0.00076
+    redo 0.00076 --> 0.00072
+    redo 0.00072 --> 0.00072
+
+  So there has been a big payoff here.  After repair as well:
+
+    KheGeneralSolve2018 at end (1.58 secs elapsed):
+    [ Soln (instance "INRC1-LH03", diversifier 0, cost 0.00066)
+      Soln                              Defects          Cost
+      -------------------------------------------------------
+      PreferResourcesMonitor                  6       0.00006
+      LimitBusyTimesMonitor                   7       0.00011
+      LimitActiveIntervalsMonitor            43       0.00049
+      -------------------------------------------------------
+      Total                                  56       0.00066
+    ]
+
+  More competitive now with GOAL's 38, and much better than
+  most-constrained, which gives
+
+    KheGeneralSolve2018 at end (7.74 secs elapsed):
+    [ Soln (instance "INRC1-LH03", diversifier 0, cost 0.00113)
+      Soln                              Defects          Cost
+      -------------------------------------------------------
+      PreferResourcesMonitor                  6       0.00006
+      ClusterBusyTimesMonitor                10       0.00013
+      LimitBusyTimesMonitor                  22       0.00029
+      LimitActiveIntervalsMonitor            59       0.00065
+      -------------------------------------------------------
+      Total                                  97       0.00113
+    ]
+
+  Much worse, and much slower.  At last we are getting somewhere.
+  Best of 8:  all solutions have cost 66, so we're not getting
+  the diversity we need.
+
+  Added diversity to time sweep, best of 8 is now 59, which is
+  becoming comparable with GOAL's 38.
+
+2 September 2017.  Implemented the choice between time sweep
+  and simple time sweep in the "auto" case.  Also implemented
+  KheTimeSweepSimpleAssignResources and ran a big test to see
+  how it compares with KheTimeSweepAssignResources.  It was
+  significantly worse at times, and usually much slower, so
+  it's not a great option.
+
+3 September 2017.  Implemented an exhaustive search resource
+  pair repairer, but after grinding through a lot of stuff,
+  before ejection chains too, it found no improvements, which
+  seems suspicious.  Actually my longest run caused an increase
+  in cost, from 66 to 67, but that is probably due to random
+  changes affecting the ejection chain solver.
+
+  After fixing a bug and running practically forever with
+
+    pair_select=all pair_parts=28 pair_max=10000000
+
+  there was some non-trivial improvement:
+
+    ] KhePairSimpleReassign returning true (0.00072 -> 0.00071)
+    ] KhePairSimpleReassign returning true (0.00071 -> 0.00068)
+    ] KhePairSimpleReassign returning true (0.00068 -> 0.00067)
+    ] KhePairSimpleReassign returning true (0.00067 -> 0.00066)
+    ] KhePairSimpleReassign returning true (0.00066 -> 0.00063)
+    ] KhePairSimpleReassign returning true (0.00063 -> 0.00062)
+    ] KhePairSimpleReassign returning true (0.00062 -> 0.00061)
+
+  and on to a final result of 60.  This is better than the 66 I
+  had before, but getting there faster is going to be tough.
+  Step 1:  only try pairs of resources where at least one of the
+  resources has a defect.  Back to weekly (very fast):
+
+    ] KhePairSimpleReassign returning true (0.00072 -> 0.00069)
+    ] KhePairSimpleReassign returning true (0.00069 -> 0.00066)
+    ] KhePairSimpleReassign returning true (0.00066 -> 0.00065)
+
+  With final result 62.  And fortnightly:
+
+    ] KhePairSimpleReassign returning true (0.00072 -> 0.00069)
+    ] KhePairSimpleReassign returning true (0.00069 -> 0.00066)
+    ] KhePairSimpleReassign returning true (0.00066 -> 0.00065)
+
+  With final result 62 again.  Somewhat slower, let's use weekly.
+
+  On INRC1-LH03, GOAL has 38, -RP has 66, +RP has 62,
+  KHE18x8-RP has 59, KHE18x8+RP has 56.
+
+  Did some more elaborate tests, pair_select=defects did better
+  every time, but running time often doubles or more.  Now moving
+  it to after ejection chains and trying again.  KHE18x8+RP is
+  now 54, which is actually comparable with GOAL's 38.  Running
+  time for one soln rose from 2.0 to 14.3 secs.
+
+  I could probably reduce that a lot by going for one week not 2.
+  Yes, it's just as good and the running time is much, much better.
+  KHE18x8+RP is 55, but some are better than before.
+
+4 September 2017.  Resource triple reassignment implemented and
+  documented, following the resource pair pattern.  It works, and
+  I have observed it to find five improvements even after resource
+  pair ended:
+
+  [ TripleSimpleReassign(Nurse0, Nurse13, Nurse49, tp, 0..6, true, 10000000)
+  ] TripleSimpleReassign returning true (0.00064 -> 0.00063)
+  [ TripleSimpleReassign(Nurse0, Nurse14, Nurse20, tp, 0..6, true, 10000000)
+  ] TripleSimpleReassign returning true (0.00063 -> 0.00061)
+  [ TripleSimpleReassign(Nurse0, Nurse16, Nurse29, tp, 14..20, true, 10000000)
+  ] TripleSimpleReassign returning true (0.00061 -> 0.00060)
+  [ TripleSimpleReassign(Nurse0, Nurse16, Nurse31, tp, 14..20, true, 10000000)
+  ] TripleSimpleReassign returning true (0.00060 -> 0.00059)
+  [ TripleSimpleReassign(Nurse0, Nurse43, Nurse49, tp, 21..27, true, 10000000)
+  ] TripleSimpleReassign returning true (0.00059 -> 0.00058)
+
+  but it is very slow indeed.  Final cost was 57.
+
+  Updated pair and triple to satisfy the resource invariant, if
+  requested.  Also rewrote the code to pass a solver record down
+  the call tree rather than a slew of parameters.
+
+5 September 2017.  Implemented edge adjustment on doing but not on
+  redoing.  With edge adjustment I got this:
+
+    redo 0.00141 --> 0.00089
+    redo 0.00089 --> 0.00080
+    redo 0.00080 --> 0.00077
+    redo 0.00077 --> 0.00077
+
+  Without it I got this:
+
+    redo 0.00149 --> 0.00095
+    redo 0.00095 --> 0.00080
+    redo 0.00080 --> 0.00077
+    redo 0.00077 --> 0.00076
+    redo 0.00076 --> 0.00072
+    redo 0.00072 --> 0.00072
+
+  So I set it up as an option and did some serious testing.  But the
+  tests (in doit_ea.xml) show edge adjustment as being a bit worse,
+  even on KHE18x8 which presumably has little random variation.  Run
+  times are longer, suggesting that ejection chains are finding more
+  to repair.  So I decided not to bother testing edge adjustment during
+  redoing, and commented out the code that implements edge adjustment.
+
+5 September 2017.  Started work on KheLimitActiveIntervalsAugment2,
+  the one with end-swaps, today.  Actually I've decided to start by
+  making it a re-implementation of Augment1, only with a more unified
+  structure, and then go on to end-swaps.
+
+6 September 2017.  Wrote KheActiveIntervalTooShortAugment.  Did a
+  full comparison between new and old - new is somewhat worse, why?
+  Because an empty set of tasks was being treated as visited, when
+  it should be unvisited.  After fixing that, things went better;
+  on all instances, single soln was better; on best of 8, one
+  instance was worse (but only by 1), all the rest were better,
+  sometimes quite a lot better.  LH03 best of 8 is now 53, which
+  is looking good compared with GOAL's 38.  So I've make
+  KheLimitActiveIntervalsAugment2 the one to use and commented
+  out KheLimitActiveIntervalsAugment1.
+
+8 September 2017.  Begun work on reorganizing the names and
+  documentation of options.  Did all options except those for
+  ejection chain solving.
+
+9 September 2017.  Reorganized pair_* and triple_* options.
+  Finished off ejection chain options, which finishes all options.
+
+11 September 2017.  Updated the parallel solver to implement the
+  ps_time option.  Tested, appears to be working.
+
+12 September 2017.  Done the boilerplate for selecting either moves
+  or swaps by the active_augment option, now I have to implement the
+  missing case of KheIntervalActiveToInactiveRepair.  About half done.
+
+13 September 2017.  Continuing with KheIntervalActiveToInactiveRepair.
+  Now have a pretty good implementation of the swapping version; it
+  needs to be audited and tested.
+
+  Tried a full test (doit_aa) and the results are encouraging, but
+  I think now that it is a mistake to not visit the intervals down
+  inside the swaps.  But when I add that, things do go a lot faster,
+  but the quality goes down, in fact it drops to below moves.
+
+14 September 2017.  In preparation for upgrading resource rematching,
+  es_use_event_timetable_monitor has become gs_event_timetable_monitor,
+  with all implementation and documentation done.  This will give
+  resource rematching access to an event timetable monitor, which
+  it can use to find the unassigned tasks running at the times it
+  is interested in.
+
+  Working on rematching.  Have documentation, have an interface
+  in khe.h, and have a very rough reorganization of the source
+  file (khe_sr_rematch.c), with some parts missing.
+
+17 September 2017.  Got khe_sr_rematch.c done, except not the
+  resource assignment invariant yet.
+
+  First test: 0.00072 --> 0.00066 (max_parts is 2).  After that
+  I got some really great results (doit_rr1.xml).
+
+18 September 2017.  Last thing yesterday I ran into a memory leak
+  problem.  Today I fixed it.  It was in KheWMatchDelete(), which
+  merely moved its stuff onto free lists, it did not delete it at
+  all.  I fixed that but I also added KheWMatchClear(), which
+  allows the free lists in the wmatch to be recycled.
+
+  Finally completed a big run, in doit_rr2.xml.  Some of the
+  results are very close to optimal, so that's great.  Running
+  times are a bit slow.  Can we cycle through the repair
+  algorithms more efficiently?  Do we need to work each
+  of them as hard as we are currently doing?
+
+  doit_rr3.xml is similar but it only repairs once per stage.
+  Results are almost as good (differences vary from 0 to 5),
+  running times are much better (at least half, sometimes less).
+
+  Added free lists to time sweep.  Running time has not changed,
+  but it is good insurance for later on, when I get to the long
+  cycles in the Curtois new instances.
+
+19 September 2017.  Reorganized options a bit, and set up for
+  doit_xx, which tries solving with each repair method turned
+  off in turn, to see if they are all pulling their weight.
+
+  Tried 4 solutions vs 8 solutions (doit_48.xml), and found
+  as expected that the running time halved.  Quality was only
+  slightly affected, with 6 worse cases, max increase 6.
+
+20 September 2017.  Working on rematching sets of adjacent time
+  groups from limit active intervals constraints.  So far I have
+  done a lot of boilerplate, unifying the two rematching functions,
+  making it easy to build rematch time sets, and fixing the memory
+  leak problem that was there from before.
+
+  Finished implementing intervals, they are slightly slower and
+  only one instance improved, namely LH05, from 107 to 105.  Since
+  the optimal solution has cost 41, there is very little in this.
+
+21 September 2017.  Yesterday I thought of doing a rematch of
+  each run of consecutive busy times in overloaded resources,
+  reasoning that the rematch might move the whole run away to
+  some other resource.  But these rematches are already being
+  done (all sets of up to 7 days), so there doesn't seem to
+  be much point in doing it this way.
+
+  Had another look at edge adjustment in resource rematching,
+  since there are a lot of overloads in the LH05 solution.  It's
+  documented as a bona fide option now, but it is turned off by
+  default, because the cost improvement was only from 107 to 105,
+  and the running time increased from 23 to 29 seconds.
+
+  Implemented rematching during time sweep.  It did a great
+  job on LH05, reducing its cost from 107 to 67, which is
+  much closer to GOAL's 41.  Running time was only slightly
+  higher.  But sadly there was some deterioration in 8 of
+  the 15 solutions, maximum of 20, although mostly 5 or less.
+
+23 September 2017.  After a lot of fiddling I managed to
+  establish that moving a weekend from Nurse49 to Nurse0
+  would come out even.  Should I be searching plateaus?
+
+25 September 2017.  Found the problem with Nurse0:  it is
+  running foul of Constraint:6 which has weight 20 and
+  penalizes incomplete weekends.  So when you assign 1Sat
+  it thinks there is an incomplete weekend.  This would
+  not matter if Nurse49 paid the same penalty, but although
+  Nurse49 has such a constraint its weight is only 2.
+
+  Added cutoffs to cluster busy times monitors.  All designed,
+  implemented, and documented, and I have verified that the poor
+  decision to choose Nurse49 over Nurse0 for event 1Sat:DH in LH05:
+
+    --c1f1(0.00000|0)-> 1Sat:DH.0:
+      --c1f0(533.00240|12)->  Nurse0
+      ...
+      --c1f1(533.00222|22)->  Nurse49
+      --c1f0(534.00221|28)->  -
+
+  has been reversed.  Results on KHE18x8 were fine, although
+  edge adjustment does not give any clear improvement.  It
+  does give a clear improvement for KHE18x1 on LH05, however.
+  So the plan is to stick with it and see what else can be
+  done to get solution costs down.
+
+  Currently I'm getting 72 for LH05, for both KHE18x1 and KHE18x8.
+  This is with edge adjustment.  Without it, I'm getting 107 for
+  KHE18x1 and 83 for KHE18x8.  So I've decided to stick with edge
+  adjustment and also cutoffs for cluster constraints, and just
+  carry on trying to get better results by other means.
+
+27 September 2017.  Documented type KHE_FRAME, at the end of the
+  "extras" chapter.  Started to implement it.
+
+29 September 2017.  Almost finished implemeting KHE_FRAME.  It's
+  a strange beast but I'll keep on with it and see how it goes.
+
+1 October 2017.  Finished replacing KHE_TIME_PARTITION by KHE_FRAME,
+  now have a clean compile and revised documentation.  Also got the
+  basic doit to find the same (or same cost, 72) solution.
+
+2 October 2017.  Worked through khe_se_solvers.c today, also
+  revised the specification of KHE_FRAME quite a lot, hopefully
+  to something rather better than what I had before.  Got a
+  clean compile, then did a careful audit.
+
+3 October 2017.  Did a basic test, it seems to be working.  Same
+  cost (72) as before.  Moved some tricky code into a frame
+  iterator module which can be used to find the active sub-frames
+  of a given frame, starting at an arbitrary point along the
+  frame and wrapping around.
+
+  Implemented moving sequences to repair limit busy times defects.
+  Have debug output that seems to show that it is working correctly.
+  On LH05, the only recurses are on sequences of length 1, so nothing
+  new was actually achieved and the final cost remains stuck at 72.
+
+  Tried LH05 without the global tixel matching.  It got the same
+  results and did so quite a lot faster.  Then tried a longer
+  test, and indeed every instance ran faster but produced the
+  same solution.
+
+6 October 2017.  Tried redoing the rematch during time sweep
+  until no improvement.  On best of 8, results were sometimes
+  worse and sometimes better.  There was one striking result,
+  INRC1-LL05, which improved from 110 to 87, quite clost to
+  the GOAL result of 83.  Otherwise not really worth the
+  extra run time (about 20% on average).
+
+  Uncovered a problem with infinite recursion owing to not
+  visiting both sets of tasks (for r and r2) when moving a
+  frame.  Sometimes one set is empty, you have to visit both.
+
+  Here are some facts about LH05:
+
+    Nurse        Assts     Consecutive busy    Consecutive Free
+    -----------------------------------------------------------
+    Contract-0   10-20           3-5                 3-4
+    Contract-1    6-15           3-5                 2-5
+    Contract-2    4-10           2-4                 3-5
+    Contract-3    4-6            2-4                 3-7
+    -----------------------------------------------------------
+
+  If you look at Nurses 5 and 6 in the current standard solution (the
+  one with cost 72), even though the total workload is 16 there
+  is virtually no room to move, because of the other constraints.
+  In fact, there is no single addition that would not violate
+  something.  And adding any weekend would violate the maximum
+  consecutive busy times constraint.
+
+7 October 2017.  Tried repairing limit busy times defects at
+  depth 1 by taking a frame containing two adjacent active
+  frames (like this:  [active][inactive][active]) and doing
+  a resource rematch.  No improvement, so turned it off.
+
+10 October 2017.  Working on khe_sr_time_sweep.c, to make time
+  sweep more flexible.  Have interface in khe.h and documented
+  in the Guide.  Broken the back of the implementation but
+  there is still a lot of tidying up to do.
+
+12 October 2017.  Still working on khe_sr_time_sweep.c.  Made
+  some good progress today, have clean compile of what might
+  be the right stuff.  Needs an audit now.
+
+13 October 2017.  Still working on khe_sr_time_sweep.c.  I've
+  done a careful audit now.  Testing, I fixed one bug, and got
+  77 for best of 8, which is not as good as I had before (72).
+
+14 October 2017.  Found and fixed the bug that was producing
+  a solution of cost 77 rather than 72 and making the solver
+  run slowly.  Just omitted deleting old demand nodes when
+  redoing.  All fixed now and back to par.
+
+  Implemented re-sweeping the K worst resources.  All done
+  and documented, but no improvement, so I'm not using it.
+
+16 October 2017.  KheResourceTimetableMonitorBusyTimes and
+  KheFrameResourceMaxBusyTimes documented and implemented.
+
+17 October 2017.  Implemented KheResourcePairSimpleBusyRepair,
+  which pairs overloaded with underloaded resources.  Did
+  several tests but found no improvement.
+
+18 October 2017.  Setting rs_time_sweep_rematch_off=true
+  improves LH05 from 72 to 57.  Need a general test now.
+  The reason may be that rematching does not take current
+  workload into account.  Could it do that?  It might do
+  better.
+
+20 October 2017.  Documenting the resource matching solver
+  which will unify time sweep and resource rematching.
+
+22 October 2017.  Continuing to document resource matching.
+
+23 October 2017.  Finished documenting resource matching, and
+  began work on the implementation (khe_sr_resource_matching.c).
+
+24 October 2017.  Worked on the implementation of resource
+  matching (khe_sr_resource_matching.c).
+
+25 October 2017.  Now have clean compile of whole system,
+  but I still have to clean up khe_sr_resource_matching.c,
+  and then recreate the other two files.
+
+26 October 2017.  Cleaned up khe_sr_resource_matching.c,
+  it's in pretty good shape now.  I'm now calling the same
+  edge function for matching off as for matching on, so that,
+
+27 October 2017.  Carefully audited khe_sr_resource_matching.c;
+  it's in pretty good shape now.
+
+28 October 2017.  Done khe_sr_rematch.c, it's in good shape now.
+  Done time sweep.  It needs an audit.
+
+31 October 2017.  Audited the time sweep code.  It's beautiful
+  and ready to test.  Except I needed to add diversity, which
+  was easily done.  Here it is without and with resource
+  rematching during time sweep, best of 8:
+
+    Instance 	GOAL 		KHE18x8-RM 	KHE18x8+RM
+    INRC1-L01 	0.00197 	0.00200 	0.00200
+    INRC1-L02 	0.00219 	0.00228 	0.00227
+    INRC1-L03 	0.00240 	0.00241 	0.00240
+    INRC1-L04 	0.00303 	0.00304 	0.00306
+    INRC1-L05 	0.00284 	0.00287 	0.00286
+    INRC1-LH01 	0.00346 	0.00414 	0.00394
+    INRC1-LH02 	0.00089 	0.00113 	0.00107
+    INRC1-LH03 	0.00038 	0.00053 	0.00054
+    INRC1-LH04 	0.00022 	0.00043 	0.00044
+    INRC1-LH05 	0.00041 	0.00052 	0.00071
+    INRC1-LL01 	0.00235 	0.00282 	0.00269
+    INRC1-LL02 	0.00229 	0.00284 	0.00280
+    INRC1-LL03 	0.00220 	0.00299 	0.00290
+    INRC1-LL04 	0.00222 	0.00289 	0.00308
+    INRC1-LL05 	0.00083 	0.00124 	0.00101
+
+  This was after I reinstated diversity.  Compare this with a
+  typical result from before the rewrite:
+
+    Instance 	GOAL 		KHE18x8-RP 	KHE18x8+RP
+    INRC1-L01 	0.00197 	0.00199 	0.00199
+    INRC1-L02 	0.00219 	0.00229 	0.00229
+    INRC1-L03 	0.00240 	0.00240 	0.00240
+    INRC1-L04 	0.00303 	0.00305 	0.00305
+    INRC1-L05 	0.00284 	0.00286 	0.00286
+    INRC1-LH01 	0.00346 	0.00404 	0.00404
+    INRC1-LH02 	0.00089 	0.00106 	0.00106
+    INRC1-LH03 	0.00038 	0.00050 	0.00050
+    INRC1-LH04 	0.00022 	0.00045 	0.00045
+    INRC1-LH05 	0.00041 	0.00072 	0.00072
+    INRC1-LL01 	0.00235 	0.00268 	0.00268
+    INRC1-LL02 	0.00229 	0.00283 	0.00283
+    INRC1-LL03 	0.00220 	0.00279 	0.00279
+    INRC1-LL04 	0.00222 	0.00291 	0.00291
+    INRC1-LL05 	0.00083 	0.00111 	0.00111
+
+  The results are different but quite similar.
+
+    Instance 	GOAL	 	KHE18x8-RM 	KHE18x8+RM
+    INRC1-L01 	0.00197 	0.00200 	0.00200
+    INRC1-L02 	0.00219 	0.00229 	0.00230
+    INRC1-L03 	0.00240 	0.00241 	0.00240
+    INRC1-L04 	0.00303 	0.00308 	0.00307
+    INRC1-L05 	0.00284 	0.00291 	0.00288
+    INRC1-LH01 	0.00346 	0.00438 	0.00433
+    INRC1-LH02 	0.00089 	0.00124 	0.00116
+    INRC1-LH03 	0.00038 	0.00056 	0.00060
+    INRC1-LH04 	0.00022 	0.00044 	0.00047
+    INRC1-LH05 	0.00041 	0.00055 	0.00085
+    INRC1-LL01 	0.00235 	0.00277 	0.00294
+    INRC1-LL02 	0.00229 	0.00301 	0.00296
+    INRC1-LL03 	0.00220 	0.00323 	0.00293
+    INRC1-LL04 	0.00222 	0.00314 	0.00322
+    INRC1-LL05 	0.00083 	0.00129 	0.00098
+
+  No clear pattern, but some are much better without it, including LH05.
+  Cross-comparison of resource rematching and edge adjustment:
+
+    Instance 	GOAL 	KHE18x8-RM-EA 	KHE18x8-RM+EA 	KHE18x8+RM-EA 	KHE18x8+RM+EA
+    INRC1-L01 	0.00197 0.00200 	0.00200 	0.00199 	0.00200
+    INRC1-L02 	0.00219 0.00229 	0.00228 	0.00228 	0.00227
+    INRC1-L03 	0.00240 0.00241 	0.00241 	0.00240 	0.00240
+    INRC1-L04 	0.00303 0.00306 	0.00304 	0.00306 	0.00306
+    INRC1-L05 	0.00284 0.00286 	0.00287 	0.00287 	0.00286
+    INRC1-LH01 	0.00346 0.00413 	0.00414 	0.00378 	0.00394
+    INRC1-LH02 	0.00089 0.00111 	0.00113 	0.00102 	0.00107
+    INRC1-LH03 	0.00038 0.00053 	0.00053 	0.00054 	0.00054
+    INRC1-LH04 	0.00022 0.00045 	0.00043 	0.00042 	0.00044
+    INRC1-LH05 	0.00041 0.00067 	0.00052 	0.00072 	0.00071
+    INRC1-LL01 	0.00235 0.00284 	0.00282 	0.00276 	0.00269
+    INRC1-LL02 	0.00229 0.00287 	0.00284 	0.00281 	0.00280
+    INRC1-LL03 	0.00220 0.00305 	0.00299 	0.00291 	0.00290
+    INRC1-LL04 	0.00222 0.00316 	0.00289 	0.00307 	0.00308
+    INRC1-LL05 	0.00083 0.00089 	0.00124 	0.00099 	0.00101
+      Average 	0.00185 0.00215 	0.00214 	0.00211		0.00212
+
+  Resource rematching improves the average by about 3.  For run time,
+
+     	       KHE18x8-RM-EA 	KHE18x8-RM+EA 	KHE18x8+RM-EA 	KHE18x8+RM+EA
+    INRC1-L01 	   	19.7 	20.3 	23.2 	22.8
+    INRC1-L02 	   	22.3 	21.0 	23.9 	23.8
+    INRC1-L03 	   	19.8 	20.7 	22.2 	21.8
+    INRC1-L04 	   	31.6 	30.4 	32.9 	36.3
+    INRC1-L05 	   	40.6 	40.2 	46.0 	45.0
+    INRC1-LH01 	   	27.3 	21.8 	46.6 	37.0
+    INRC1-LH02 	   	28.5 	27.1 	35.4 	30.0
+    INRC1-LH03 	   	14.9 	10.9 	12.9 	13.3
+    INRC1-LH04 	   	12.8 	10.6 	14.9 	13.1
+    INRC1-LH05 	   	19.5 	17.8 	22.9 	19.2
+    INRC1-LL01 	   	16.9 	17.3 	25.9 	18.8
+    INRC1-LL02 	   	17.5 	16.6 	19.5 	16.6
+    INRC1-LL03 	   	17.5 	12.6 	18.4 	17.5
+    INRC1-LL04 	   	17.9 	12.5 	20.8 	19.1
+    INRC1-LL05 	   	13.2 	12.7 	13.8 	12.3
+      Average 	   	21.3 	19.5 	25.3 	23.1
+
+  Omitting resource rematching saves about 4 seconds, and adding edge
+  adjustment saves about 2 seconds.  So although it does not give better
+  quality it does help in that way.
+
+1 November 2017.  Allowed resource matching to accept a task set
+  rather than a set of times, and used that to optimize time sweep.
+
+2 November 2017.  Here are some facts about LH04:
+
+    Nurse        Assts  Consec. Busy   Consec. Free  Consec. weekends
+    -----------------------------------------------------------------
+    Contract-0   10-20       3-5           3-4          0-3
+    Contract-1    6-15       3-5           2-5          0-3
+    Contract-2    4-10       2-4           3-5          0-1
+    -----------------------------------------------------------------
+
+  Only 3 of the many Contract 2 nurses are working a weekend, and
+  so there are many Contract 0 nurses working 4 weekends, which
+  is one over the limit.
+
+3 November 2017.  Can't think of anything that would improve my
+  INRC1 results any further.  So I'm going on to COI now.
+
+  Working on COI-Ozkarahan.xml, a subset of COI.xml containing
+  just its first instance.  I've immediately run foul of the
+  limit resources constraint.  Nothing is directing KHE to
+  do a good job with it.  The initial assignment by time
+  sweep is hopeless (and it assigns many more resources than
+  are required), and there is no repair for it yet.  So we are
+  at square one with this constraint.
+
+4 November 2017.  Modified Best to leave tasks unassigned when
+  their monitors are already happy.  It helped, but there are still
+  a few problems.  Currently looking at why Constraint:16/Nurse9
+  is not repaired in COI-Ozkarahan.xml (see res.xml and op2).  It
+  makes depressing viewing.
+
+6 November 2017.  Changed the ejection chain solver so that
+  whenever it moves a task it optionally unassigns it.  This
+  has improved the result on COI-Ozkarahan.xml to 1200, which
+  represents three violations of the complete weekends constraint.
+
+8 November 2017.  Fixed a couple of other things, and am now using
+  fresh visits in the ejector on the last repair run.  I've got
+  COI-Ozkarahan.xml down to two defects now, cost 400.  Then
+  prevented ejections when repairing cluster busy times defects
+  and the cost dropped to zero, heaven knows why.
+
+9 November 2017.  Now working on COI-Musa.xml.  Curtois' web site
+  has a solution with cost 175, now in COI-Musa-soln.xml.  After
+  fixing a bug (limit resources constraints were not being added
+  to the start group monitor for ejection chain repair), I'm getting
+  cost 183.  But best of 8 gives 175, equal to Curtois, and my
+  running time is 0.4 seconds for all 8, whereas Curtois is 28.3.
+
+10 November 2017.  Started work on COI-Millar-2.1.xml.  Curtois
+  has two solutions both with cost 0.  My initial result (best
+  of 1) was 6 defects, total cost 600.  Best of 8 was also 600:
+  all 8 solutions had this same cost, although they were not
+  identical since they were made up of different defects.
+
+19 November 2017.  A cold plus family engagements has left a
+  rather nasty hole in my diary.
+
+  In COI-Millar-2.1.xml, each nurse needs at least 3 and
+  at most 4 TD shifts, and the same for TN shifts.  Also
+  working days must come in sequences of at least two in
+  a row.  Also a day shift should not follow immediately
+  after a night shift.  The other constraints seem benign.
+  Demand is for two nurses per shift, day and night.
+
+20 November 2017.  Kempe task moves all documented and ready
+  to implement.
+
+21 November 2017.  Started implementing the new Kempe task moves
+  functions.  So far I have converted all the old calls to using the
+  new interface and done KheEjectingTaskMove and KheEjectingTaskMoveFrame.
+  KheKempeTaskMove and KheKempeTaskMoveFrame are still to do.
+
+22 November 2017.  Done Kempe moves for frames.  Need to ponder it
+  all, see whether I want to optimize it further, and then if all
+  is OK, copy it for the non-frames, then use it.
+
+24 November 2017.  Revised the Kempe move code and audited it.
+  Ready to test and use.
+
+16 December 2017.  A perfect storm of bushwalking, visits, etc.,
+  has kept me away from real work for about three weeks.  Back
+  at work today investigating the infinite recursion introduced
+  by Kempe task moves.
+
+  I've fixed KheFrameMove now, to the point where it is ready to
+  test.  I've also defined, documented, and implemented a whole
+  swag of functions that do ordinary, ejecting, and Kempe moves
+  of tasks and task-sets.
+
+  Got it goinng on COI-Millar-2.1.xml, best of 1 is now 300,
+  which seems like an improvement.  Best of 8 is 100, which
+  is only one defect away from the overall best.  That may
+  be good enough to go on with.
+
+  Decided not to try to express the "min 2 consecutive
+  working days" constraint in COI-Millar-2.1.xml as a limit
+  active intervals constraint.  For one thing, as expressed
+  in the original instance a single day at the end of the
+  instance is not a violation.
+
+17 December 2017.  I tried solving all the instances, things
+  seemed to get bunged up at COI-ERMGH.  So I need to work
+  on that instance next.  Here's the first, very poor attempt:
+
+    KheGeneralSolve2018 at end (14.85 mins):
+    [ Soln (instance "COI-ERMGH", diversifier 0, cost 0.08309)
+      Soln                              Defects          Cost
+      -------------------------------------------------------
+      AvoidUnavailableTimesMonitor            8       0.00120
+      ClusterBusyTimesMonitor                 5       0.00500
+      LimitBusyTimesMonitor                  32       0.04620
+      LimitActiveIntervalsMonitor            14       0.02200
+      LimitResourcesMonitor                 257       0.00869
+      -------------------------------------------------------
+      Total                                 316       0.08309
+    ]
+
+  This compares with 2 mins and cost 779 for Curtois's solution:
+
+      Summary 					Inf. 	Obj.
+      Limit Resources Constraint (242 points) 	   	779
+      Grand total (242 points) 	   			779
+
+  So we are in a very bad way here.  Why?  COI-ERMGH has 6
+  weeks with 4 shifts per day, making 6 x 7 x 4 = 168 times,
+  and 41 nurses.  This should not break the bank!
+
+  Turning repair off gives
+
+    KheGeneralSolve2018 at end (11.46 secs):
+    [ Soln (instance "COI-ERMGH", diversifier 0, cost 0.39196)
+      Soln                              Defects          Cost
+      -------------------------------------------------------
+      AvoidUnavailableTimesMonitor           20       0.00710
+      ClusterBusyTimesMonitor               100       0.10000
+      LimitBusyTimesMonitor                  34       0.06240
+      LimitActiveIntervalsMonitor            29       0.16300
+      LimitResourcesMonitor                 318       0.05946
+      -------------------------------------------------------
+      Total                                 501       0.39196
+    ]
+
+  which shows that the initial construction is very bad.  Why?
+
+19 December 2017.  Exploded the new COI.xml, ready to resume
+  work on COI-ERMGH.  Started work on nrmap.c, with the aim
+  of doing some serious transformations to COI-ERMGH.
+
+20 December 2017.  I seem to have got nrmap working, at least,
+  some basic tests are working.  Now to use it.  I've set up
+  the infrastructure to use it when converting COI-ERMGH, but
+  I still have to modify the NRConv source code to call a
+  suitable function for each replacement.
+
+22 December 2017.  Finally got the new method of handling
+  specials going.  I need to cover all existing cases with
+  it now, then return to working on COI-ERMGH specifically.
+
+25 December 2017.  All the conversions done now, but not
+  checked carefully.
+
+26 December 2017.  Verified that the new method is substituting
+  at the same number of places as the old one did.  Did some
+  more substitutions, so that the instance is the same but the
+  constraints are expressed more naturally.
+
+  Documented KheSolnAssignRequestedResources.
+
+27 December 2017.  Got KheSolnAssignRequestedResources going.
+  Here is the result of the initial construction when using it:
+
+    KheGeneralSolve2018 at end (12.84 secs):
+    [ Soln (instance "COI-ERMGH", diversifier 0, cost 0.27747)
+      Soln                              Defects          Cost
+      -------------------------------------------------------
+      AvoidUnavailableTimesMonitor            8       0.00140
+      ClusterBusyTimesMonitor                30       0.03000
+      LimitBusyTimesMonitor                  39       0.09120
+      LimitActiveIntervalsMonitor            23       0.12000
+      LimitResourcesMonitor                 302       0.03487
+      -------------------------------------------------------
+      Total                                 402       0.27747
+    ]
+
+  as compared with not using it:
+
+    KheGeneralSolve2018 at end (3.89 secs):
+    [ Soln (instance "COI-ERMGH", diversifier 0, cost 0.39196)
+      Soln                              Defects          Cost
+      -------------------------------------------------------
+      AvoidUnavailableTimesMonitor           20       0.00710
+      ClusterBusyTimesMonitor                48       0.04800
+      LimitBusyTimesMonitor                  34       0.06240
+      LimitActiveIntervalsMonitor            45       0.21500
+      LimitResourcesMonitor                 318       0.05946
+      -------------------------------------------------------
+      Total                                 465       0.39196
+    ]
+
+  Slow run time is due to slow processing of each monitor.  So
+  I made it try only every fifth task (every task if the meet
+  has no more than 10), starting at a different spot for each
+  resource.  This is much faster with no decrease in quality:
+
+    KheGeneralSolve2018 at end (5.07 secs):
+    [ Soln (instance "COI-ERMGH", diversifier 0, cost 0.27747)
+      Soln                              Defects          Cost
+      -------------------------------------------------------
+      AvoidUnavailableTimesMonitor            8       0.00140
+      ClusterBusyTimesMonitor                30       0.03000
+      LimitBusyTimesMonitor                  39       0.09120
+      LimitActiveIntervalsMonitor            23       0.12000
+      LimitResourcesMonitor                 302       0.03487
+      -------------------------------------------------------
+      Total                                 402       0.27747
+    ]
+
+  I've discovered that the repair runs much faster with the
+  matching off.  That's because it generates a lot of spurious
+  defects, owing to the 5081 tixels that are unmatched.  Turning
+  off the matching produced this:
+
+    KheGeneralSolve2018 at end (45.69 secs):
+    [ Soln (instance "COI-ERMGH", diversifier 0, cost 0.03167)
+      Soln                              Defects          Cost
+      -------------------------------------------------------
+      LimitBusyTimesMonitor                  20       0.01140
+      LimitActiveIntervalsMonitor             8       0.01300
+      LimitResourcesMonitor                 247       0.00727
+      -------------------------------------------------------
+      Total                                 275       0.03167
+    ]
+
+  This is still a lot worse than the 700-odd Curtois solution,
+  but it might be good enough to go on with.  In fact, the
+  Curtois solution has 242 limit resources defects with
+  total cost 779 (and these are the only defects), so the
+  solution found here basically adds 20 limit busy times
+  and 8 limit active intervals defects to those ones.  There
+  is hope of further improvement, now that we are in the
+  ballpark with a reasonable running time.
+
+  This is what we get with rematching on:
+
+    KheGeneralSolve2018 at end (47.20 secs):
+    [ Soln (instance "COI-ERMGH", diversifier 0, cost 0.03456)
+      Soln                              Defects          Cost
+      -------------------------------------------------------
+      AvoidUnavailableTimesMonitor            1       0.00020
+      ClusterBusyTimesMonitor                 2       0.00200
+      LimitBusyTimesMonitor                  25       0.01220
+      LimitActiveIntervalsMonitor             8       0.01300
+      LimitResourcesMonitor                 235       0.00716
+      -------------------------------------------------------
+      Total                                 271       0.03456
+    ]
+
+  As in other cases, it's marginally worse, both in quality
+  and run time.  Best of 8:
+
+    KheGeneralSolve2018 at end (71.12 secs):
+    [ Soln (instance "COI-ERMGH", diversifier 3, cost 0.02988)
+      Soln                              Defects          Cost
+      -------------------------------------------------------
+      ClusterBusyTimesMonitor                 1       0.00100
+      LimitBusyTimesMonitor                  24       0.01350
+      LimitActiveIntervalsMonitor             6       0.00800
+      LimitResourcesMonitor                 228       0.00738
+      -------------------------------------------------------
+      Total                                 259       0.02988
+    ]
+
+  It's somewhat better, as would be expected.
+
+  I looked through COI-ERMGH again, there are no significant
+  special cases still to be implemented.
+
+28 December 2017.  I discovered that time sweep was making a
+  mess of the initial assignments.  As a temporary fix I
+  fixed those assignments, and got this:
+
+    KheGeneralSolve2018 at end (46.30 secs):
+    [ Soln (instance "COI-ERMGH", diversifier 0, cost 0.01889)
+      Soln                              Defects          Cost
+      -------------------------------------------------------
+      AvoidUnavailableTimesMonitor            1       0.00010
+      ClusterBusyTimesMonitor                 3       0.00300
+      LimitActiveIntervalsMonitor             6       0.00800
+      LimitResourcesMonitor                 255       0.00779
+      -------------------------------------------------------
+      Total                                 265       0.01889
+    ]
+
+  This is arguably close enough to the Curtois solution to go on
+  with.  Isn't it wonderful what a bit of drilling down will do?
+
+  Modified time sweep to preserve existing assignments.
+
+  Turning repair off, we get to this point with fixed assts:
+
+    KheGeneralSolve2018 at end (1.61 secs):
+    [ Soln (instance "COI-ERMGH", diversifier 0, cost 0.12131)
+      Soln                              Defects          Cost
+      -------------------------------------------------------
+      AvoidUnavailableTimesMonitor            2       0.00020
+      ClusterBusyTimesMonitor                26       0.02600
+      LimitBusyTimesMonitor                   5       0.00330
+      LimitActiveIntervalsMonitor            20       0.08000
+      LimitResourcesMonitor                 277       0.01181
+      -------------------------------------------------------
+      Total                                 330       0.12131
+    ]
+
+  and to this point without fixed assignments:
+
+    KheGeneralSolve2018 at end (2.00 secs):
+    [ Soln (instance "COI-ERMGH", diversifier 0, cost 0.13379)
+      Soln                              Defects          Cost
+      -------------------------------------------------------
+      AvoidUnavailableTimesMonitor            5       0.00060
+      ClusterBusyTimesMonitor                26       0.02600
+      LimitBusyTimesMonitor                  17       0.01010
+      LimitActiveIntervalsMonitor            20       0.08100
+      LimitResourcesMonitor                 280       0.01609
+      -------------------------------------------------------
+      Total                                 348       0.13379
+    ]
+
+  There isn't a lot in it, but when we add repair the difference
+  does seem to grow.  With fixed assignments:
+
+    KheGeneralSolve2018 at end (46.15 secs):
+    [ Soln (instance "COI-ERMGH", diversifier 0, cost 0.01889)
+      Soln                              Defects          Cost
+      -------------------------------------------------------
+      AvoidUnavailableTimesMonitor            1       0.00010
+      ClusterBusyTimesMonitor                 3       0.00300
+      LimitActiveIntervalsMonitor             6       0.00800
+      LimitResourcesMonitor                 255       0.00779
+      -------------------------------------------------------
+      Total                                 265       0.01889
+    ]
+
+  Without fixed assignments:
+
+    KheGeneralSolve2018 at end (38.43 secs):
+    [ Soln (instance "COI-ERMGH", diversifier 0, cost 0.02760)
+      Soln                              Defects          Cost
+      -------------------------------------------------------
+      AvoidUnavailableTimesMonitor            1       0.00010
+      ClusterBusyTimesMonitor                 2       0.00200
+      LimitBusyTimesMonitor                  11       0.00290
+      LimitActiveIntervalsMonitor             9       0.01500
+      LimitResourcesMonitor                 247       0.00760
+      -------------------------------------------------------
+      Total                                 270       0.02760
+    ]
+
+  Is this just bad luck?  Best of 8 with fixed assignments:
+
+    KheGeneralSolve2018 at end (65.75 secs):
+    [ Soln (instance "COI-ERMGH", diversifier 3, cost 0.01779)
+      Soln                              Defects          Cost
+      -------------------------------------------------------
+      ClusterBusyTimesMonitor                 2       0.00200
+      LimitActiveIntervalsMonitor             6       0.00800
+      LimitResourcesMonitor                 256       0.00779
+      -------------------------------------------------------
+      Total                                 264       0.01779
+    ]
+
+  and without fixed assignments:
+
+    KheGeneralSolve2018 at end (67.97 secs):
+    [ Soln (instance "COI-ERMGH", diversifier 5, cost 0.01941)
+      Soln                              Defects          Cost
+      -------------------------------------------------------
+      LimitBusyTimesMonitor                   9       0.00170
+      LimitActiveIntervalsMonitor             8       0.01000
+      LimitResourcesMonitor                 243       0.00771
+      -------------------------------------------------------
+      Total                                 260       0.01941
+    ]
+
+  So we'll go without fixed assignments, since that is more
+  principled, and wear the difference (1941 - 1779 = 162).
+  Notice that without fixed assignments has fewer defects;
+  the problem is that it has two expensive interval defects.
+
+  NB The Curtois solution has cost 779, all limit resources.
+  So it's the 17 resource defects that are the problem here.
+  Curtois' running time is 124 seconds, about double mine.
+
+  Added unassignment to KheFrameMove (only when the frame
+  is positive) and got an improvement.  Best of 1:
+
+    KheGeneralSolve2018 at end (36.40 secs):
+    [ Soln (instance "COI-ERMGH", diversifier 0, cost 0.02180)
+      Soln                              Defects          Cost
+      -------------------------------------------------------
+      AvoidUnavailableTimesMonitor            1       0.00010
+      ClusterBusyTimesMonitor                 2       0.00200
+      LimitBusyTimesMonitor                  12       0.00290
+      LimitActiveIntervalsMonitor             7       0.00900
+      LimitResourcesMonitor                 251       0.00780
+      -------------------------------------------------------
+      Total                                 273       0.02180
+    ]
+
+  Best of 8:
+
+    KheGeneralSolve2018 at end (72.50 secs):
+    [ Soln (instance "COI-ERMGH", diversifier 1, cost 0.01543)
+      Soln                              Defects          Cost
+      -------------------------------------------------------
+      AvoidUnavailableTimesMonitor            1       0.00010
+      ClusterBusyTimesMonitor                 2       0.00200
+      LimitBusyTimesMonitor                   9       0.00160
+      LimitActiveIntervalsMonitor             4       0.00400
+      LimitResourcesMonitor                 252       0.00773
+      -------------------------------------------------------
+      Total                                 268       0.01543
+    ]
+
+  My best result so far.  It's basically the previous result
+  with limit active intervals defects converted to other defects.
+  Best of 16:
+
+    KheGeneralSolve2018 at end (75.33 secs):
+    [ Soln (instance "COI-ERMGH", diversifier 13, cost 0.01477)
+      Soln                              Defects          Cost
+      -------------------------------------------------------
+      AvoidUnavailableTimesMonitor            1       0.00010
+      LimitBusyTimesMonitor                  10       0.00200
+      LimitActiveIntervalsMonitor             5       0.00500
+      LimitResourcesMonitor                 250       0.00767
+      -------------------------------------------------------
+      Total                                 266       0.01477
+    ]
+
+  Even better; but we don't want to routinely find 16.  After
+  a slight adjustment to which frames we try, here is best of
+  8 again:
+
+    KheGeneralSolve2018 at end (70.08 secs):
+    [ Soln (instance "COI-ERMGH", diversifier 4, cost 0.01736)
+      Soln                              Defects          Cost
+      -------------------------------------------------------
+      AvoidUnavailableTimesMonitor            2       0.00020
+      ClusterBusyTimesMonitor                 1       0.00100
+      LimitBusyTimesMonitor                  10       0.00240
+      LimitActiveIntervalsMonitor             6       0.00600
+      LimitResourcesMonitor                 250       0.00776
+      -------------------------------------------------------
+      Total                                 269       0.01736
+    ]
+
+  It's come out slightly worse, just by chance probably.
+  Setting es_active_augment=swap gives this best of 1:
+
+    KheGeneralSolve2018 at end (33.70 secs):
+    [ Soln (instance "COI-ERMGH", diversifier 0, cost 0.02202)
+      Soln                              Defects          Cost
+      -------------------------------------------------------
+      AvoidUnavailableTimesMonitor            3       0.00040
+      ClusterBusyTimesMonitor                 2       0.00200
+      LimitBusyTimesMonitor                  15       0.00300
+      LimitActiveIntervalsMonitor             9       0.00900
+      LimitResourcesMonitor                 242       0.00762
+      -------------------------------------------------------
+      Total                                 271       0.02202
+    ]
+
+  and this best of 8:
+
+    KheGeneralSolve2018 at end (79.23 secs):
+    [ Soln (instance "COI-ERMGH", diversifier 7, cost 0.01724)
+      Soln                              Defects          Cost
+      -------------------------------------------------------
+      AvoidUnavailableTimesMonitor            3       0.00030
+      ClusterBusyTimesMonitor                 2       0.00200
+      LimitBusyTimesMonitor                  11       0.00240
+      LimitActiveIntervalsMonitor             5       0.00500
+      LimitResourcesMonitor                 254       0.00754
+      -------------------------------------------------------
+      Total                                 275       0.01724
+    ]
+
+  There is an improvement here, but it's marginal.  Best of 16
+  is the same as this.  So let's not use es_active_augment=swap.
+
+29 December 2017.  Decided to press on with the other COI
+  instances.  What I have for COI-ERMGH is good enough to be
+  going on with.
+
+  Found a problem with KheTaskingEnlargeDomains:  it was enlarging
+  the domains of preassigned tasks, opening the way to an erroneous
+  assignment later:
+
+     Fatal error: KheArchiveWrite: in event 1Tue:V, event resource
+     with preassigned resource Nurse2 has task with inconsistent
+     resource assignment Nurse7
+
+  All fixed now.
+
+  Was able to solve all the other instances reasonably quickly,
+  except for the last one, COI-MER.  So it looks like the next
+  task is to work over COI-MER and get it solved faster and better.
+
+31 December 2017.  Working on
+
+    Fatal error: KheArchiveWrite: in event 1Tue:D, event resource
+    with preassigned resource B14 has task with missing resource
+    assignment
+
+  Did a careful redesign of resource matching's handling of
+  preserve_existing; it now omits assigned tasks when this
+  flag is set.  All documented and ready to test.
+
+  Then found that several algorithms scattered through KHE
+  were unassigned preassigned resources.  So I've fixed all
+  of them, and now I find that some preassigned meets are
+  being unassigned as well.  After fixing one of those I
+  finally achieved a solve of the whole archive.  The results
+  are often much worse in quality and usually much better
+  in running time.  There seems to be a long way to go to
+  catch up with the solutions reported by Curtois.
+
+  Looked through COI-GPost, there are several opportunities
+  for recoding.  I guess that's the obvious first step.
+  Initially the solution cost was 4223.  After complete
+  weekends recoding it was 4013.

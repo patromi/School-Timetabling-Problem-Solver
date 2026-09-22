@@ -1,0 +1,559 @@
+@Chapter
+    @Title { Implementation Notes }
+    @Tag { impl }
+@Begin
+This chapter contains notes on the more complicated parts of the
+NRC implementation.  It is here mainly for the author's benefit;
+users of NRC do not have to read it.
+@BeginSections
+
+@Section
+    @Title { Optimizing worker constraints }
+    @Tag { impl.worker }
+@Begin
+@LP
+The worker constraints created by calls to @C { NrcConstraintMake },
+called just @I { constraints } here, are not mapped to XESTT
+constraints in a simple one-to-one manner.  Instead, a sequence of
+optimizations is applied, aiming to reduce the size of the generated
+XESTT file by combining constraints where possible, and to reduce
+the density of constraints by replacing whole sets of
+@C { NRC_CONSTRAINT_ACTIVE } constraints that combine to limit
+the number of consecutive busy or free days (etc.) by
+@C { NRC_CONSTRAINT_CONSECUTIVE } constraints that apply these
+limits directly.
+@PP
+These optimizations are carried out by
+@C { NrcInstanceConvertWorkerConstraints },
+a private function which calls on various functions in files
+@C { nrc_instance.c }, @C { nrc_constraint.c }, and @C { nrc_condensed.c }.
+The remainder of this section is basically a step-by-step account of
+what @C { NrcInstanceConvertWorkerConstraints } does.
+@PP
+The @I { attributes } of a constraint are its worker set, its type
+(active, consecutive, or workload), its bound, its starting shift-set,
+its shift-sets (including their polarities), and its history.  It also
+has a name, but that does not affect optimization and is not an attribute
+for present purposes.  When two constraints are merged into one, their
+names are merged in a way that preserves everything in both names but
+eliminates most repetition.
+@PP
+@C { NrcInstanceConvertWorkerConstraints } has three phases.  In order
+of execution they are @I { condensing }, @I { bound merging }, and
+@I { worker set merging }.  After these phases are complete, the
+surviving constraints are mapped to XESTT constraints in a simple
+one-to-one manner, the only complication being that constraints of
+type active are generated as limit busy times constraints where
+possible, and as cluster busy times constraints otherwise.
+@PP
+Bound merging and worker set merging are easy.  When two constraints
+have equal attributes except that one has a maximum limit and the
+other has a minimum limit, they are merged by bound merging.  When
+two or more constraints have equal attributes except that they apply
+to different worker sets, they are merged by worker set merging.
+@PP
+Actually there is one wrinkle here.  A constraint's history after
+value is only referenced when there is a minimum limit, as Jeff
+Kingston's paper on history makes clear.  So `equal attributes' may
+be refined to mean that if one of the constraints has no minimum
+limit, then the history after attributes need not be compared.  If
+the constraints are merged, the history after attribute of the result
+should come from a constraint with a minimum limit, if there is one.
+@PP
+It remains to explain condensing.
+In the Curtois original instances, constraints which limit the number
+of consecutive busy or free days do not do so directly.  Instead, they
+use patterns to specify limits on the number of busy or free days, not
+necessarily consecutive, that may occur in certain time windows.  This
+`encoding' of the constraints is a bad thing, because it leads to many
+overlapping constraints where just one would do, slowing down constraint
+evaluation and confusing solvers that attempt to understand a solution's
+defects, as opposed to merely observing its cost.  Condensing detects
+such constraints and `decodes' them back to the unencoded form.
+@PP
+Condensing applies only to constraints of type active which have
+a maximum limit (only) whose value is one less than the number
+of shift-sets.  Each shift-set must be a copy of the previous
+one, only shifted a certain offset along the cycle (typically
+one day, but any offset is acceptable), and these
+offsets must be all equal.  Any starting shift-set
+must have its times equally spaced along the cycle with this
+same offset.  It does not have to cover the whole cycle.  The
+shift-sets' polarities must either be all equal, or all equal
+except the last, or all equal except the first and last.
+Respectively, these polarities are what one finds in patterns
+that impose a maximum limit, an exact limit at the start of
+the cycle, and an exact limit not at the start of the cycle.
+@PP
+The constraints satisfying these conditions are partitioned into
+@I { bags }.  Two constraints lie in the same bag when they have
+the same hardness, the same worker set, the same polarity (ignoring
+the ends), and the same first shift-set and offset.  Also,
+constraints whose polarities impose maximum limits go into different
+bags from constraints whose polarities impose exact limits.
+@PP
+Bags of constraints whose polarities impose maximum limits are
+easy to handle.  One consecutive constraint is made for each
+constraint, with the shift-sets implied by the original shift-sets
+and starting shift-set.  For example, if the original shift-sets
+are the first four days, and the starting shift-set contains the
+first shift on each day (possibly minus the last three), then
+the shift-sets are the whole set of days.  No history is needed.
+@PP
+Bags of constraints whose polarities impose exact limits are harder
+to handle.  Some of the constraints may apply at the start of the
+cycle, others not at the start of the cycle.  The exact length
+penalized may also vary.
+@PP
+The first step is to pair each constraint which applies at the
+start of the cycle with a constraint which does not apply at the
+start but otherwise gives the same penalty to sequences of the
+same length.  Any constraint which applies only at the start of
+the cycle but cannot be paired in this way is left untouched and
+ultimately generates the usual uncondensed XESTT constraint.
+@PP
+The pairs are then sorted into decreasing order of the exact length
+penalized.  If there is one pair for each length from some number
+down to 1, and the penalty costs are non-decreasing as the length
+decreases, then these constraints are replaced by one or more
+consecutive constraints that generate the same costs.
+@PP
+Rather than giving a tedious general explanation, consider this
+example from Curtois original instance @C { GPost }.  Sequences of
+length 3 have penalty 1, sequences of length 2 have penalty 4, and
+sequences of length 1 have penalty 100.  These are mapped into two
+consective constraints, one with minimum limit 4 and penalty 1 with
+a quadratic cost function, the other with minimum limit 2 and penalty
+91 with a linear cost function.  Starting at the largest exact length,
+the algorithm is to try quadratic first, then linear, then step, and
+see how much penalty is left after applying this cost function.  If
+these residues are non-negative and non-decreasing, the function is
+accepted and the algorithm moves on to the next pair with positive
+residue.  Otherwise the function is rejected and the next function
+is tried.  The algorithm cannot reject all functions, because, since
+the penalties are non-decreasing, step at least must work.  As a
+special case, when there is only one pair left, all three functions
+work, and linear is chosen.
+@PP
+Finally, consider history in the condensed constraint.  Let its
+minimum limit be @M { L }.
+@PP
+Suppose there is an interval of length less than @M { L } at the
+start.  If there were patterns that match with this interval, then
+the history before value is 0.  If not, the history before value
+is @M { L } for each resource.  It was not mentioned above, but
+condensing is only applied if, within a given bag, either each
+pair contains two constraints (one for the start and one for the
+rest), or else each pair contains one constraint (for the rest,
+not for the start).
+@PP
+Suppose that there is an interval of length less than @M { L } at
+the end.  No penalty should be applied in this case, because none
+of the original patterns match with this interval.  So history after
+value @M { L } is assigned to each resource.  If instances appear
+with patterns that do match at the end, then the algorithm will
+have to be revised, analogously to what happens at the start now.
+@End @Section
+
+@Section
+    @Title { Converting demands into XESTT constraints }
+    @Tag { impl.cvt_demand }
+@Begin
+@LP
+This section explains how demand objects are converted into XESTT
+assign resource and prefer resources constraints.
+# The goal
+# is to ensure that, whatever assignment or non-assignment is
+# made to a demand, at most one constraint is violated.
+@PP
+When a demand is added to a shift, the demand records that fact
+as well as the shift.  When converting the demand, this makes it
+easy to determine which events, and which event resources within
+those events, are derived from the demand, and hence which event
+groups and roles the constraints are to apply to.  The main
+issue, then, is working out which constraints are needed.
+@PP
+In certain special cases, basically those which can be modelled
+by at most one assign resource constraint plus at most one prefer
+resources constraint, the needed XESTT constraints are generated
+directly.  Otherwise, the conversion uses the following fully
+general algorithm.
+@PP
+A demand records the calls on penalizer functions it receives.
+The first step is to break each call into a set of requests to
+associate one penalty with one worker assignment (including
+non-assignment).  The penalty type says how to combine penalties
+for one worker assignment:  sum, replace, or abort.  At the end
+there is one penalty, possibly zero, for each worker assignment.
+@PP
+As explained earlier, the sum of a hard penalty and a soft penalty
+is the hard penalty.  This may be inexact, but in nurse rostering
+at least the inexactness does not matter.  We can't add them.
+Even if NRC used combined costs like KHE does, there would
+still be no way to represent the combined cost in an XESTT file.
+# If there are no penalties, the sum is a penalty with weight 0.
+@PP
+Partition the worker assignments into groups, where the assignments
+in group @M { G sub i } all have the same penalty, @M { p sub i }.
+Place non-assignment into its own group.  Then,
+@BulletList
+
+@LI @OneRow {
+For each group of workers @M { G sub i } whose penalty is
+non-zero, generate one prefer resources constraint whose set
+of preferred resources is @M { W - G sub i }, where @M { W } is
+the set of all workers, and whose penalty is @M { p sub i }.
+This is correct:  it penalizes assignments of @M { G sub i }
+but nothing else.
+}
+
+@LI @OneRow {
+For the group @M { G sub i } representing non-assignment, if its
+penalty is non-zero, generate an assign resource constraint with
+that penalty.  This penalizes non-assignment and nothing else.
+}
+
+@EndList
+Whatever assignment or non-assignment is made, at most one constraint
+is violated.
+@End @Section
+
+@Section
+    @Title { Optimizing demand constraints }
+    @Tag { impl.demand }
+@Begin
+@LP
+NRC offers two ways to define cover constraints (constraints on how
+many nurses should attend each shift, and what skills they need):
+@BulletList
+
+@LI {
+Demand objects, which constrain each request for one
+nurse independently of the others.  They are converted into
+XESTT assign resource and prefer resources constraints.
+}
+
+@LI {
+Demand constraints, which constrain multiple requests
+simultaneously.  They are converted into XESTT limit resources
+constraints, except as explained below.
+}
+
+@EndList
+There is an argument for using demand constraints only:  one method
+is better than two, and demand constraints can do everything that
+demand objects do.  The counter-argument is that it is better for
+solving if demands are constrained independently.  For example, it
+allows a solver to decide, for each task separately, whether not
+assigning that task would incur a cost.
+# This cannot be done when the demands are not independent.
+@PP
+NRConv helps to resolve this dilemma by detecting cases where
+demand constraints can be replaced by equivalent demand objects,
+and performing those replacements just before the conversion to
+XESTT.  So the user can use demand constraints where convenient,
+avoiding an error-prone manual replacement by demand objects while
+still gaining their advantages.
+@PP
+For example, the following appears in Curtois original instance
+@F { Azaiez.xml }:
+@ID @C {
+<DayOfWeekCover>
+  <Day>Sunday</Day>
+  <Cover><Shift>1</Shift><Min>3</Min></Cover>
+  <Cover><Skill>0</Skill><Shift>1</Shift><Min>1</Min></Cover>
+</DayOfWeekCover>
+}
+The user of NRC will express this with two demand constraints,
+which NRC will convert into demand objects:  one requesting a
+nurse with skill 0, and at least two requesting any nurse.
+@PP
+There must be nothing approximate about any replacements done
+here:  the result must be strictly equivalent to the original.
+However, defining equivalence is an issue.  A solution to an
+instance made with demand constraints merely needs to assign
+workers to shifts; by the way the constraints work, it does not
+matter which tasks within the shifts are assigned.  But it does
+matter when the solution is to an instance with demand objects.
+@PP
+For example, consider a shift that prefers four nurses, but will
+accept three or five, with a penalty.  When this shift is converted
+without using demand objects, all five tasks are subject to the same
+limit resources constraint, and it does not matter which tasks receive
+the assignments.  But when the shift is converted using demand
+objects, the first four tasks have penalties for non-assignment,
+and the fifth task has a penalty for assignment, and solutions
+that assign four workers need to nominate the first four tasks
+as the ones receiving the assignments.
+@PP
+So is the converted instance really equivalent to the original?  Our
+answer is that when converting a solution, we are given the workers to
+assign and the shift to assign them to, but not the tasks, and we need
+to find the best assignment.  If we do that, then the converted instance
+is equivalent, but solvers for the converted instance have an extra job
+to do:  find the best tasks to assign workers to within each shift.
+# (using weighted bipartite matching, ideally).
+@PP
+A conversion which converts demand constraints into demand objects
+will be considered correct when the best assignment of workers to
+tasks in each shift attracts the same cost as when demand constraints
+are used.
+@PP
+The question is whether, for a particular shift @M { s }, the demand
+constraints @M { c sub i } that refer to @M { s } can be replaced by
+demand objects.  If any of the @M { c sub i } also refer to other
+shifts, the case seems hopeless and we fail to convert.  So we
+assume now that the @M { c sub i } constrain only @M { s }.  Each
+@M { c sub i } constrains all the demands of @M { s }, not just
+some, since that is all that @C { NrcDemandConstraintMake } offers.
+@PP
+Each demand constraint @M { c sub i } places a bound @M { b sub i } on
+the number of demands of @M { s } that may be assigned workers from a
+given worker set @M { w sub i }, which could be all workers but need
+not be.  So we may consider the constraints on @M { s } to be a set
+of pairs @M { ( b sub i , w sub i ) } for @M { 1 <= i <= k }.  We
+assume also that the total number of demands, @M { N }, is given.
+This is needed because XESTT requires that a particular, fixed
+number of event resources appear in each event; @M { N } is that
+number.  We might offer a function which deduces a reasonable
+value of @M { N } from a shift's demand constraints; but ultimately
+the user is best placed to determine @M { N }, based on what
+existing solutions need, perhaps.
+@PP
+The algorithm for converting the @M { c sub i } and @M { N } into
+demand objects is as follows.  It may fail at several points, in
+which case we fail to convert @M { s }'s demand constraints into
+demands; they remain as demand constraints and are subsequently
+converted into XESTT limit resources constraints.
+@PP
+The first step is to transform the @M { c sub i } to simplify their
+structure.  Each bound @M { b sub i } contains optional minimum,
+maximum, and preferred limits, with associated penalties.  A
+preferred limit is two limits, a minimum and a maximum, whose
+values are equal.  So we replace the @M { c sub i } by a set of
+triples of the form @M { "min"( v sub i, w sub i, c sub i ) } and
+@M { "max"( v sub i, w sub i, c sub i ) }, where @M { v sub i } is
+the limit value, @M { w sub i } is the worker set, and @M { c sub i }
+is the penalty to apply for each worker over or under the limit.
+@PP
+Let @M { W } be the set of all workers, and let @M { w sub 0 } be a
+set of workers containing just one element, a special worker
+representing non-assignment.  Transform each maximum limit
+@M { "max"( v sub i, w sub i, c sub i ) } into the equivalent minimum
+limit @M { "min"( N - v sub i, W cup w sub 0 - w sub i , c sub i ) }.
+Saying that at most @M { v sub i } workers from @M { w sub i }
+are wanted is equivalent to saying that at least @M { N - v sub i }
+workers from @M { W cup w sub 0 - w sub i } are wanted.
+@PP
+So the first step yields a set of minimum limits
+@M { "min"( v sub i, w sub i, c sub i ) }, where @M { w sub i } may
+include @M { w sub 0 }.  The second step makes these limits, plus
+the artificial limit @M { "min"( N, W cup w sub 0 , 0 ) }, into
+nodes in a tree @M { T sub s }.  @M { T sub s } is like the tree
+KHE builds when converting workload requirements into workload demand
+nodes, although that tree limits times, not workers.  The nodes
+of @M { T sub s } satisfy these conditions:
+@NumberedList
+
+@LI {
+If node @M { n sub i = "min"( v sub i, w sub i, c sub i ) } is the
+parent of node @M { n sub j = "min"( v sub j, w sub j, c sub j ) },
+then @M { w sub j subseteq w sub i } and @M { v sub j <= v sub i }.
+# if @M { w sub j = w sub i } then
+}
+
+@LI {
+If nodes @M { n sub j = "min"( v sub j, w sub j, c sub j ) } and
+@M { n sub k = "min"( v sub k, w sub k, c sub k ) } are siblings,
+then @M { w sub j cap w sub k = emptyset }.
+}
+
+@EndList
+The algorithm for building @M { T sub s } is as follows.  Sort the
+minimum limits into non-increasing @M { bar w sub i bar } order;
+break ties using non-increasing @M { v sub i } order.  Take each
+limit in order, make it into a node, and insert it into @M { T sub s }.
+The artificial limit @M { "min"( N, W cup w sub 0 , 0 ) } comes first
+in this order, and its insertion is a special case:  it becomes the
+root.  Subsequent insertions of a new node @M { y } assume that the
+insertion is to take place below a given node @M { p }.  Initially,
+@M { p } is the root.  Then,
+@BulletList
+
+@LI {
+If the first condition holds between one of @M { p }'s children
+@M { q } and @M { y }, insert @M { y } below @M { q }.
+}
+
+@LI {
+Otherwise, if @M { y }'s set of workers is disjoint from all of
+@M { p }'s children's, make @M { y } a child of @M { p }.
+}
+
+@LI {
+Otherwise, fail to convert.
+}
+
+@EndList
+It is easy to see that if this algorithm does not fail, then the
+tree it builds must satisfy the two conditions.  By sorting the limits,
+we ensure that @M { y } could never be the parent of a previously
+inserted node, showing that if a tree exists at all, this algorithm
+will not fail.
+@PP
+The third and final step traverses @M { T sub s } in postorder,
+generating demand objects along the way.  At each node
+@M { n sub i = "min"( v sub i, w sub i, c sub i ) }, generate
+@M { v sub i - V sub i } demand objects, where @M { V sub i } is
+the total number of demand objects generated at proper descendants
+of @M { n sub i }.  The point here is that all the demands generated
+below @M { n sub i } are demands for workers which are elements of
+@M { w sub i }, so they count towards what @M { n sub i } is demanding.
+If @M { v sub i - V sub i } is negative, fail to convert.
+@PP
+It remains to associate penalties with worker assignments in the
+generated demand objects.  Take any node @M { n sub i } and
+consider the @M { v sub i } demand objects generated at or below
+@M { n sub i }.  (These are easy to find during the postorder traversal,
+since immediately after generating the @M { v sub i - V sub i }
+demand objects at @M { n sub i }, they are the @M { v sub i } most
+recently generated demand objects.)  Each of these demand objects
+is supposed to incur penalty @M { c sub i } if its assignment is
+not an element of @M { w sub i }.  Accordingly we call
+@ID lines @Break {
+@C { NrcDemandPenalizeNotWorkerSet(d, } @M { w sub i - w sub 0 } &
+@C { , NRC_PENALTY_ADD, } @M { c sub i }@C{ ); }
+}
+on each of these demand objects @C { d }, being careful to do so only
+once per distinct object.  If @M { w sub i } does not include @M { w sub 0 },
+then we also need to call
+@ID {
+@C { NrcDemandPenalizeNonAssignment(d, NRC_PENALTY_ADD, }
+@M { c sub i }@C{ ); }
+}
+After all demands are created and all penalties are added, all
+the demand objects are made immutable by calls to
+@C { NrcDemandMakeEnd }, so that no further changes are possible.
+# @C { NrcInstanceDemandPenalizeNotWorkerSet } does not penalize
+# non-assignment, which is why that is handled separately.
+# @DP
+# @I { obsolete below here }
+# It remains to associate penalties with worker assignments in the
+# generated demand objects.  Take any node @M { n sub i } such that
+# @M { v sub i - V sub i > 0 }; otherwise, there is nothing to
+# do at @M { n sub i }.  The @M { v sub i - V sub i } demand objects
+# at @M { n sub i } are identical; to generate one (call it @M { d }),
+# proceed as follows.
+# @PP
+# Renumber the tree nodes so that @M { n sub i , n sub {i-1} ,..., n sub 1 }
+# is the path from @M { n sub i } up to the root, now called @M { n sub 1 }.
+# If a worker assignment from @M { w sub i } is made to @M { d }, that
+# assignment satisfies @M { n sub i } and all its ancestors, so the
+# associated penalty is 0.  If a worker assignment from @M { w sub {i-1} }
+# but not @M { w sub i } is made to @M { d }, that satisfies @M { n sub {i-1} }
+# and all its ancestors, but not @M { n sub i }, so the penalty is
+# @M { c sub i }.  In general, for @M { 2 <= j <= i }, if a worker
+# assignment from @M { w sub {j-1} } but not @M { w sub j } is made
+# to @M { d }, the penalty is @M { c sub j + ... + c sub i }.
+# @PP
+# Ignoring non-assignment, the following sequence of calls installs the
+# appropriate penalties:
+# @ID {0.92 1.0} @Scale lines @Break {
+# @C { NrcInstanceDemandPenalizeWorkerSet(ins, }@M { w sub 1 - w sub 0 } &
+# @C { , NRC_PENALTY_REPLACE, } @M { c sub 2 + ... + c sub i }@C{ ); }
+# @C { NrcInstanceDemandPenalizeWorkerSet(ins, }@M { w sub 2 - w sub 0 } &
+# @C { , NRC_PENALTY_REPLACE, } @M { c sub 3 + ... + c sub i }@C{ ); }
+# ...
+# @C { NrcInstanceDemandPenalizeWorkerSet(ins, }@M { w sub {j-1} - w sub 0 } &
+# @C { , NRC_PENALTY_REPLACE, } @M { c sub j + ... + c sub i }@C{ ); }
+# ...
+# @C { NrcInstanceDemandPenalizeWorkerSet(ins, }@M { w sub {i-1} - w sub 0 } &
+# @C { , NRC_PENALTY_REPLACE, } @M { c sub i }@C{ ); }
+# @C { NrcInstanceDemandPenalizeWorkerSet(ins, }@M { w sub i - w sub 0 } &
+# @C { , NRC_PENALTY_REPLACE, } @M { 0 }@C{ ); }
+# }
+# These penalties may be installed while tracing the path from @M { n sub 1 }
+# down to @M { n sub i }.
+# @PP
+# @C { NrcInstanceDemandPenalizeWorkerSet } is not able to penalize
+# non-assignment, which is why these calls omit @M { w sub 0 }.  To
+# penalize non-assignment, proceed as follows.  If @M { w sub i }
+# includes @M { w sub 0 }, then so do all of its ancestors and no penalty
+# for non-assignment is required.  Otherwise, since @M { w sub 1 } includes
+# @M { w sub 0 } and @M { w sub i } does not, by the superset condition
+# there must be a unique @M { j } such that @M { w sub {j-1} } includes
+# @M { w sub 0 } but @M { w sub j } does not.  So a non-assignment to a
+# demand at @M { n sub i } should attract cost @M { c sub j + ...  + c sub i },
+# and one call to @C { NrcInstanceDemandPenalizeNonAssignment } with this
+# cost is needed.
+@PP
+Consider the example from @C { Azaiez.xml } given earlier, and suppose
+@M { N = 5 } and @M { w } is the set of workers with skill 0.  Then
+@M { T sub s } has root node @M { "min" (5, W, 0) }, that node has
+one child @M { "min" (3, W, c sub 1 ) }, and that node has one child
+@M { "min" (1, w, c sub 2 ) }, where @M { c sub 1 } and @M { c sub 2 }
+are given elsewhere in the file.  The postorder traversal will generate
+one demand, with cost @M { c sub 2 } for a nurse outside @M { w } and
+@M { c sub 1 + c sub 2 } for non-assignment, then two demands, with
+cost @M { c sub 1 } for non-assignment, and finally another two
+demands, with no costs.
+# @PP
+# When generating a demand, a penalty for not assigning any worker is
+# required, as is a penalty for assigning any worker.  At least one
+# of these will always be 0.  Optionally, a preferred worker set may
+# be given, with a penalty for not assigning a worder from that set.
+# @PP
+# But even given @M { N }, finding the right demands is not easy.
+# Consider the possible relationships between the worker sets in two
+# pairs @M { ( b sub i , w sub i ) } and @M { ( b sub j , w sub j ) }.
+# When @M { w sub i } and @M { w sub j } are disjoint, no assignment
+# can help to satisfy both @M { ( b sub i , w sub i ) } and
+# @M { ( b sub j , w sub j ) }, and it might be possible to convert
+# each to demands for different tasks.  When @M { w sub i } is a subset
+# of @M { w sub j }, demands for @M { w sub i } are also demands for
+# @M { w sub j }, which also might be implementable.  When @M { w sub i }
+# and @M { w sub j } have a non-empty intersection but neither is a
+# subset of the other, conversion to demands seems to be hopeless.
+# @PP
+# Function @C { NrcDemandSetMakeFromBound }
+# (Section {@NumberOf instances.constraints.demand_sets})
+# comes close to answering this question when there is just one pair,
+# @M { ( b sub 1 , w sub 1 ) }.  One deficiency is that it needs to
+# be told how many objects to make.  The other is that when @M { w sub 1 }
+# does not contain all nurses, any extra demands above a preferred (or
+# failing that, a minimum) value should not be constrained to accept
+# only nurses from the set @M { w sub 1 }.
+# @PP
+# A bound can contain minimum, maximum, and preferred limits.  A
+# preferred limit is just two limits, a minimum and maximum, with
+# the same value and penalty function.  So we break up the bounds
+# into their limits, and break up preferred limits into minimum and
+# maximum limits, so that now we have a set of minimum and maximum
+# limits, each with an associated worker set and penalty.  We assume
+# that all penalties are soft and have a linear cost function.  If
+# not, we fail to convert.  Thus only the penalty weight matters,
+# and so our constraints are now a set of triples of the form
+# @M { "min"( v sub i, w sub i, c sub i ) }
+# and @M { "max"( v sub i, w sub i, c sub i ) }, where @M { v sub i }
+# is the limit value, @M { w sub i } is the worker set, and
+# @M { c sub i } is the penalty weight:  the penalty to apply
+# for each worker over or under the limit.
+# @PP
+# Assume that we know @M { N }, the final number of demands.  In fact,
+# we won't know it for some time yet.  However, it does no harm to
+# assume that @M { N } is a large number, for example the total
+# number of workers in the instance.  This we do, although we may
+# reduce it later.
+# @PP
+# Now imposing a minimum limit of @M { v sub i } workers from worker-set
+# @M { w sub i } is equivalent to imposing a maximum limit of
+# @M { N - v sub i } workers from the worker set which is the complement
+# of @M { w sub i }.  So we assume now that all triples impose maximum
+# limits; they all have the form @M { "max"( v sub i, w sub i, c sub i ) }.
+# The question is, when there are several of these triples, are they
+# compatible, in the sense of being convertible to @M { N } equivalent
+# demands?
+@End @Section
+
+@EndSections
+@End @Chapter

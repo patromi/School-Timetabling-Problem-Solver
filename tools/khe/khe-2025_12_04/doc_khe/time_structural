@@ -1,0 +1,2505 @@
+@Chapter
+    @Title { Time-Structural Solvers }
+    @Tag { time_structural }
+@Begin
+@LP
+This chapter documents the solvers packaged with KHE that modify
+the time structure of a solution:  split and merge its meets, add
+nodes and layers, and so on.  These solvers may alter time and resource
+assignments, but they only do so occasionally and incidentally to
+their structural work.
+@BeginSections
+
+@Section
+    @Title { Layer tree construction }
+    @Tag { time_structural.construction }
+@Begin
+@LP
+The @I { layer tree } is a data structure invented by the author
+for organizing time assignment in high school timetabling.  For
+an introduction to layer trees and the two types (@C { KHE_NODE }
+and @C { KHE_LAYER }) that KHE offers in support of them, see
+Chapter {@NumberOf extras}.
+@PP
+KHE offers a solver for building a layer tree holding the meets
+of a given solution:
+@ID @C {
+KHE_NODE KheLayerTreeMake(KHE_SOLN soln);
+}
+The root node of the tree, holding the cycle meets, is returned.  The
+function has no special access to data behind the scenes.  Instead,
+it works by calling basic operations and helper functions:
+@BulletList
+
+@LI @OneRow {
+It calls @C { KheMeetSplit } to satisfy split events constraints and
+other influences on the number and duration of meets, as far as
+possible.  It is usual to call @C { KheLayerTreeMake } when each
+event is represented in @C { soln } by a single meet of the full
+duration (that is, after @C { KheSolnMake } and
+@C { KheSolnMakeCompleteRepresentation }), but some meets may be
+already split.  In any case, @C { KheLayerTreeMake } does not create,
+delete, or merge meets.
+}
+
+@LI @OneRow {
+It calls @C { KheMeetBoundMake } with a @C { NULL } meet bound group
+to set the time domains of meets to satisfy preassigned times, prefer
+times constraints, and other influences on time domains, as far as
+possible.  For each meet, one call to @C { KheMeetBoundMake } is made
+for each possible duration.  It is usual to call @C { KheLayerTreeMake }
+at a moment when the time domains of the meets are not restricted by
+meet bounds, but some meets may already have bounds.  In any case,
+@C { KheLayerTreeMake } only adds bounds, never removes them, so it
+either leaves a domain unchanged, or reduces it to a subset of its
+initial value.
+}
+
+@LI @OneRow {
+It calls @C { KheMeetAssign } in trivial cases where there is
+no doubt that the assignments will be final.  Precisely, if there
+are two events of equal duration linked by a link events constraint
+and split into meets of equal durations, and the algorithm
+places one in a parent node and the other in a child of that parent,
+then, provided the child node itself has no children (which would
+render the case non-trivial), the meets of the child node
+will be assigned to meets of the parent node, and the child
+node will be deleted in accordance with the convention given
+in Chapter {@NumberOf time_solvers}, that meets whose assignments
+will never change should not lie in nodes.
+}
+
+@LI @OneRow {
+It calls @C { KheMeetAssignFix } to fix all the assignments it makes (as
+defined immediately above).  These can be unfixed afterwards if desired.
+}
+
+@LI @OneRow {
+It calls @C { KheNodeMake } and @C { KheNodeAddMeet } to ensure that
+for each event there is one node holding the meets of that event,
+unless these meets receive the trivial assignments just described.
+There is also a node (the root node returned by @C { KheLayerTreeMake },
+also accessible as @C { KheSolnNode(soln, 0) }) holding the cycle
+meets.  Any other meets (usually none) are not placed into nodes.
+@C { KheLayerTreeMake } requires @C { soln } to contain no nodes initially.
+}
+
+@LI @OneRow {
+It calls @C { KheNodeAddParent } to reflect link events
+constraints (even between events whose durations differ), as
+far as possible, and the need to ultimately assign every meet
+to a cycle meet.  When @C { KheLayerTreeMake } returns, every
+node is a descendant of the root node.
+}
+
+@LI @OneRow {
+Some instances contain events which have already been split, with
+the fragments presented as distinct events.  It is best if the
+nodes holding the meets derived from these fragments are merged.
+So for each pair of distinct events which appear to be part of
+one course because they share a spread events constraint or
+avoid split assignments constraint, if certain other conditions
+(Section {@NumberOf time_structural.construction.merging})
+are satisfied, the nodes holding the meets of those two events
+are merged by a call to @C { KheNodeMerge }.
+}
+
+@EndList
+These elements interact in ways that make most of them impossible
+to separate.  For example, the splitting of an event into
+meets needs to be influenced not just by the event's own split
+events constraints and distribute split events constraints, but
+also by the constraints of the events that it is linked to by
+link events constraints.
+@PP
+Logically, order events constraints should also affect the construction
+of layer trees.  In the version of KHE documented here they are not
+consulted, but this will change.
+@PP
+Although @C { KheLayerTreeMake } does not call @C { KheLayerMake },
+resource layers (sets of events that share a common preassigned
+resource which has a hard avoid clashes constraint) strongly
+influence its behaviour.  It ensures that the events of each layer
+are split into meets which can be packed into the cycle meets without
+overlapping in time, except in the unlikely case where the total
+duration of the events of the layer exceeds the total number of
+times in the cycle.
+@PP
+For each @C { meet } with a pre-existing assignment to some
+@C { target_meet }, @C { KheLayerTreeMake } tries to place
+@C { meet } into a child node of @C { target_meet }'s node.  In
+exceptional circumstances, this may not be possible, and then the
+pre-existing assignment is removed by @C { KheLayerTreeMake }.
+Suppose there is an event with two meets, both
+assigned to other meets.  If those two other
+meets are both derived from the same event, or if they
+are both cycle meets, then all is well; but if not, one
+of the original meets will be unassigned.  This is done
+because @C { KheLayerTreeMake } tracks relations between events,
+not meets, and cannot cope with the idea of one event
+being assigned partly to one event and partly to another.  A
+meet will also be unassigned when there is a cycle of
+assignments, but that should never occur in practice.
+@PP
+The above attempts to be a complete specification of
+@C { KheLayerTreeMake }, sufficient for using it.  For the record,
+the following subsections explain how it works in detail.
+@BeginSubSections
+
+@SubSection
+    @Title { Overview }
+    @Tag { time_structural.construction.overview }
+@Begin
+@LP
+@C { KheLayerTreeMake } uses a constructive heuristic which runs
+quickly.  It works by examining the relevant constraints and
+taking actions to satisfy them, giving priority to those with
+higher weight.  It does not search through a large space of
+possible solutions to find the best.  This is appropriate,
+because in practice good solutions are easy to find.  The problem
+is more about giving due weight to the many influences on the
+solution than about real solving.
+@PP
+@C { KheLayerTreeMake } begins by unassigning meets to remove cases
+where two meets derived from a single event are assigned to meets
+not both derived from the same event or both cycle meets, and
+splitting meets whose duration exceeds the number of times in the
+instance into meets of duration within that bound.  This allows the
+remainder of the algorithm to assume that each event is initially
+assigned to at most one other event, and that there are no oversize meets.
+@PP
+In practice, it is likely that the constraints of an instance will
+cooperate harmoniously, but for completeness it is necessary to
+handle cases where they do not.  For example, there is nothing to
+prevent a link events constraint from linking two events, one of
+which is required by a split events constraint to split into
+three meets, while the other is required to split into one.
+@PP
+There is a data structure, described in the following sections,
+which embodies all the requirements that the final layer tree
+must satisfy, including how events are to be split into
+meets, and how meets are to be grouped into nodes.
+It is an invariant that at least
+one layer tree must satisfy all these requirements.  Initially, the
+data structure embodies no requirements at all.  A long series of
+@I { jobs } is then applied to it, each inspired by some constraint
+or other feature of the instance to request that the data structure
+add some new requirements to the ones it currently embodies.  If no
+layer trees would satisfy both the old and new requirements,
+the job is @I { rejected } (it is ignored); otherwise, it is
+@I { accepted } (its requirements are added).  There are also cases
+in which some of the requirements of a job are accepted but others
+have to be rejected.  The jobs are sorted by decreasing priority,
+which is usually the combined weight of the constraint that inspired
+the job.  In this way, contradictory requests are resolved by giving
+preference to requests of higher priority.
+@PP
+Here is the full list of job types, with brief descriptions.  How
+each job modifies the data structure will be explained later.  The
+jobs not derived from constraints have high priority.
+@PP
+@I { Pre-existing splits. }  Each already split event @M { e }
+generates a job requiring the meets that @M { e } is ultimately
+split into to be packable into (created by further splitting of)
+the pre-existing meets.
+@PP
+@I { Preassigned times. }  XHSTT specifies that a meet derived from
+an event with a preassigned time must be assigned that time.  Several
+simultaneous meets derived from one event are unlikely to be wanted,
+so this job requests that a preassigned event be not split further
+than its pre-existing splits, and that the meets' time domains be
+set to singleton domains.
+@PP
+@I { Pre-existing assignments and link events constraints. }  These are
+interpreted as requests to create parent-child links between nodes.
+@PP
+@I { Avoid clashes constraints. }  Each resource subject to a
+required avoid clashes constraint gives rise to a job which
+requests that the layer tree recognize that the events to which
+the resource is preassigned cannot overlap in time.
+@PP
+@I { Split events constraints and distribute split events constraints. }
+These request restrictions on the number of meets that an
+event may be split into, and their durations.
+@PP
+@I { Spread events constraints. }  If the events of an event group of
+a spread events constraint are split into too many or too few meets,
+then a non-zero number of deviations of the constraint becomes
+inevitable.  The job tries to tighten the requirements on the number
+of meets of the events concerned, to the point where this
+problem cannot arise.
+@PP
+@I { Prefer times constraints. }  This kind of job requests that the
+time domain of the meets of an event which have a certain
+duration be reduced to satisfy a prefer times constraint.  This may
+lead to an empty domain for meets of that duration; if so,
+then there can be no meets of that duration at all, which
+may prevent the job from being accepted.
+@PP
+After all jobs have been applied, the data structure is traversed and
+a layer tree is built.  Finally, @C { KheLayerTreeMake } examines each
+pair of events connected by a spread events or avoid split assignments
+constraint, and if those events' nodes satisfy the conditions given in
+Section {@NumberOf time_structural.construction.merging}, it merges
+them by calling @C { KheNodeMerge }.
+@End @SubSection
+
+@SubSection
+    @Title { Linking }
+    @Tag { time_structural.construction.linking }
+@Begin
+@LP
+The data structure used by @C { KheLayerTreeMake } must be close
+enough to the layer tree to make it straightforward to derive an
+actual layer tree at the end.  In fact, it needs to represent the set
+of layer trees that satisfy the requirements of all the jobs accepted
+so far.  This section explains how this is done for linking, and later
+sections explain the parts that handle splitting and layering.
+@PP
+If meet @M { s sub 1 } can be assigned to meet
+@M { s sub 2 } at offset @M { o sub 1 }, and @M { s sub 2 } can be
+assigned to @M { s sub 3 } at offset @M { o sub 2 }, then it is
+always possible to assign @M { s sub 1 } directly to @M { s sub 3 }
+at offset @M { o sub 1 + o sub 2 }.  Thus, the relation of assignability
+between meets is transitive.  Although it is not safe to
+assign a meet to itself, it does no harm to pretend here
+that assignability is reflexive as well.
+@PP
+In some cases, two meets are assignable to each other.  They
+must have equal durations and time domains, but that is not unusual.
+By a well-known fact about reflexive and transitive relations, two-way
+assignability is an equivalence relation between meets.
+@PP
+Similar relations can be defined between events.  Let
+@M { A( e sub 1 , e sub 2 ) } hold when the meets of
+@M { e sub 1 } can be assigned to the meets of
+@M { e sub 2 } at non-overlapping offsets.  Define
+@ID @Math { S( e sub 1 , e sub 2 ) =
+A( e sub 1 , e sub 2 ) wedge A( e sub 2 , e sub 1 ) }
+Again, @M { A } is reflexive and transitive, and @M { S } is an
+equivalence relation.
+@PP
+The data structure used for linking events includes a representation
+of relations @M { A } and @M { S }.  The equivalence classes defined
+by @M { S } are represented by nodes of a graph, containing the
+events of the class and connected to other equivalence classes by
+directed edges representing @M { A }.  @M { A } could be an arbitrary
+directed acyclic graph, but in fact it is limited to a tree:  each
+equivalence class is recorded as assignable to at most one other
+equivalence class.  Relational nodes will always be called classes,
+to avoid confusion with layer tree nodes.
+@PP
+The child classes of each equivalence class are organized into layers.  That
+additional structure is not needed for linking, however, so its description
+will be deferred to Section {@NumberOf time_structural.construction.layer}.
+@PP
+Initially, each event lies in its own class, plus there is one class
+with no events, representing the cycle meets.  Every event
+class is a child of the cycle meets class.  Thus, initially
+relation @M { S } is empty, and relation @M { A } records only the
+basic fact that every event is assignable to the cycle meets
+to begin with.  This is quite true, since, at this initial stage, before
+any jobs are accepted, the data structure believes that each event's
+domain is the entire cycle, that each event is free to split into
+meets of duration 1, and that there are no layers.
+@PP
+Basing the data structure on events, rather than on meets, seems to
+be right, but it does cause differences between the meets of one
+event to be overlooked.  For example, the data structure believes
+that all meets derived from the same event have the same time domain.
+@PP
+Jobs that link events together do so by proposing elements of
+@M { A } and @M { S } to the data structure, which accepts them when
+it can.  An @M { S } proposal is a request to merge the equivalence
+classes containing its two events into one (if they are not already
+the same); an @M { A } proposal is a request to replace one parent
+link by another (which must still imply the first by transitivity).
+A proposal could be rejected for various reasons:  it might lead to
+a directed acyclic graph which is not a tree, or cause events from
+the same layer to overlap in time, or lead to unacceptable
+restrictions on how events are to be split (as in the example at
+the start of this chapter), and so on.
+@PP
+Pre-existing assignments are proposed first as elements of @M { S },
+and if that fails as elements of @M { A }.  The second proposal at
+least cannot fail to be accepted, because these jobs have maximum
+priority and do not contradict each other.  A link events constraint
+job first proposes all pairs of linked events of equal duration as
+elements of @M { S }, and then all pairs regardless of duration as
+elements of @M { A }.  In general, an @M { A } proposal could require
+that the whole set of classes lying on a cycle of @M { A } links be
+evaluated for merging, but this particular way of making proposals
+ensures that, in fact, only pairwise merges need to be evaluated.
+@PP
+Each equivalence class has a @I { class leader }, one of its
+own events.  When an equivalence class is created, its leader
+is the sole event it initially contains, and when two classes
+are merged, one of the two leaders is chosen to be the leader of
+the merged class.  For convenience, we pretend that the cycle
+meets are derived from a single @I { cycle event }
+which is the leader of their class.
+@PP
+If class @M { C } contains an event @M { e } which is assigned to
+an event outside @M { C }, then the event @M { e } is assigned to
+lies in the parent class of @M { C }.  There may not be two such
+events in @M { C } unless they are assigned to the same event at
+the same offset.  The leader must be one of these events.  The data
+structure only becomes aware of assignments when the jobs
+representing them are accepted.
+@PP
+If @M { C } does not contain an event which is assigned to another
+event outside the class, then it must contain at least one event
+which is not assigned at all, since otherwise there would be a
+cycle of assignments within the class.  Any such unassigned
+event may be the leader.
+@PP
+These conditions are trivially satisfied when a class is created,
+by making its sole event the leader.  When two classes are merged,
+there are various possibilities, including failure to merge when
+the two leaders are assigned to distinct events outside both classes.
+@PP
+When constructing the final layer tree, all the unassigned events of each
+class except the leader are placed in layer tree nodes which are made
+children of the node containing the leader.  Similarly, the nodes
+containing the leaders of child classes become children of the node
+containing the leader of the parent class.  In reality, of course,
+it is the meets derived from these events by the splitting
+algorithm to be described next that are placed into these nodes.
+@End @SubSection
+
+@SubSection
+    @Title { Splitting }
+    @Tag { time_structural.construction.split }
+@Begin
+@LP
+Given an event @M { e } of duration @M { d }, any mathematical
+partition of @M { d } is a possible outcome of splitting @M { e }.
+For example, if @M { e } has duration 6, the possible outcomes
+are the eleven partitions
+@CD @OneCol lines @Break {
+6
+5 1
+|1c
+4 2
+4 1 1
+|1c
+3 3
+3 2 1
+|1c
+3 1 1 1
+2 2 2
+|1c
+2 2 1 1
+2 1 1 1 1
+|1c
+1 1 1 1 1 1
+}
+One element of a partition is called a @I { part }, and is the
+duration of one meet.
+@PP
+Any condition that limits how an event is split defines a subset of
+this set of partitions.  For example, if a split events constraint
+states that an event of duration 6 should be split into exactly four
+meets, that is equivalent to requiring the partition to be
+either @OneCol { 3 1 1 1 } or @OneCol { 2 2 1 1 }.
+@PP
+Each equivalence class holds a set of events of equal duration
+that are assignable to each other.  These will eventually be
+partitioned into meets in the same way.  In addition to
+the events, the class holds the requirements that the final
+partition must satisfy.  These define a subset of the set of all
+partitions of the duration, but it is not possible to store
+the subset directly, because for large durations it may be very
+large.  One partition @I is stored, however:  the lexically minimum
+one satisfying the requirements.  (A lexically minimum partition
+has minimum largest part, and so on recursively.  For example,
+@OneCol { 1 1 1 1 1 1 } is the lexically minimum partition of 6.)
+It is an invariant that the set of partitions satisfying the
+requirements may not be empty.
+@PP
+In the special case of the equivalence class that represents the
+cycle meets, the requirements are fixed to allow exactly one
+partition:  the one representing the durations of the cycle meets.
+@PP
+The requirements on partitions are of two kinds.  First, there are
+the @I { local requirements }.  These are mainly lower and upper
+bounds on the total number of parts, and on the number of parts of
+each possible duration, modelled on the corresponding fields of the
+split events and distribute split events constraints.  Another kind
+of local requirement arises when a pre-existing split job is
+accepted:  if an event of duration 6 is already split into
+meets of duration 4 and 2, say, when the algorithm begins, then, to
+be acceptable, a partition must be packable into partition 4 2.  One
+partition is @I packable into another if splitting some parts of the
+second partition and discarding others can produce the first.  For
+example, @OneCol { 2 1 1 } is packable into @OneCol { 2 2 2 }, but
+neither of @OneCol { 3 1 1 1 } and @OneCol { 2 2 1 1 } is packable
+into the other.
+@PP
+Second, there are the @I { structural requirements }.  Each parent
+class has an arbitrary number of child classes, whose events will
+eventually be assigned to the parent class's events.  So the lexically
+minimum partition of each child class must be packable into the
+parent class.  In these calculations the constraint always flows
+upwards:  the child's lexically minimum partition is taken as
+given, and the parent's minimum partition is adjusted (if possible)
+to ensure that the child's is packable into it.  When a child
+class's minimum partition changes, the parent's requirements must
+be re-tested.  In this way, a change to a partition propagates
+upwards through the structure until it either dies out or causes
+some class to have no legal partitions.  In the second case, the
+job which originated the changes must be rejected.
+@PP
+Some of the child classes may be organized into layers.  In that
+case, each layer's classes, taken together, must be packable into
+the parent class.  Each layer is represented by a split layer
+object, as explained in detail in the next section.  That object
+contains a minimum partition which must be packable into the parent
+class, just like the minimum partitions of child classes.
+@PP
+Deciding whether any partitions satisfy even the local requirements
+is non-trivial:  is it safe to place two events into one class, when
+one is already split into partition @OneCol { 4 2 } and the other
+is already split into partition @OneCol { 3 2 1 }?  Some simple
+checks are made, then a full generate-and-test enumeration is begun
+and interrupted at the first success.  The enumeration produces the
+lexically minimum acceptable partition first, which is then stored
+and propagated upwards.  Fortunately, packability can be tested very
+quickly in practice, despite being an NP-complete bin packing problem,
+because event durations are usually small.
+@PP
+At the end, after the last job is processed, each event of each
+class is split into meets whose durations form the lexically
+minimum partition of that class.
+#@PP
+#@I { miscellaneous stuff, needing redistribution }
+#@PP
+#When assigning meets layer by layer, some of the
+#meets of the current layer may already be assigned
+#when that layer is reached, perhaps because the meet
+#is preassigned, or because it lies in more than one layer, and
+#one of its layers has already been assigned.  An algorithm which
+#assigns times to the meets of a layer must take into
+#account, and not disturb, any pre-existing assignments.
+#@PP
+#The @C { prefer_longer_durations }
+#parameter of @C { KheSolnSplitLinkAndLayer } influences the choice of
+#partition.  A heuristic attempt is made to coordinate the partitions
+#chosen for the strong equivalence classes of each weak equivalence
+#class, so that they have many parts in common, and also to coordinate
+#the partitions across all strong equivalence classes of equal duration,
+#for regularity.  Choosing a specific partition amounts to reducing the
+#set of acceptable partitions to a singleton set, and the condition of
+#packability of each layer into the cycle layer, described above,
+#continues to be checked and preserved.
+@End @SubSection
+
+@SubSection
+    @Title { Layering }
+    @Tag { time_structural.construction.layer }
+@Begin
+@LP
+The relation between meets and layers (sets of events that share
+a common preassigned resource with a required avoid clashes
+constraint) is a many-to-many relation:  a layer may contain any
+number of meets, and a meet may lie in any
+number of layers.
+# @PP
+# As mentioned above, the data structure is based on events,
+# not meets, and so it keeps track of a many-to-many
+# relation between events and layers.  It has no idea that
+# some of the meets of an event might lie in some
+# layer, and others not.  If at least one meet derived from
+# some event lies in some layer, then the data structure
+# believes that they all do.  In the usual initial state, there is
+# only one meet per event, and no layers except the cycle
+# layer, so this is unlikely to cause problems in practice.
+@PP
+Suppose that meet @M { s sub 1 } lies in layer @M { l }
+and is assigned to meet @M { s sub 2 }.  KHE enforces
+the rule that any assignment of @M { s sub 2 } may not be such
+as to cause @M { s sub 1 } to overlap in time with any other
+meet of @M { l }.  In a sense, @M { s sub 2 } (actually,
+that part of it assigned @M { s sub 1 }) becomes a member of
+@M { l } while @M { s sub 1 } is assigned to it.  We say that
+@M { s sub 1 } lies @I directly in @M { l }, and @M { s sub 2 }
+lies @I indirectly in @M { l }.
+@PP
+An event lies directly in a layer if any of its meets
+lie directly in the layer.  An equivalence class lies directly in
+a layer if any of its events lie directly in the layer, and it lies
+indirectly in the layer if any of its child classes lie in the layer,
+either directly or indirectly.  This is because the events of child
+classes will eventually be assigned to the events of the class.
+@PP
+The layering aspect of @C { KheLayerTreeMake } is based on an object
+called a @I { split layer }, which represents one element of the
+many-to-many relation between equivalence classes and layers.  In other
+words, there is one split layer object for each case of an equivalence
+class lying in a layer, directly or indirectly.  Its attributes are the
+class, the resource defining the layer, the set of all child classes
+of the class that lie in the layer, and a partition, whose value will
+be defined shortly.
+@PP
+When an equivalence class lies directly in a layer (when it contains
+an event that lies directly in the layer), none of its child classes
+can lie in the layer, since that would mean that two events of the
+same layer overlap in time.  So in that case the set of child classes
+must be empty.  To keep it that way, the partition contains as many
+1's as the duration of the class.  This makes it clear that there is
+no room for any child classes in the layer, without constraining the
+division of the class's events into sub-events in any way.
+@PP
+When an equivalence class lies indirectly in a layer, some of its
+child classes lie in the layer.  Their total duration must not
+exceed the duration of the class, and their meets, taken
+together, must be packable into the class, since they are disjoint
+in time.  So in this case the set of child classes may be (in fact,
+must be) non-empty, and the partition holds the multiset union of
+the lexically minimum partitions of the child classes.
+@PP
+The job which adds a layer to the data structure adds its events
+one by one.  In the unlikely event that the duration of the layer
+exceeds the number of times in the cycle, or bin packing problems
+prevent an event being added, the job rejects the event, which
+amounts to ignoring the presence of the preassigned resource in
+that event.
+# @PP
+# In order to handle awkward cases gracefully, the job which adds a
+# layer to the data structure actually adds a set of layers.  Usually
+# the set turns out to contain just one layer, as desired, but it may
+# contain more.  Initially the job's set of layers is empty.  For each
+# event, the job requests that it be added to each layer of its set in
+# turn, until either a request succeeds or the layers have all been tried.
+# In the second case, a new layer is created and added to the set, and the
+# request is made again with that layer; this must succeed.  (This approach
+# is modelled on a well-known bin packing heuristic, although the events
+# are not sorted beforehand.)
+@PP
+Adding an event to a layer means that the event's class and all
+its ancestors must get split layer objects for the layer.  For
+all these classes, moving upwards until either there are no more
+ancestors or a class already has a split layer object for the layer,
+either add a new split layer object holding just the current child
+class, or add the child class to an existing split layer object.
+@PP
+While the upward propagation adds new split layer objects, there is
+no possibility of failure, since a layer containing a single event is
+no more constraining than the event alone (the event is already
+present, only its membership of a layer is changing).  But if an
+existing split layer object is reached, the class must be added to
+it, and so its partition grows, possibly leading to an empty set of
+acceptable partitions in the parent, causing rejection of the request.
+# @PP
+# Second, it ensures that every event's meets have at least
+# one layer in common, and that every unassigned meet lies
+# in at least one layer.  This is done in the obvious way by creating
+# layers and adding meets to them as required.  There is one
+# wrinkle, however.  Function @C { KheLayerAddMeet } refuses
+# to add a meet to a layer when that would cause two solution
+# events from the layer to overlap in time, or cause the total duration
+# of the layer to exceed the number of times in the instance.  To handle
+# these unlikely cases, whenever this chapter says that a layer is
+# created, in reality a set of layers is created.  Each meet
+# is added to the first of these layers that will accept it; if none do,
+# a new layer is begun, which must accept it, given that its duration
+# does not exceed the number of times in the cycle.  Initially this set
+# of layers is empty, and normally it grows to contain just one layer.
+@End @SubSection
+
+@SubSection
+    @Title { Merging }
+    @Tag { time_structural.construction.merging }
+@Begin
+@LP
+As mentioned earlier, when instances contain events which have
+already been split, it is best to merge the nodes containing
+those events.  The advantages include ensuring that how the
+instance is presented does not affect the way it is solved,
+exposing symmetries which could be expensive if left hidden,
+and taking a step towards regularity.
+@PP
+Node merging is carried out after the main part of the layer
+tree construction algorithm is complete and a layer tree is
+present.  For each pair of events that share a spread events
+or avoid split assignments constraint, the first meet of each
+event is found and the chain of fixed assignments is followed
+to the first unfixed meet and from there to the node.  The
+two nodes thus found are candidates for merging.  If they
+both exist, and they are distinct, and the first meet in each
+contains the same preassigned resources (counting resources
+in meets assigned to the meet, directly or indirectly, as
+well as resources in the meet itself), then the nodes are
+merged.
+@PP
+Only nodes which share at least one preassigned resource are
+merged.  This ensures that it is right to assign non-overlapping
+times to the meets of a node, which is what solvers usually do.
+@PP
+Requiring the same preassigned resources turns out to be
+important, because of the way that layers are built from
+nodes, not from meets.  If some of the meets of a node
+contain a resource but others do not, then when the nodes
+containing that resource are formed into a layer later,
+the layer's duration may be longer than the cycle length,
+making it awkward to timetable.
+@End @SubSection
+
+@EndSubSections
+@End @Section
+
+@Section
+    @Title { Time-equivalence }
+    @Tag { time_structural.time_equiv }
+@Begin
+@LP
+Two sets of meets are @I { time-equivalent } if it can be shown, by
+following fixed meet assignments, that each set of meets must occupy
+the same set of times as the other while fixed assignments remain in
+place.  This may be true even when none of the meets is assigned a time.
+@PP
+Two events are time-equivalent if their sets of meets are time-equivalent.
+Usually, this is because they are joined by a link events constraint
+which is being handled structurally, for example by @C { KheLayerTreeMake }
+(Section {@NumberOf time_structural.construction}).
+@PP
+Two resources are time-equivalent if they have the same resource
+type (call it @C { rt }),
+{0.95 1.0} @Scale @C { KheResourceTypeDemandIsAllPreassigned(rt) }
+(Section {@NumberOf resource_types}) is @C { true }, and the sets
+of meets containing their preassigned tasks are time-equivalent.
+Time-equivalent resources are busy at the same times.  They are
+usually students who choose the same courses.
+@PP
+It is clear that time-equivalence between sets of meets is an
+equivalence relation, as is time-equivalence between events and
+between resources.  So the events and resources of an instance
+can be partitioned into time-equivalence classes.  These classes
+are calculated by a @I { time-equivalence solver }, which can
+be created and deleted by calling
+@ID @C {
+KHE_TIME_EQUIV KheTimeEquivMake(void);
+void KheTimeEquivDelete(KHE_TIME_EQUIV te);
+}
+To perform the calculation for a particular @C { soln }, call
+@ID @C {
+void KheTimeEquivSolve(KHE_TIME_EQUIV te, KHE_SOLN soln);
+}
+However, the usual way to obtain a time-equivalence object is
+by calling
+@ID @C {
+KHE_TIME_EQUIV KheTimeEquivOption(KHE_OPTIONS options,
+  char *key, KHE_SOLN soln);
+}
+with key @C { "ss_time_equiv" }.  This returns a solved time
+equivalence object stored in @C { options } under @C { key };
+if it is not present, it creates one, solves it, and adds it
+to @C { options } before returning it.
+@PP
+The equivalence classes of events are event groups which can be
+visited by
+@ID @C {
+int KheTimeEquivEventGroupCount(KHE_TIME_EQUIV te);
+KHE_EVENT_GROUP KheTimeEquivEventGroup(KHE_TIME_EQUIV te, int i);
+}
+in the usual way.  The equivalence class for a given event is returned
+efficiently by
+@ID @C {
+KHE_EVENT_GROUP KheTimeEquivEventEventGroup(KHE_TIME_EQUIV te,
+  KHE_EVENT e);
+}
+If @C { e } is not time-equivalent to any other event, a singleton
+event group containing @C { e } is returned.  There is also
+@ID @C {
+int KheTimeEquivEventEventGroupIndex(KHE_TIME_EQUIV te, KHE_EVENT e);
+}
+which returns the value @C { i } such that
+@C { KheTimeEquivEventGroup(te, i) } contains @C { e }.
+@PP
+Similarly, the equivalence classes of resources are resource
+groups which can be visited by
+@ID @C {
+int KheTimeEquivResourceGroupCount(KHE_TIME_EQUIV te);
+KHE_RESOURCE_GROUP KheTimeEquivResourceGroup(KHE_TIME_EQUIV te, int i);
+}
+in the usual way.  The equivalence class for a given resource is
+returned efficiently by
+@ID @C {
+KHE_RESOURCE_GROUP KheTimeEquivResourceResourceGroup(KHE_TIME_EQUIV te,
+  KHE_RESOURCE r);
+}
+If @C { r } is not time-equivalent to any other resource, including
+the case when its resource type is not all preassigned, a singleton
+group containing @C { r } is returned.  Again,
+@ID @C {
+int KheTimeEquivResourceResourceGroupIndex(KHE_TIME_EQUIV te,
+  KHE_RESOURCE r);
+}
+returns the value @C { i } such that
+@C { KheTimeEquivResourceGroup(te, i) } contains @C { r }.
+@PP
+All of these results reflect the state of the solution at the time
+of the most recent call to @C { KheTimeEquivSolve(te) }; they are
+not updated as the solution changes.
+@End @Section
+
+@Section
+    @Title { Layers }
+    @Tag { time_structural.layers }
+@Begin
+@LP
+Layers were introduced in Section {@NumberOf extras.layers}, but
+no easy way to build a set of layers was provided.  This section
+remedies that deficiency and adds some useful aids to solving
+with layers.
+@BeginSubSections
+
+@SubSection
+    @Title { Layer construction }
+    @Tag { time_structural.layerings }
+@Begin
+@LP
+The usual rationale for the existence of a layer is that its
+nodes' meets must not overlap in time because they
+contain preassignments of a common resource.  Function
+@ID @C {
+KHE_LAYER KheLayerMakeFromResource(KHE_NODE parent_node,
+  KHE_RESOURCE r);
+}
+builds a layer of this kind.  It calls @C { KheLayerMake } to
+make a new child layer of @C { parent_node }, and
+@C { KheLayerAddResource } to add @C { r } to this layer.  Then,
+each child node of @C { parent_node } which contains a meet
+preassigned @C { r } (either directly within the node, indirectly
+within descendant nodes, or in meets assigned, directly or
+indirectly, to those meets) is added to the layer.
+@PP
+The @I { layering } of node @C { parent_node } is a particular set
+of layers which is useful when assigning times to the child nodes
+of @C { parent_node }, created by calling function
+@ID @C {
+void KheNodeChildLayersMake(KHE_NODE parent_node);
+}
+This will delete any existing child layers of @C { parent_node }
+and add the layers of the layering.
+@PP
+The layering is built as follows.  First, for each resource of
+the instance that possesses a required avoid clashes constraint,
+one layer is built by calling @C { KheLayerMakeFromResource }
+above.  If it turns out to be empty, it is immediately deleted
+again.  Each pair of these layers such that one's node set is
+a subset of the other's is merged with @C { KheLayerMerge }.
+Finally, each child of @C { parent_node } not in any layer goes
+into a layer (with no resources) by itself.
+@PP
+The layers emerge from @C { KheNodeChildLayersMake } in whatever order
+they happen to be.  The user will probably need to sort them, by calling
+@C { KheNodeChildLayersSort } (Section {@NumberOf extras.layers}),
+passing it a user-defined comparison function.
+Section {@NumberOf time_solvers.layer.layered} has an example of a
+comparison function that seems to work well in practice.
+@PP
+After sorting, there may be value in calling
+@ID @C {
+void KheNodeChildLayersReduce(KHE_NODE parent_node);
+}
+This merges some layers of marginal utility into others, as follows.
+Suppose there is a layer @M { L } whose nodes all appear in earlier
+layers.  Then if the meets of the nodes are assigned layer by layer,
+@M { L }'s nodes will all be assigned before time assignment reaches
+@M { L }.  Arguably, @M { L } could be deleted without harm.  However,
+it does contain one piece of useful information:  it knows that the
+meets to which its resources are preassigned will all be assigned
+times after @M { L } is assigned.  If this information is to be
+preserved, @M { L }'s resources need to be moved forwards to the
+first earlier layer that is true of.  For each node @M { N } of
+@M { L }, find the minimum over all layers containing @M { N } of
+the index of the layer.  This is the index of the layer during whose
+time assignment @M { N } will be assigned.  Then find the maximum,
+over all nodes @M { N } of @M { L }, of these minima.  This is index
+of the layer whose assignment will complete the assignment of all the
+nodes of @M { L }.  If this is smaller than @M { L }'s index,
+@C { KheNodeChildLayersReduce } deletes @M { L } and moves its resources
+to this earlier layer.
+# @PP
+# As an aid to debugging, KHE offers function
+# @ID @C {
+# void KheNodeChildLayersDebug(KHE_NODE parent_node, int verbosity,
+#   int indent, FILE *fp);
+# }
+# It sends a debug print of the layers to @C { fp } in the usual way.
+@PP
+Two important facts about layers and layerings must be borne in
+mind.  First, they reflect the state of the layer tree at a
+particular moment.  If, after they are built, the tree is
+restructured (if nodes are moved, etc.) they become out of date
+and useless.  Second, building a layering is slow and should not
+be done within the inner loops of a solver.
+@PP
+Altogether, it seems best to regard layers as temporary structures,
+created when required by @C { KheChildLayersMake } and destroyed
+by @C { KheChildLayersDelete }.  In between these two calls, nodes
+may be merged and split, but it is best not to move them.  A useful
+convention, supported by several of KHE's solvers that use layers,
+is to assume that if child layers are present, then they are up to
+date.  Such solvers begin by calling @C { KheChildLayersMake } if
+there are no layers, and end by calling @C { KheChildLayersDelete },
+but only if they called @C { KheChildLayersMake }.
+@End @SubSection
+
+@SubSection
+    @Title { Layer coordination }
+    @Tag { time_structural.layer.coordination }
+@Begin
+@LP
+# This section presents a solver for coordinating similar layers.  The
+# solver itself is quite simple, but its purpose needs some explanation.
+# @PP
+High schools usually contain @I { forms } or @I { years }, which are
+sets of students of the same age who follow the same curriculum, at
+least approximately.  These students may be grouped into classes,
+each represented by one student group resource.  At some times, the
+student group resources of one form might attend the same events,
+or linked events.  For example, they might all attend a common
+Sport event, or they might all attend Mathematics at the same
+times so that they can be regrouped by ability at Mathematics.
+At other times, they might attend quite different events, but over
+the course of the cycle they all attend the same amount of each
+different kind of event:  so many times of English, so many of
+Science, so many of a shared elective, and so on.
+@PP
+As an aid to producing a regular timetable, it might be helpful to
+@I coordinate the timetables of student groups from the same form:
+run all the form's English classes simultaneously, all its
+Mathematics classes simultaneously, and so on.  Where resources
+are insufficient to support this, changes can be made later.  In
+this way, a regular timetable is produced to begin with, and
+irregularities are introduced only where necessary.
+@PP
+The XML format does not explicitly identify forms, or even say
+which resource type contains the student group resources.  This is
+in fact an advantage, because it forces us to look for structure
+that aids regularity.  We then coordinate the timetabling of
+resources that possess the useful structure, without knowing or
+caring whether they are in fact student group resources.
+@PP
+Coordination will only work when the chosen resources attend
+similar events.  This was the rule when inferring resource
+partitions (Section {@NumberOf resources_infer}), so we take the
+resource partition as the structural equivalent of the form.  The
+events should occupy all or most of the times of the cycle,
+otherwise coordination eliminates too many options for spreading
+them in time.  `Forms' of teachers and rooms are rarely useful,
+just because they do not satisfy these conditions.
+@PP
+After @C { KheLayerTreeMake } returns, it is the nodes lying
+directly below the root node that need to be coordinated, not
+events or meets.  Two child nodes may be coordinated
+by moving one of them so that it is a child node of the other.
+KHE offers solver function
+@ID { 0.98 1.0 } @Scale @C {
+void KheCoordinateLayers(KHE_NODE parent_node, bool with_domination);
+}
+which carries out such moves on some of the children of
+@C { parent_node }, as follows.
+@PP
+@C { KheCoordinateLayers } is only interested in resources whose
+layers have duration at least 90% of the duration of
+@C { parent_node }.  For each pair of such resources lying
+in the same resource partition, it checks whether their two
+layers are similar by building the layers with
+@C { KheLayerMakeFromResource } and calling @C { KheLayerSimilar }
+(Section {@NumberOf time_structural.layers}).  If so, it uses
+@C { KheNodeMove } (Section {@NumberOf time_structural.nodes.move})
+to make each node of the second layer a child of the corresponding
+node of the first, unless the two nodes are the same, forcing these
+nodes to be simultaneous.  It does not assign meets, or remove
+them from nodes.  Finally, it removes the two layers it made.
+# @ID @C {
+# void KheCoordinateSegments(KHE_NODE node, bool with_domination);
+# }
+# which coordinates the timetables of the segments of @C { node }.  It
+# examines those segments of @C { node } whose layer has a resource that
+# lies in a resource partition, and whose duration is at least 90% of
+# the duration of @C { node }.  For each pair of such segments whose
+# resources lie in the same partition, it checks whether the two
+# segments are similar, by calling @C { KheSegmentSimilar } from
+# Section {@NumberOf layer_trees.nodes.segments}.  If so, it coordinates
+# their timetables by using @C { KheNodeMove } from
+# Section {@NumberOf layer_trees.nodes.move} to make each child node
+# of the second segment into a child of the corresponding child node
+# of the first segment, except when the two nodes are the same node,
+# obviously.  This forces these nodes to be simultaneous.  It does
+# not assign any meets, or remove them from their nodes.
+@PP
+If @C { with_domination } is @C { false }, the behaviour is as
+described.  If @C { with_domination } is @C { true }, a slight
+generalization is used.  Suppose that one of the two
+layers has duration equal to the duration of @C { parent_node },
+and all but one of its nodes is similar to some node in the other
+layer.  Then the dissimilar nodes of the other
+layer (possibly none) might as well be made children of the one
+dissimilar node of that layer, since if the other nodes
+are coordinated they must run simultaneously with it anyway.  (The
+durations of their meets may be incompatible; that is
+not checked at present, although it should be.)  So that is done.
+@PP
+In unusual cases the duration of a layer can be larger after
+coordinating than before.  At the end, if any layers have duration
+larger than the parent node's duration, @C { KheCoordinateLayers }
+tries to reduce the duration of those layers to the parent node's
+duration, by finding cases where one node of a layer can be safely
+moved to below another.
+# @PP
+# @C { KheCoordinateSegments } does not change the set of segments of
+# @C { node }, but their order may change, and their child nodes change.
+@End @SubSection
+
+@EndSubSections
+@End @Section
+
+@Section
+    @Title { Runarounds }
+    @Tag { time_structural.runarounds }
+@Begin
+@LP
+Layer coordination can lead to problems assigning resources.
+For example, suppose that the five student groups of the Year 7
+form each attend one Music event, and that the school has two Music
+teachers and two Music rooms.  Each event is easily accommodated
+individually, but when the Year 7 layers are coordinated, they
+run simultaneously and exceed resource limits.
+@PP
+These problems do not arise in large faculties with sufficient
+resources to accommodate an entire form at once.  Thus they do not
+invalidate the basic idea of node layer coordination.  What is needed
+is a local fix for these problems.  This is what @I { runarounds }
+provide:  a way to spread the events concerned through the times
+they need, without abandoning coordination altogether.
+@BeginSubSections
+
+@SubSection
+    @Title { Minimum runaround duration }
+    @Tag { time_structural.runarounds.minduration }
+@Begin
+@LP
+Consider the case above where there are not enough Music resources
+to run the Year 7 Music events simultaneously.  If these events lie
+in nodes that are children of a common parent (one may lie in the
+parent itself), it is easy to detect this problem:  carry out a
+time assignment at the parent, and see whether the cost of the
+solution increases.  This is assuming that the matching monitors,
+which detect unsatisfiable resource demands, are attached.
+@PP
+More generally, we can ask how large the duration of the parent node
+has to be in order to ensure that there is no cost increase.  This
+quantity is called the @I { minimum runaround duration } of the node.
+It will be equal to the duration when there is no problem, and larger
+when there is a problem.  It can be calculated as follows.  While a
+time assignment of the child nodes produces a state of higher cost
+than the unassigned state, add new meets to the parent
+node.  The duration of the parent node when this process ends is
+its minimum runaround duration.  Function
+@ID @C {
+bool KheMinimumRunaroundDuration(KHE_NODE parent_node,
+   KHE_TIME_SOLVER time_solver, KHE_TIME_OPTIONS options,
+   int *duration);
+}
+sets @C { *duration } to the minimum runaround duration of
+@C { parent_node } and returns @C { true }, except in an unlikely
+case, documented below, when it returns @C { false } with
+@C { *duration } undefined.
+@PP
+@C { KheMinimumRunaroundDuration } first unassigns all the child
+meets and saves the unassigned cost.  It then carries out the
+time assignment trials just described.  For each trial
+after the first it adds one fresh meet to @C { parent_node } for
+each of its original meets, utilizing their durations and time
+domains, but with no event resources.  So the result's duration
+must be a multiple of the duration of @C { parent_node }.  Before
+returning, it unassigns all the children and removes the meets it
+added, leaving the tree in its initial state, unless some child
+meets were assigned to begin with.
+@PP
+Parameter @C { time_solver } is a time assignment solver which
+is called to carry out each trial.  A simple solver, such as
+@C { KheSimpleAssignTimes } from Section {@NumberOf time_solvers.basic},
+should be sufficient here.
+@PP
+Increasing the duration at each trial by the full duration of the
+node may seem excessive, and there are cases where fewer additional
+meets would be enough.  However, those cases require the child nodes'
+assignments to overlap in ways that do not work out well in practice,
+because they may lead to split assignments in the tasks affected.
+@PP
+How many trials are needed?  In reasonable instances, each child node's
+duration should be no greater than the parent node's duration.  Thus,
+after as many trials as there are child nodes plus one, there should
+be enough room in the parent node to assign every child meet at an offset
+which does not overlap with any other, or with the original parent meets.
+This is the number of trials that @C { KheMinimumRunaroundDuration }
+carries out.  It stops early if one succeeds with cost no greater than
+the unassigned cost.  It returns @C { false } only when each trial
+either did not assign all the child meets (that is, the call on
+@C { time_solver } returned @C { false }) or did assign them all,
+but at a higher cost than the unassigned cost.
+@End @SubSection
+
+@SubSection
+    @Title { Building runarounds }
+    @Tag { time_structural.runarounds.construct }
+@Begin
+@LP
+Nodes may be classified into three types.  A @I { fixed node } has
+no child nodes.  There is no possibility of spreading the events
+of a fixed node and its descendants through more times than the
+node's duration.  A @I { problem node } has minimum runaround
+duration larger than its duration, like the node of Music events
+used as an example above.  It must have child nodes, and
+timetabling them simultaneously is known to be inferior to spreading
+them out further.  The remaining nodes are @I { free nodes }:  they
+have child nodes which may run simultaneously, or not, as convenient.
+@PP
+Using @C { KheNodeMerge } to merge problem nodes with other problem
+nodes and free nodes can eliminate problem nodes without greatly
+disrupting regularity.  For example, merging a Music problem node
+of duration 2 and minimum runaround duration 6 with a free node of
+duration 4 produces a merged node of duration 6 which can usually
+be timetabled without problems.
+@PP
+If a merged node can be timetabled without the cost of the solution
+increasing, it may be kept, and is then called a @I { runaround node }.
+(The term @I runaround is used by manual timetablers known to the
+author to describe this kind of timetable, where events like the
+Music events are `run around' with other events.)  Otherwise it must
+be split up again and some other merging tried instead.  It only
+remains, then, to decide which sets of nodes to try to merge.
+@PP
+Regularity is easier to attain when nodes have the same duration,
+so if there are already many nodes of a certain duration, it is
+helpful if a merged node also has that duration.  Nevertheless, a
+node should not be added to a merge merely to make up some duration:
+merging limits the choices open to later phases of the solve, so
+it should be done only when necessary.
+@PP
+A minimum runaround duration could be very large, close to the
+duration of the whole cycle.  For example, suppose there is a
+single teacher, the school chaplain, who gives each of the five
+Year 7 student groups 6 times of religious instruction per week.
+Those events have a minimum runaround duration of 30.  When the
+minimum runaround duration of a node is larger than a certain value,
+the algorithm given below ignores the node:  its events will be
+awkward to timetable, but runarounds as defined here are not the
+answer.
+@PP
+To build runaround nodes from the child nodes of
+@C { parent_node }, call
+@ID @C {
+void KheBuildRunarounds(KHE_NODE parent_node,
+  KHE_NODE_TIME_SOLVER mrd_solver, KHE_TIME_OPTIONS mrd_options,
+  KHE_NODE_TIME_SOLVER runaround_solver,
+  KHE_TIME_OPTIONS runaround_options);
+}
+where @C { mrd_solver } and @C { mrd_options } are passed to
+@C { KheMinimumRunaroundDuration } when minimum runaround durations
+need to be calculated, and @C { runaround_solver } and
+@C { runaround_options } are used to timetable merged nodes.
+@C { KheSimpleAssignTimes } is sufficient for @C { mrd_solver }, and
+@C { KheRunaroundNodeAssignTimes } works well as @C { runaround_solver }.
+All nodes are unassigned afterwards.
+@PP
+It would not do to merge (for example) a node that includes both Year
+7 and Year 8 events with a node that includes only Year 7 ones.  So
+@C { KheBuildRunarounds } first works out which resources are preassigned
+to events in or below which nodes (taking account only of preassigned
+resources which have required avoid clashes constraints, and whose
+events occupy at least 90% of the duration of @C { parent_node }), and
+partitions the child nodes of @C { parent_node } into disjoint subsets,
+such the nodes in each subset have the same preassigned resources.
+@PP
+For each disjoint subset independently, @C { KheBuildRunarounds }
+tries to build a merged node around each of the subset's problem
+nodes in turn, largest minimum runaround duration first.  When doing
+this, it prefers to build a node of a particular duration @M { u },
+and it prefers to use other problem nodes (again, largest minimum
+runaround duration first), but it will also use free nodes
+(minimum duration first).  It is heuristic, but it usually works
+well.  It is not limited to sequences of pairwise mergings, as
+clustering algorithms often are.  Here is the algorithm in detail:
+@NumberedList
+
+@LI {
+The input is a set of nodes @M { N } (one disjoint subset as above),
+plus @M { u }, a desirable duration for a merged node, and @M { v },
+a maximum duration for a merged node.  The output is @M { M }, the
+final set of nodes.  Write @M { d(n) } for the duration of node
+@M { n }, @M { r(n) } for its minimum runaround duration, and
+@M { d(X) } for the total duration of the set of nodes @M { X }.
+}
+
+@LI {
+Initialize @M { M } to empty.  Sort @M { N } to put free nodes first,
+in decreasing duration order, problem nodes next, in increasing minimum
+runaround duration order, and fixed nodes last.
+}
+
+@LI @Tag { looptop } {
+If @M { N } is empty, stop.  Otherwise delete the last element of
+@M { N } and call it @M { n }.
+}
+
+@LI {
+If @M { n } is fixed, problem with @M { r(n) >= v }, or free,
+move it to @M { M } and return to Step {@NumberOf looptop}.
+}
+
+@LI {
+Here @M { n } must be a problem node satisfying @M { r(n) < v }.
+Within each of the following cases, some non-empty subsets @M { X }
+of @M { N } are defined.  In each case, @M { r(n) <= d(n) + d(X) }, so
+a merged node consisting of @M { n } merged with @M { X } is likely
+to work well.  For each case in turn, and for each set @M { X }
+defined within each case in turn, remove @M { X } from @M { N }, merge
+@M { n } and @M { X }, and timetable the resulting merged node.
+If that is successful (all events timetabled with no increase in
+solution cost), add the merged node to @M { M } and return to
+Step {@NumberOf looptop}.  If it fails, split the merged node up again,
+return the nodes of @M { X } to their former places in @M { N }, and
+try the next set @M { X }; or if there are no more sets, add @M { n }
+to @M { M } and return to Step {@NumberOf looptop}.
+@LeftList
+
+@LI { Case 1.
+For each @M { x in N } from last to first such that
+@M { r(n) <= d(n) + d(x) = u <= v }, let @M { X = lbrace x rbrace }.
+}
+
+@LI { Case 2.
+For each @M { i } from @M { 1 } to @M { "|" N "|" } such that
+@M { X sub i }, the last @M { i } elements of @M { N }, satisfies
+the condition @Math { r(n) <= d(n) + d( X sub i ) <= v },
+let @M { X = X sub i }.
+}
+
+@RawEndList
+}
+
+@EndList
+@C { KheBuildRunarounds } calls @C { KheMinimumRunaroundDuration } to
+find minimum runaround durations, passing @C { mrd_solver } to it.  It
+calls @C { KheNodeMerge } to merge nodes, @C { runaround_solver }
+to timetable merged nodes, and @C { KheNodeSplit } to undo failed
+merges.  It uses one-fifth of the duration of @C { parent_node } for
+@M { v }.  For @M { u }, it builds a frequency table of the durations
+of child nodes of @C { parent_node }.  It then chooses the duration
+for which the frequency times the duration is maximum.  This weights
+the choice away from small durations, which are not very useful.
+@End @SubSection
+
+@EndSubSections
+@End @Section
+
+#@Section
+#    @Title { Structural handling of cluster busy times constraints }
+#    @Tag { time_structural.cluster }
+#@Begin
+#@LP
+#Cluster busy times defects are hard to repair, which is a good reason
+#for calling the function presented in this section, which prevents
+#them structurally.  It has several limitations:  it works only with
+#events to which the resources requiring clustering are preassigned;
+#it only takes account of the @C { Maximum } limits of cluster busy
+#times constraints, not their @C { Minimum } limits; and it is just
+#the tip of the iceberg which is the initial construction of a time
+#assignment for a layer, taking all the resource constraints of its
+#resources into account; but even so it can be very useful.
+#@PP
+#For example, suppose teacher Jones is limited by a cluster busy
+#times constraint to attend for at most three of the five days of
+#the week.  Before time assignment begins, choose any three days
+#and restrict the time domains of the meets that Jones is preassigned
+#to to those three days.  Then those meets cannot cause a cluster
+#busy times defect for Jones.  Function
+#@ID @C {
+#KHE_MEET_BOUND_GROUP KheSolnClusterMeetDomains(KHE_SOLN soln);
+#}
+#applies this idea throughout @C { soln }.  If any of the time
+#domains it wants to change are fixed, it unfixes them before
+#the change and fixes them again afterwards.
+#@PP
+#@C { KheSolnClusterMeetDomains } changes @C { soln } only by creating
+#meet bounds, which cause the domains of the meets they are applied to
+#to be restricted (Section {@NumberOf solutions.meets.domains}).  These
+#bounds are added to a meet bound group that @C { KheSolnClusterMeetDomains }
+#creates and returns.  Thus, they can all be deleted later by a single
+#call to @C { KheMeetBoundGroupDelete }.  This works even if some of
+#the meets have been split, merged, or deleted in the meantime, because
+#the meet bound group is kept up to date as these changes are made.
+#@PP
+#The remainder of this section describes the implementation in detail.
+#@PP
+#Build a bipartite graph with one left-hand node for each
+#cluster busy times monitor, and one right-hand node for each
+#unassigned non-cycle meet.  Join a monitor to a meet when
+#the monitored resource is preassigned to the meet or to any
+#meet assigned to that meet, directly or indirectly.  Find the
+#connected components of this graph and handle each component
+#separately, as follows.  The aim at each component is to reduce
+#the domains of its meets to values which decrease (often to zero)
+#the chance of cluster busy times monitors becoming defects.
+#@PP
+#Reduce the domain of each meet by subtracting the unavailable
+#times of all resources preassigned to the meet, directly or
+#indirectly.  If this causes the number of demand defects in
+#the global tixel matching to increase, undo the reductions
+#and abandon this component.
+#@PP
+#Find the set of all distinct time groups in the monitors
+#of the component, and build another bipartite graph whose
+#left-hand nodes are these time groups, and whose right-hand
+#nodes are the monitors, with edges from time groups to the
+#monitors they appear within.
+#@PP
+#Each time group has an associated boolean flag.  When it is
+#@C { true }, the time group is @I { available }; when
+#@C { false }, it is @I { unavailable }.  Initially, all
+#time groups are available.  A cluster busy times monitor is
+#@I { finished } when the number of available time groups it
+#is linked to does not exceed the monitor's @C { Maximum }
+#attribute; otherwise the monitor is @I { unfinished }.
+#@PP
+#Repeat the following step until all monitors are finished.
+#Sort the available time groups so that those with more edges
+#leading to unfinished monitors come before those with fewer.
+#For each available time group in this order, try to change
+#its flag from @I { available } to @I { unavailable }.  The
+#first time this succeeds (see below for this), end this step
+#and start the next.  If it does not succeed on any time group,
+#make this the last step.
+#@PP
+#Marking a time group unavailable has the following consequences.
+#For each meet reachable from the time group by a path to a monitor
+#and then to the meet, reduce that meet's domain by subtracting
+#the time group from its current value (using the set difference
+#operation).  If this causes the number of unmatched demand tixels
+#in the global tixel matching to increase (for example, if the
+#domain becomes empty), the marking operation fails, otherwise
+#it succeeds.
+#@PP
+#When sorting available time groups, ties are broken in a way
+#that varies systematically from component to component.  This
+#ensures that, where possible, the same time group is not marked
+#unavailable again and again in different components.
+#@PP
+#This function may construct many time groups, but there is no need
+#for concern about the cost of that, because time groups created
+#while solving are built using efficient bit vector operations and
+#uniqueified using a hash table (Section {@NumberOf solutions.groups}).
+#@End @Section
+
+@Section
+    @Title { Rearranging nodes }
+    @Tag { time_structural.nodes }
+@Begin
+@LP
+Earlier sections of this chapter contain the major solvers which work
+with nodes.  This section contains a miscellany of smaller helper
+funtions which rearrange nodes.
+@BeginSubSections
+
+@SubSection
+    @Title { Node merging }
+    @Tag { time_structural.nodes.split }
+@Begin
+@LP
+Two nodes may be merged by calling
+@ID @C {
+bool KheNodeMergeCheck(KHE_NODE node1, KHE_NODE node2);
+bool KheNodeMerge(KHE_NODE node1, KHE_NODE node2, KHE_NODE *res);
+}
+The nodes may be merged if they have the same parent node,
+possibly @C { NULL }.
+@PP
+The meets of the result, @C { *res }, are the meets of @C { node1 }
+followed by the meets of @C { node2 }, and the child nodes of
+@C { *res } are the child nodes of @C { node1 } followed by the
+child nodes of @C { node2 }.  The two nodes must either lie in
+the same layers and have the same parent, or have no parent,
+otherwise @C { KheNodeMerge } aborts.  This implies that node merging
+cannot violate the cycle rule, or any rule.  As usual with merging,
+@C { node1 } and @C { node2 } are undefined afterwards (actually,
+@C { node1 } is recycled as @C { *res } and @C { node2 } is freed),
+but one may write, for example,
+@ID @C { KheNodeMerge(node1, node2, &node1); }
+to re-use variable @C { node1 } to hold the result.
+@PP
+Merging permits the meets of the child nodes of the two nodes to be
+assigned to the meets of either node, rather than to just one as before.
+For example, suppose the layer tree rooted at @C { node1 } contains
+the Science events of several groups of Year 7 students, and the layer
+tree rooted at @C { node2 } contains the Music events of the same
+groups of students.  Then originally the Science events must be
+simultaneous and the Music events must be simultaneous, but afterwards
+the two kinds of events may intermingle.  This may be useful if there
+are few Music teachers and Music rooms, so that the Music events must
+be spread out in time.  This kind of arrangement is well known to
+manual timetablers; it has various names, including @I { runaround }.
+@PP
+There is no operation to split a node into two nodes.  However,
+@C { KheNodeMerge } may be undone using marks and paths as usual.
+#@PP
+#A node may be split into two nodes by calling
+#@ID { 0.98 1.0 } @Scale @C {
+#bool KheNodeSplitCheck(KHE_NODE node, int meet_count1, int child_count1);
+#bool KheNodeSplit(KHE_NODE node, int meet_count1, int child_count1,
+#  KHE_NODE *res1, KHE_NODE *res2);
+#}
+#The first of the two result nodes, @C { *res1 }, holds the first
+#@C { meet_count1 } meets of @C { node }, and the first
+#@C { child_count1 } children of @C { node }, while the second result
+#node, @C { *meet2 }, holds the rest.  Both result nodes have the
+#same parent node as @C { node }.  The operations return @C { false }
+#if the split would violate the node rule (because some of the meets
+#of the child nodes of @C { *res1 } would be assigned to meets of
+#@C { *res2 }, or vice versa).  As usual, @C { node } is undefined
+#after a successful split (actually it is recycled as @C { *res1 }),
+#and @C { *res1 } and @C { *res2 } are not changed by an unsuccessful
+#one, so that, for example,
+#@ID @C {
+#KheNodeSplit(node, meet_count1, child_count1, &node, &other_node);
+#}
+#does the right thing whether the split succeeds or not.
+#@PP
+#Typically, a split is used to undo a merge that did not work out, like this:
+#@ID @C {
+#meet_count1 = KheNodeMeetCount(node1);
+#child_count1 = KheNodeChildCount(node1);
+#KheNodeMerge(node1, node2, &merged_node);
+#... decide that the merge is not a good idea after all ...
+#KheNodeSplit(merged_node, meet_count1, child_count1, &node1, &node2);
+#}
+#The meets and children of nodes are re-ordered only when
+#some are added or deleted, so, assuming this has not happened, this
+#split returns @C { node1 } and @C { node2 } to their original state.
+#With a little careful record-keeping, one can merge a whole set of
+#nodes, and recover them later by splitting in reverse order.
+@End @SubSection
+
+@SubSection
+    @Title { Node meet splitting and merging }
+    @Tag { time_structural.nodes.meet_split }
+@Begin
+@LP
+Node meet splitting and merging (not to be confused with node merging
+above) split the meets of a node as much as possible, and merge them
+together as much as possible:
+@ID @C {
+void KheNodeMeetSplit(KHE_NODE node, bool recursive);
+void KheNodeMeetMerge(KHE_NODE node, bool recursive);
+}
+Both operations always succeed, although they may do nothing.
+@PP
+For every offset of every meet of @C { node }, @C { KheNodeMeetSplit }
+calls @C { KheMeetSplit }, passing it the @C { recursive } parameter.
+In this way, the meets become as split up as possible.
+@PP
+@C { KheNodeMeetMerge } sorts the meets so that meets assigned to the
+same target meets are adjacent, with their target offsets in increasing
+order, using @C { KheMeetIncreasingAsstCmp } from
+Section {@NumberOf extras.nodes}.  Unassigned meets go at the end.
+It then tries to merge each pair of adjacent meets.  Any calls to
+@C { KheMeetMerge } it makes are passed the @C { recursive } parameter.
+@End @SubSection
+
+@SubSection
+    @Title { Node moving }
+    @Tag { time_structural.nodes.move }
+@Begin
+@LP
+A node may be made the child of @C { parent_node }, instead of its
+current parent, by calling
+@ID @C {
+bool KheNodeMoveCheck(KHE_NODE child_node, KHE_NODE parent_node);
+bool KheNodeMove(KHE_NODE child_node, KHE_NODE parent_node);
+}
+This does the same as the sequence
+@ID @C {
+KheNodeDeleteParent(child_node);
+KheNodeAddParent(child_node, parent_node);
+}
+except that this sequence will fail if any of @C { child_node }'s
+meets are assigned initially, whereas @C { KheNodeMove } deals
+with such assignments and can fail only the cycle rule.
+@PP
+In most cases, @C { KheNodeMove } begins by deassigning those
+meets of @C { child_node } that are assigned.  However, there is one
+interesting exception.  Suppose that @C { child_node }'s new parent node
+is an ancestor of @C { child_node }'s current parent node:
+@CD @Diag {
+@Tbl
+    aformat { @Cell A | @Cell @M { arrowright } | @Cell B }
+    mb { 0i }
+{
+@Rowa
+    A { @Tree {
+	  @Circle blabel { @C { parent_node } } {}
+	  @LeftSub {
+	    @Circle {}
+	    @LeftSub {
+	      @Circle {}
+	      @LeftSub @Circle blabel { @C { child_node } } {}
+	    }
+	  }
+      } }
+    B { @Tree {
+	  @Circle alabel { @C { parent_node } } {}
+	  @LeftSub {
+	    @Circle {}
+	    @LeftSub @Circle {}
+	  }
+	  @RightSub @Circle alabel { @C { child_node } } {}
+      } }
+}
+}
+In each case where a complete chain of assignments reaches from a
+meet @C { meet } of @C { child_node } to a meet
+of @C { parent_node }, @C { meet } will be assigned afterwards, to
+the meet at the end of the chain, with offset equal to
+the sum of the offsets along the chain.  This is valid (it
+does not change the timetable).  Where there is no complete
+chain, @C { meet } will be unassigned afterwards.
+@PP
+For example, suppose node @C { p } has accumulated children to
+make the timetable regular, but now the children's original
+freedom to be assigned elsewhere needs to be restored:
+@ID @C {
+while( KheNodeChildCount(p) > 0 )
+  KheNodeMove(KheNodeChild(p, 0), KheNodeParent(p));
+}
+@C { KheNodeMove } preserves the current timetable during these relinkings.
+@End @SubSection
+
+@SubSection
+    @Title { Vizier nodes }
+    @Tag { time_structural.nodes.vizier }
+@Begin
+@LP
+A @I vizier (Arabic @I { wazir }) is a senior official, the
+one who actually runs the country while the nominal ruler gets
+the adulation.  In a similar way, a @I { vizier node } sits below
+another node and does what that other node nominally does:  act
+as the common parent of the subordinate nodes, and hold the meets
+that those nodes' meets assign themselves to.
+@PP
+Any node can have a vizier, but only the cycle node really has
+a use for one.  By connecting everything to the cycle node
+indirectly via a vizier, it becomes trivial to try time repairs
+in which the meets of the vizier node change their assignments,
+effecting global alterations such as swapping everything on
+Tuesday morning with everything on Wednesday morning.  Function
+@ID @C {
+KHE_NODE KheNodeVizierMake(KHE_NODE parent_node);
+}
+inserts a new vizier node directly below @C { parent_node }.  Afterwards,
+@C { parent_node } has exactly one child node, the vizier; it may be
+accessed using @C { KheNodeChild(parent_node, 0) } as usual, and it
+is also the return value.  For every meet @C { pm } of the parent
+node, the vizier has one meet @C { vm } with the same duration as
+@C { pm } and assigned to @C { pm } at offset 0.  The domain of
+@C { vm } is @C { NULL }; its assignment is not fixed.  Each child
+node of @C { parent_node } becomes a child of the vizier; each child
+layer of @C { parent_node } becomes a child layer of the vizier;
+each meet assigned to a meet of the parent node becomes assigned to
+the corresponding meet of the vizier.  If @C { parent_node } has
+zones, the vizier is given new corresponding zones, and the parent
+node's zones are removed.
+@PP
+All this leaves the timetable unchanged, including constraints
+imposed by domains and zones.  The vizier takes over without
+affecting anyone's existing rights and privileges.  A vizier node
+is not different from any other node; only its role is special.
+@PP
+@C { KheNodeSwapChildNodesAndLayers } (Section {@NumberOf extras.nodes})
+is used to move the child nodes and layers to the vizier node, so they
+are the exact same objects after the call as before.  But although the
+zones added to the vizier correspond exactly with the original zones,
+they are new objects.
+#However, for the convenience of repair operations
+#that would waste time if tried at vizier nodes, function
+#@ID @C {
+#bool KheNodeIsVizier(KHE_NODE node);
+#}
+#is offered; it returns @C { true } when @C { node } was created
+#by a call to @C { KheNodeVizierSplit }.
+@PP
+To remove a vizier node, call
+@ID @C {
+void KheNodeVizierDelete(KHE_NODE parent_node);
+}
+Here @C { parent_node } must have no child layers, no zones,
+and exactly one child node, assumed to be the vizier.  It calls
+@C { KheNodeSwapChildNodesAndLayers } again, to make the child
+nodes of the vizier into child nodes of @C { parent_node }, and the
+child layers of the vizier into child layers of @C { parent_node }.
+Any assignments to meets in the child nodes of the vizier must be
+to meets in the vizier, and they are converted into assignments to
+meets in @C { parent_node } where possible (when the target meet
+in the vizier is itself assigned).  New zones are created in
+@C { parent_node } based on the zones and meet assignments in the
+vizier.  Finally the vizier and its meets are deleted.
+@PP
+Zones are not preserved across calls to @C { KheNodeVizierMake }
+and @C { KheNodeVizierDelete } in the exact way that child nodes
+and child layers are.  The zones added to the vizier node by
+@C { KheNodeVizierMake } are new objects, although they do
+correspond exactly with the zones in @C { parent_node }.  The zones
+added to @C { parent_node } by @C { KheNodeVizierDelete } are also
+new, and there will be a zone in a given parent meet at a given
+offset only if there was a meet in the vizier which was assigned
+that parent meet and was running (with a zone) at that offset.  If
+vizier meets overlap in time (not actually prohibited), that will
+further confuse the reassignment of zones.  It may be best to follow
+@C { KheNodeVizierDelete } by a call to some function which ensures
+that every offset of every parent meet has a zone, for example
+@C { KheNodeExtendZones } (Section {@NumberOf time_structural.zones}).
+@PP
+Function @C { KheNodeMeetSplit }
+(Section {@NumberOf time_structural.nodes.meet_split}) is useful
+with vizier nodes.  Splitting a vizier's meets non-recursively opens
+the way to fine-grained swaps, between half-mornings instead of
+full mornings, and so on.  A wild idea, that the author has not
+tried, is to have an unsplit vizier with its own split vizier.
+Then the larger swaps and the smaller ones are available together.
+# In general, there are problems with using @C { KheNodeMeetMerge }
+# to undo these splits, so it is best to remove the entire vizier
+# node using @C { KheNodeVizierDelete } instead.  A fresh vizier
+# node can always be created later, at little cost.
+@End @SubSection
+
+@SubSection
+    @Title { Flattening }
+    @Tag { time_structural.nodes.flattening }
+@Begin
+@LP
+Although layer coordination and runaround building are useful
+for promoting regularity, there may come a point where these
+kinds of voluntary restrictions prevent assignments which satisfy
+more important constraints, and so they must be removed.
+@PP
+What is needed is to flatten the layer tree.  Two functions are
+provided for this.  The first is
+@ID @C {
+void KheNodeBypass(KHE_NODE node);
+}
+This requires @C { node } to have a parent, and it moves the children
+of @C { node } so that they are children of that parent.  The second is
+@ID @C {
+void KheNodeFlatten(KHE_NODE parent_node);
+}
+It moves nodes as required to ensure that all the proper descendants
+of @C { parent_node } initially are children of @C { parent_node }
+on return.
+@PP
+Both functions use @C { KheNodeMove } to move nodes.  They cannot fail,
+because @C { KheNodeMove } fails only when there is a problem with the
+cycle rule, which cannot occur here.  Both functions are `interesting
+exceptions' (Section {@NumberOf time_structural.nodes.move}) where
+assignments are preserved.  By convention (Chapter {@NumberOf time_solvers}),
+meets with fixed, final assignments should not lie in nodes.  If that
+convention is followed, these functions do not affect such meets.
+@End @SubSection
+
+@EndSubSections
+@End @Section
+
+@Section
+    @Title { Adding zones }
+    @Tag { time_structural.zones }
+@Begin
+@LP
+Suppose a layer of child nodes of node @M { n } has its meets assigned
+to the meets of @M { n } at various offsets.  Define one zone for each
+child node @M { c } of the layer, whose meet-offsets are the ones at
+which @M { c }'s meets are running.  Helper function
+@ID @C {
+void KheLayerInstallZonesInParent(KHE_LAYER layer);
+}
+installs these zones, first deleting any existing zones of
+the parent node of @C { layer }, then installing one zone for each
+child node of @C { layer } containing at least one assigned meet.
+Such zones form an image of how one child layer (the first to be
+assigned, usually) is assigned.  An algorithm can use them as a
+template when assigning the other child layers, or when repairing
+the assignments of any child layers, including the first layer.
+@PP
+@C { KheLayerInstallZonesInParent }
+installs zones representing the assignments of one layer into the
+layer's parent node.  If the duration of the parent node exceeds
+the duration of the layer, some offsets in some parent node meets
+will not be assigned any zone.  This seems likely to be a problem,
+or at least a lost opportunity.  What to do about it is not clear.
+@PP
+Arguably, zones should be derived from all layers, not just one, in
+a way that gives every offset a zone.  But that is not easy to do,
+even heuristically.  Anyway, there are advantages in using zones
+derived from a good assignment of some layer, since the assignment
+proves that those zones work well.  This suggests taking the zones
+installed by @C { KheLayerInstallZonesInParent } and extending
+them until every offset has a zone.  Accordingly, function
+@ID @C {
+void KheNodeExtendZones(KHE_NODE node);
+}
+ensures that every offset of every meet of @C { node } has a zone, by
+assigning one of @C { node }'s existing zones to each offset in each
+meet of @C { node } that does not have a zone---unless @C { node }
+has no zones to begin with, in which case it does nothing.
+@PP
+For each (zone, meet) pair where the meet has at least one offset
+without a zone, the algorithm finds one option for adding some of
+the zone to the meet (how much to add, and where), and assigns a
+priority to the option.  Then it selects an option of minimum
+priority, carries it out, and repeats.  It runs out of options
+only when every offset in every meet has a zone.
+@PP
+An option for adding some of a given zone to a given meet is found
+as follows.  If the zone is already present in the meet, it is best
+to add it at offsets adjacent to the offsets it already occupies, if
+possible.  If the zone is not already present, it is best to add it
+adjacent to existing offsets or the ends of the meet, in a continuous
+run, to avoid fragmentation of the offsets it occupies as well as the
+offsets it doesn't occupy.  Constraints on zone durations arise either
+way.  Within the limits imposed by them, it is best to aim for an ideal
+zone duration, which in a completely unoccupied meet is the meet
+duration divided by the total number of zones, but which is adjusted
+to take account of existing zone durations, with higher being a better
+option than lower.  As the option is decided on, it is assigned a
+priority based on whether it utilizes an underutilized zone, avoids
+fragmentation, and approximates to the ideal zone duration.
+#@DP
+#@I { obsolete below here }
+#@PP
+#Let @M { d(m) } be the duration of @M { m }, and let @M { z } be the
+#total number of zones.  An ideally balanced situation would see all
+#@M { z } zones present in @M { m }, each occupying @M { d(m) "/" z }
+#adjacent offsets.  At any given moment, however, decisions have been
+#made which see @M { a(m) } of the offsets of @M { m } already assigned
+#among @M { z(m) } zones, so that to reach the ideal would require
+#@M { z - z(m) } zones to be assigned the remaining @M { d(m) - a(m) }
+#offsets, giving @M { (d(m) - a(m)) "/" (z - z(m)) } offsets per zone.
+#This quantity, the @I { ideal new zone duration } @M { i(m) }, is what
+#the algorithm aims for when it decides to place a zone into a meet
+#that is not already in the meet.  Also, when a zone is already in a
+#meet but its duration is less than
+#Assigning fewer offsets than this would risk
+#@PP
+#For each meet @M { m } in @C { node }, define the @I { unzoned duration }
+#@M { u(m) } to be the number of offsets of @M { m } without a zone, and
+#the @I { available zones } @M { a(m) } to be number of zones of @C { node }
+##not currently present in @M { m }.  The quantity @M { u(m) "/" a(m) }, where
+#defined, is a good indicator of how many adjacent offsets to assign a
+#newly entering zone to.  Falling short of this quantity could require
+#the number of zones in @M { m }, it is clear that each new zone added
+#to @M { m } would ideally
+#@PP
+#The algorithm is as follows.  If @C { node } has no zones, do nothing.
+#Otherwise, while there is at least one meet-offset of @C { node }
+#with no zone, assign each such meet-offset @M { x } the number of the
+#first condition below that it satisfies.  Then choose any @M { x }
+#whose number is minimum, and assign the indicated zone @M { z } to
+#@M { x }.  The conditions are:
+#@NumberedList
+#
+#@LI {
+#@M { x } is adjacent to a meet-offset with a zone of minimum
+#size.  Let @M { z } be that zone.
+#}
+#
+#@LI {
+#@M { x } is adjacent to the beginning or end of its meet, or to a
+#meet-offset with a zone.  Let @M { z } be a zone of minimum size
+#among zones that do not appear in the meet, or if there are none
+#of those, let @M { z } be a zone of minimum size.
+#}
+#
+#@LI {
+#@M { x } satisfies none of the above conditions.  Leave @M { z }
+#indeterminate.
+#}
+#
+#@EndList
+#It is easy to see that at least one meet-offset must satisfy the
+#second condition at least, so a node satisfying only the third
+#condition will never be selected as minimum.  Take changes in
+#the sizes of zones into account as assignments occur.
+#@DP
+#@I { obsolete below here }
+#@ID {0.96 1.0} @Scale @C {
+#void KheNodeCompleteZones(KHE_NODE node, KHE_SPREAD_EVENTS_CONSTRAINT sec);
+#}
+#does this.  It ensures that every offset of every meet of @C { node }
+#has a zone, by assigning one of @C { node }'s existing zones to each
+#offset in each meet of @C { node } that does not have a zone.  If
+#@C { node } has no zones, or every offset already has a zone, it
+#does nothing.  Parameter @C { sec } may be @C { NULL }.
+#@PP
+#@C { KheNodeCompleteZones } works heuristically.  It builds a set
+#of time groups, one for each time group of @C { sec } when present,
+#plus one holding every time not already in a time group, if any.
+#Then it computes @M { M }, the maximum run of consecutive times
+#with the same non-@C { NULL } zone over all these time groups.
+#Finally, it repeatedly selects the existing zone @M { z } with
+#the smallest number of times in it, finds the time group @M { g }
+#with the smallest number of times lying in @M { z }, assigns
+#@M { z } to the first unzoned time in @M { g }, and continues
+#to assign @M { z } to the following times of @M { g } until
+#either a time is encountered which already has a zone, or else
+#@M { M } assignments have been made.  Then it starts again,
+#selecting a new smallest zone.  This is not rocket science, but
+#it seems to do a reasonable job, at least when most of the times
+#of the cycle have already been assigned a zone.
+@End @Section
+
+#@SubSection
+#    @Title { Vizier nodes }
+#    @Tag { time_structural.vizier }
+#@Begin
+#@LP
+#@I { obsolete---see new subsection of extras.nodes section }
+#@PP
+#A @I vizier (Arabic @I { wazir }) is a senior official, the
+#one who actually runs the country while the nominal ruler gets
+#the adulation.  In a similar way, a @I { vizier node } sits below
+#another node and does what that other node nominally does:  act
+#as the common parent of the subordinate nodes, and hold the meets
+#that those nodes' meets assign themselves to.  A vizier node is
+#not different from any other node; only its role is special.
+#@PP
+#Any node can have a vizier, but only the cycle node really has
+#a use for one.  By connecting everything to the cycle node
+#indirectly via a vizier, it becomes trivial to try time repairs
+#in which the meets of the vizier node change their assignments,
+#effecting global alterations such as swapping everything on
+#Tuesday morning with everything on Wednesday morning.  Function
+#@ID @C {
+#KHE_NODE KheNodeInsertVizierNode(KHE_NODE parent_node);
+#}
+#inserts a new vizier node directly below @C { parent_node },
+#and returns the new node.  For every meet @C { pm } of the
+#parent node, the vizier has one meet @C { vm } with the same
+#duration as @C { pm } and assigned to @C { pm } at offset 0.
+#The domain of @C { vm } is @C { NULL }, and nothing about it
+#is fixed.  Each child node of @C { parent_node } becomes a
+#child of the vizier, and each meet assigned to a meet of the
+#parent node becomes assigned to the corresponding meet of the
+#vizier.  If @C { parent_node } has zones, the vizier is given
+#corresponding zones, and the parent node's zones are removed.
+#@PP
+#All this leaves the timetable unchanged, including constraints
+#imposed by domains and zones.  The vizier takes over without
+#affecting anyone's existing rights and privileges.
+#@PP
+#To undo the effect of an earlier call to
+#@C { KheNodeInsertVizierNode }, call
+#@ID @C {
+#void KheNodeRemoveVizierNode(KHE_NODE vizier_node);
+#}
+#What this mainly does is call @C { KheNodeBypass(vizier_node) }
+#from Section {@NumberOf time_structural.flattening}, followed
+#by @C { KheNodeDelete(vizier_node) }; but first it does its
+#best to create zones in the parent node corresponding to the
+#zones in @C { vizier_node }, based on the assignments of the
+#vizier's meets.  It also deletes @C { vizier_node }'s meets.
+#@PP
+#Functions @C { KheNodeMeetSplit } and @C { KheNodeMeetMerge }
+#(Section {@NumberOf extras.nodes.meet_split}) are particularly
+#relevant to vizier nodes.  Splitting a vizier's meets
+#non-recursively opens the way to fine-grained swaps, between
+#half-mornings instead of full mornings, and so on.  And
+#@C { KheNodeMeetMerge } is the appropriate way to return
+#the vizier meets to their original number and durations.
+#@End @SubSection
+
+@Section
+    @Title { Meet splitting and merging }
+    @Tag { time_structural.split }
+@Begin
+@LP
+This section presents features which modify the meet splits made
+by layer tree construction.
+@BeginSubSections
+
+@SubSection
+    @Title { Analysing split defects }
+    @Tag { time_structural.split.analyse }
+@Begin
+@LP
+Given a defect (a monitor of non-zero cost), it is usually easy
+to see what needs to be done to repair it:  if there is a clash,
+move one of the clashing meets away; if there is a split assignment,
+try to find a resource to assign to all the tasks; and so on.
+@PP
+@I { Split defects }, that is, split events and distribute split
+events monitors of non-zero cost, are awkward to analyse in this
+way, partly because split events monitors monitor both the number
+of meets and their durations, and partly because several split
+events and distribute split events monitors may cooperate in
+constraining how a given event is split into meets.
+@PP
+KHE offers a @I { split analyser} which analyses the split events
+and distribute split events monitors of a given event, and comes up
+with a sequence of suggestions as to how any defects among those
+monitors could be repaired using splits or merges (or both:  for
+example, if there are too few meets of a given duration, that could
+be corrected by splitting larger meets or by merging smaller ones).
+To create and subsequently delete a split analyser object, call
+@ID @C {
+KHE_SPLIT_ANALYSER KheSplitAnalyserMake(KHE_SOLN soln);
+void KheSplitAnalyserDelete(KHE_SPLIT_ANALYSER sa);
+}
+In practice, it is better to obtain a split analyser object from
+the @C { "ss_split_analyser" } option, which can be done by a call to
+# (Section {@NumberOf general_solvers.options.structural})
+@ID @C {
+KHE_SPLIT_ANALYSER KheSplitAnalyserOption(KHE_OPTIONS options,
+  char *key, KHE_SOLN soln);
+}
+with key @C { "ss_split_analyser" }.  This creates a split analyser
+and stores it in @C { options } if it is not already present.  The
+option name is conventional; any name could have been chosen.
+@PP
+To carry out the analysis for a particular event, call
+@ID @C {
+void KheSplitAnalyserAnalyse(KHE_SPLIT_ANALYSER sa, KHE_EVENT e);
+}
+After doing this, the sequence of suggestions for @C { e } which
+are splits may be retrieved by calling
+@ID @C {
+int KheSplitAnalyserSplitSuggestionCount(KHE_SPLIT_ANALYSER sa);
+void KheSplitAnalyserSplitSuggestion(KHE_SPLIT_ANALYSER sa, int i,
+  int *merged_durn, int *split1_durn);
+}
+for @C { i } between @C { 0 } and
+@C { KheSplitAnalyserSplitSuggestionCount(sa) - 1 } as usual.
+Each split suggestion suggests splitting any meet of duration
+@C { *merged_durn } into two fragments, one with duration
+@C { *split1_durn }.  Similarly, the sequence of merge suggestions
+may be retrieved by
+@ID @C {
+int KheSplitAnalyserMergeSuggestionCount(KHE_SPLIT_ANALYSER sa);
+void KheSplitAnalyserMergeSuggestion(KHE_SPLIT_ANALYSER sa, int i,
+  int *split1_durn, int *split2_durn);
+}
+Each suggests merging any two meets with durations @C { *split1_durn }
+and @C { *split2_durn }.
+@PP
+Each suggestion is distinct from the others.  No notice is taken of
+constraint weights, except that constraints of weight zero are ignored.
+The suggestions are updated only by calls to @C { KheSplitAnalyserAnalyse };
+they are unaffected by later changes to the solution.  So they go out
+of date after a split or merge, but become up to date again if that
+split or merge is undone.
+@PP
+Function
+@ID @C {
+void KheSplitAnalyserDebug(KHE_SPLIT_ANALYSER sa, int verbosity,
+  int indent, FILE *fp);
+}
+places a debug print of @C { sa } onto @C { fp } with the given
+verbosity and indent, including suggestions.
+@End @SubSection
+
+@SubSection
+    @Title { Merging adjacent meets }
+    @Tag { time_structural.split.merging }
+@Begin
+@LP
+It sometimes happens that at the end of a solve, two meets derived
+from the same event are adjacent in time and not separated by a
+break.  If the same resources are assigned to both, they can be
+merged, which may remove a spread defect and thus reduce the overall
+cost.  Function
+@ID @C {
+void KheMergeMeets(KHE_SOLN soln);
+}
+unfixes meet splits in all meets derived from events and carries out
+all merges that reduce solution cost.  For each event @C { e }, it
+takes the meets derived from @C { e } that have assigned times and
+sorts them chronologically.  Then, for each pair of adjacent meets
+in the sorted order, it tries @C { KheMeetMerge }, keeping the merge
+if it succeeds and reduces cost.
+@PP
+@C { KheMergeMeets } can be called at any time.  The best
+time to call it is probably at the very end of solving, or
+possibly after time assignment.
+@End @SubSection
+
+@EndSubSections
+@End @Section
+
+# @Section
+#     @Title { Monitor attachment and grouping }
+#     @Tag { time_structural.monitor }
+# @Begin
+# @LP
+# Sometimes, how monitors are grouped and attached is important:  when
+# using ejection chains (Chapter {@NumberOf ejection}), for example, or
+# Kempe and ejecting meet moves (Section {@NumberOf time_solvers.kempe}).
+# This section lays out some general concepts and conventions for monitor
+# attachment and grouping.
+# @PP
+# Solutions often contain structural constraints:  nodes, restricted
+# domains, fixed assignments, and so on.  A solver is expected to
+# respect such constraints, unless its specification explicitly states
+# otherwise.  They are part of the solution, and every solver should
+# be able to deal with them.  In the same way, a solver may find that
+# some monitors have been deliberately detached before it starts
+# running.  For example, all monitors of soft constraints may have
+# been detached, because the caller wants the solver to concentrate
+# on hard constraints.  A solver should not change the attachments
+# of monitors to the solution, unless its specification explicitly
+# states otherwise.  Its aim is to minimize @C { KheSolnCost(soln) },
+# however that is defined by @C { soln }'s monitor attachments.
+# @PP
+# There are two ways to exclude a monitor from contributing to the
+# solution cost:  by detaching it using @C { KheMonitorDetachFromSoln },
+# and by ensuring that there is no path from it to the solution group
+# monitor.  The first way should always be used, because it is the
+# efficient way.
+# @PP
+# Some solvers need specific groupings.  The Kempe meet move
+# operation (Section {@NumberOf time_solvers.kempe}) is an
+# example:  its precondition specifies that a particular group
+# monitor must be present.  This is permissible, and as with all
+# preconditions it imposes a requirement on the caller of the
+# operation to ensure that the precondition is satisfied when the
+# operation is called.  But such requirements should not prohibit the
+# presence of other group monitors.  For example, the implementation
+# of the Kempe meet move operation begins with a tiny search for the
+# group monitor it requires.  If other group monitors are present
+# nearby, that is not a problem.  If this example is followed,
+# multiple requirements for group monitors will not conflict.
+# @PP
+# There is a danger that group monitors will multiply, slowing down
+# the solve and confusing its logic.  It is best if each function
+# that creates a group monitor takes responsibility for deleting it
+# later, even if this means creating the same group monitors over and
+# over again.  Timing tests conducted by the author show that adding
+# and deleting the group monitors used by the various solvers in this
+# guide takes an insignificant amount of time.
+# @PP
+# Two monitors (or defects) are @I correlated when they monitor the
+# same thing, not formally usually, but in reality.  For example, if
+# two events are joined by a link events constraint, and one is
+# fixed to the other, then two spread events monitors, one for each
+# event, will be correlated.
+# @PP
+# Correlated defects are bad for ejection chains.  The cost of each
+# defect separately might not be large enough to end the chain if
+# removed, causing the chain to terminate in failure, whereas if
+# it was clear that there was really only one problem, the chain
+# might be able to repair it and continue.  So correlated monitors
+# should be grouped, whenever possible.  These groups are the
+# equivalence classes of the correlation relation, which is
+# clearly an equivalence relation.  A grouping of correlated
+# monitors is called a @I { primary grouping }.
+# @PP
+# A function which creates a primary grouping works as follows.
+# Monitors not relevant to the grouping remain as they were.
+# Relevant monitors are deleted from any parents they have, and
+# partitioned into groups of correlated monitors.  For each group
+# containing two or more monitors, a group monitor called a
+# @I { primary group monitor } is made, the monitors are made
+# children of it, and it is made a child of the solution object.
+# For each group containing one monitor, that monitor is made a
+# child of the solution, and no group monitor is made.  Any
+# group monitors other than the solution object which lose all
+# their children because of these changes are deleted, possibly
+# causing further deletions of childless group monitors.
+# @PP
+# A function which deletes a primary grouping visits all monitors
+# relevant to the grouping and deletes those parents of those
+# monitors whose @C { sub_tag } indicates that they are part of
+# the primary grouping.  The deleting is done by calls to
+# @C { KheGroupMonitorBypassAndDelete }.
+# #@PP
+# #Primary groupings classify monitors into three
+# #classes and handle them as follows:
+# #@BulletList
+# #
+# #@LI @OneRow {
+# #Monitors of types not handled by the grouping remain as they were.
+# #}
+# #
+# #@LI @OneRow {
+# #Unattached monitors of types handled by the grouping remain
+# #unattached.  They are deleted from any parents they have,
+# #then made children of the solution object.
+# #}
+# #
+# #@LI @OneRow {
+# #Attached monitors of types handled by the grouping remain attached.
+# #They are deleted from any parents they have, and partitioned into
+# #groups.  For each group containing two or more monitors, a group
+# #monitor called a @I { primary group monitor } is made, the monitors
+# #are made children of it, and it is made a child of the solution
+# #object.  For each group containing one monitor, that monitor is
+# #made a child of the solution, and no group monitor is made.
+# #}
+# #
+# #@EndList
+# #Any group monitors other than the solution object which lose all
+# #their children because of these changes are deleted, possibly
+# #causing further deletions of childless group monitors.  When
+# #deleting a primary grouping, the relevant proper ancestors
+# #of attached monitors of types handled by the grouping are
+# #deleted using @C { KheGroupMonitorBypassAndDelete }.
+# @PP
+# Function @C { KheEjectionChainPrepareMonitors }
+# (Section {@NumberOf ejection.repair.primary})
+# creates primary groupings of some correlated monitors, and
+# detaches others, in preparation for ejection chain repair.
+# @PP
+# @I { Secondary groupings } are useful groupings that are not primary
+# groupings (that do not group monitors which monitor the same thing).
+# Instead, they group diverse sets of monitors for particular purposes,
+# such as efficient access to defects.
+# @PP
+# Secondary groupings are often built on primary groupings:  if a
+# monitor that a secondary grouping handles is a descendant of a primary
+# group monitor, the primary group monitor goes into the secondary
+# grouping, replacing the individual monitors which are its children.
+# @PP
+# A secondary grouping makes one group monitor, called a
+# @I { secondary group monitor }, not many.  The secondary group monitor
+# is not made a child of the solution object, nor are its children
+# unlinked from any other parents that they may have.  So it does not
+# disturb existing calculations in any way; rather, it adds a separate
+# calculation on the side.  A secondary grouping can be removed by
+# passing the secondary group monitor to @C { KheGroupMonitorDelete }.
+# @PP
+# Functions for creating secondary groupings appear elsewhere in this
+# guide.  They include @C { KheKempeDemandGroupMonitorMake }, needed by
+# Kempe and ejecting meet moves (Section {@NumberOf time_solvers.kempe}),
+# and several functions used by ejection chain repair algorithms
+# (Section {@NumberOf ejection.repair.secondary}).
+# @PP
+# When building secondary groupings, these public functions
+# are often helpful:
+# @ID @C {
+# bool KheMonitorHasParent(KHE_MONITOR m, int sub_tag,
+  # KHE_GROUP_MONITOR *res_gm);
+# void KheMonitorAddSelfOrParent(KHE_MONITOR m, int sub_tag,
+  # KHE_GROUP_MONITOR gm);
+# void KheMonitorDeleteAllParentsRecursive(KHE_MONITOR m);
+# }
+# Consult the documentation in the source code to find out what they do.
+# @PP
+# It is convenient to have standard values for the sub-tags and
+# sub-tag labels of the group monitors created by grouping functions,
+# both primary and secondary.  So KHE defines type
+# @ID {0.90 1.0} @Scale @C {
+# typedef enum {
+#   KHE_SUBTAG_SPLIT_EVENTS,	      /* "SplitEventsGroupMonitor"           */
+#   KHE_SUBTAG_DISTRIBUTE_SPLIT_EVENTS, /* "DistributeSplitEventsGroupMonitor" */
+#   KHE_SUBTAG_ASSIGN_TIME,	      /* "AssignTimeGroupMonitor"            */
+#   KHE_SUBTAG_PREFER_TIMES,	      /* "PreferTimesGroupMonitor"           */
+#   KHE_SUBTAG_SPREAD_EVENTS,	      /* "SpreadEventsGroupMonitor"          */
+#   KHE_SUBTAG_LINK_EVENTS,	      /* "LinkEventsGroupMonitor"            */
+#   KHE_SUBTAG_ORDER_EVENTS,	      /* "OrderEventsGroupMonitor"           */
+#   KHE_SUBTAG_ASSIGN_RESOURCE,	      /* "AssignResourceGroupMonitor"        */
+#   KHE_SUBTAG_PREFER_RESOURCES,	      /* "PreferResourcesGroupMonitor"       */
+#   KHE_SUBTAG_AVOID_SPLIT_ASSIGNMENTS, /* "AvoidSplitAssignmentsGroupMonitor" */
+#   KHE_SUBTAG_AVOID_CLASHES,	      /* "AvoidClashesGroupMonitor"          */
+#   KHE_SUBTAG_AVOID_UNAVAILABLE_TIMES, /* "AvoidUnavailableTimesGroupMonitor" */
+#   KHE_SUBTAG_LIMIT_IDLE_TIMES,	      /* "LimitIdleTimesGroupMonitor"        */
+#   KHE_SUBTAG_CLUSTER_BUSY_TIMES,      /* "ClusterBusyTimesGroupMonitor"      */
+#   KHE_SUBTAG_LIMIT_BUSY_TIMES,	      /* "LimitBusyTimesGroupMonitor"        */
+#   KHE_SUBTAG_LIMIT_WORKLOAD,	      /* "LimitWorkloadGroupMonitor"         */
+#   KHE_SUBTAG_LIMIT_ACTIVE_INTERVALS,  /* "LimitActiveIntervalsGroupMonitor"  */
+#   KHE_SUBTAG_LIMIT_RESOURCES,         /* "LimitResourcesGroupMonitor"        */
+#   KHE_SUBTAG_ORDINARY_DEMAND,	      /* "OrdinaryDemandGroupMonitor"        */
+#   KHE_SUBTAG_WORKLOAD_DEMAND,	      /* "WorkloadDemandGroupMonitor"        */
+#   KHE_SUBTAG_KEMPE_DEMAND,	      /* "KempeDemandGroupMonitor"           */
+#   KHE_SUBTAG_NODE_TIME_REPAIR,	      /* "NodeTimeRepairGroupMonitor"        */
+#   KHE_SUBTAG_LAYER_TIME_REPAIR,	      /* "LayerTimeRepairGroupMonitor"       */
+#   KHE_SUBTAG_TASKING,		      /* "TaskingGroupMonitor"               */
+#   KHE_SUBTAG_ALL_DEMAND		      /* "AllDemandGroupMonitor"             */
+# } KHE_SUBTAG_STANDARD_TYPE;
+# }
+# for the sub-tags, and the strings in comments, obtainable by calling
+# @ID @C {
+# char *KheSubTagLabel(KHE_SUBTAG_STANDARD_TYPE sub_tag);
+# }
+# for the corresponding sub-tag labels.  There is also
+# @ID @C {
+# KHE_SUBTAG_STANDARD_TYPE KheSubTagFromTag(KHE_MONITOR_TAG tag);
+# }
+# which returns the appropriate sub-tag for a group monitor whose
+# children have the given @C { tag }.
+# # bool KheMonitorHasProperAncestor(KHE_MONITOR m, int sub_tag,
+# #   KHE_GROUP_MONITOR *res_gm);
+# # void KheMonitorAddSelfOrAncestor(KHE_MONITOR m, int sub_tag,
+# #   KHE_GROUP_MONITOR gm);
+# # @C { KheMonitorHasProperAncestor } returns @C { true } if
+# # @C { m } has a proper ancestor with the given @C { sub_tag },
+# # setting @C { *res_gm } to one such ancestor if so.  This is
+# # useful for finding out whether @C { m } should be linked in,
+# # or some primary grouping ancestor @C { *res_gm }.
+# # @C { KheMonitorAddSelfOrAncestor } either adds @C { m } as
+# # a child to @C { gm }, or adds the proper ancestor returned
+# # by @C { KheMonitorHasProperAncestor } if there is one.  Either
+# # way it only makes the link if it has not been made already.
+# #@DP
+# #@I { needs redistribution below here }
+# #@DP
+# #@BeginSubSections
+# #
+# #@SubSection
+# #    @Title { Primary groupings }
+# #    @Tag { time_structural.monitor.primary }
+# #@Begin
+# #@LP
+# # Suppose the assignments of the tasks of several event resources are
+# # fixed to the same task.  Then the assign resource monitors of those
+# # event resources monitor the same thing, and so should be grouped.
+# # Groupings of monitors which monitor the same thing are called
+# # @I { primary groupings }.  This section presents some functions
+# # for making primary groupings.
+# # This ensures that old versions of primary groupings disappear when
+# # new ones are installed.  In general, primary groupings depend
+# # on what is fixed in the solution, and if this changes they
+# # become out of date and need to be regenerated by the user.
+# # @PP
+# # The primary grouping relevant to event splitting is
+# # created and deleted by
+# # @ID @C {
+# # void KheSolnPrimaryEventSplitGroupMonitorsMake(KHE_SOLN soln);
+# # void KheSolnPrimaryEventSplitGroupMonitorsDelete(KHE_SOLN soln);
+# # }
+# # For each event, it groups the attached split events and distribute
+# # split events monitors of that event, giving any group monitor sub-tag
+# # @C { KHE_SUBTAG_SPLIT_EVENTS }.  The rationale is that they all
+# # monitor how the event is split.  These functions are included only
+# # for completeness:  in practice, meet splits are fixed, and their
+# # monitors have provably zero fixed cost and are detached.
+# #@PP
+# #The primary grouping relevant to time assignment is
+# #created and deleted by
+# #@ID @C {
+# #void KheSolnPrimaryEventGroupMonitorsMake(KHE_SOLN soln);
+# #void KheSolnPrimaryEventGroupMonitorsDelete(KHE_SOLN soln);
+# #}
+# #First, it partitions the events of @C { soln }'s instance into
+# #equivalence classes, placing two events into the same class when
+# #following the fixed assignment paths out of their meets proves
+# #that their sets of meets must run at the same times.  It then
+# #handles these monitors:
+# #@NumberedList
+# #
+# #@LI @OneRow {
+# #For each equivalence class, it groups the attached assign time monitors
+# #that monitor the events of that class, giving any group monitors sub-tag
+# #@C { KHE_SUBTAG_ASSIGN_TIME }.
+# #}
+# #
+# #@LI @OneRow {
+# #Within each equivalence class, it groups those attached prefer times
+# #monitors that monitor the events of that class and whose constraints
+# #request the same set of times, giving any group monitors sub-tag
+# #@C { KHE_SUBTAG_PREFER_TIMES }.
+# #}
+# #
+# #@LI @OneRow {
+# #For each attached spread events monitor, it finds the set of equivalence
+# #classes which hold the events it monitors.  It groups attached spread
+# #events monitors whose sets of classes are equal, giving any group
+# #monitors sub-tag @C { KHE_SUBTAG_SPREAD_EVENTS }.  Strictly speaking,
+# #only monitors whose constraints request the same time groups with
+# #the same limits should be grouped, but that check is not currently
+# #being made.
+# #}
+# #
+# #@LI @OneRow {
+# #For each attached order events monitor, it finds the sequence of
+# #equivalence classes which hold the two events it monitors.  It groups
+# #attached order events monitors whose sequences of classes are equal,
+# #giving any group monitors sub-tag @C { KHE_SUBTAG_ORDER_EVENTS }.
+# #Strictly speaking, only monitors whose constraints request the same
+# #event separations should be grouped, but that check is not currently
+# #being made.
+# #}
+# #
+# #@LI @OneRow {
+# #For each set of meets such that the fixed assignment paths out of
+# #those meets end at the same meet, it groups the attached demand
+# #monitors of those meets' tasks, giving any group monitor sub-tag
+# #@C { KHE_SUBTAG_MEET_DEMAND }.  The rationale is that the only way
+# #to remove a demand defect during time assignment is to change the
+# #assignment of that meet (or some other clashing meet), and that
+# #will affect all the demand monitors grouped here.
+# #}
+# #
+# #@LI @OneRow {
+# #It groups together each set of attached workload demand monitors
+# #with the same non-@C { NULL } originating monitor, giving any
+# #group monitor sub-tag @C { KHE_SUBTAG_WORKLOAD_DEMAND }.
+# ## The originating monitor is in the group; it is the first child
+# ## of the group monitor.  For a discussion of this arrangement,
+# ## see Section {@NumberOf time_structural.monitor.resource}.
+# #}
+# #
+# #@EndList
+# #The fixed assignments underlying these groupings are usually
+# #due to link events constraints.  Those constraints' monitors will
+# #have provably zero fixed cost and will be detached.
+# #@PP
+# #The primary grouping relevant to resource assignment is
+# #created and deleted by
+# #@ID @C {
+# #void KheSolnPrimaryEventResourceGroupMonitorsMake(KHE_SOLN soln,
+# #  KHE_RESOURCE_TYPE rt);
+# #void KheSolnPrimaryEventResourceGroupMonitorsDelete(KHE_SOLN soln,
+# #  KHE_RESOURCE_TYPE rt);
+# #}
+# #First, it partitions the event resources of @C { soln }'s
+# #instance (or just those with resource type @C { rt } if @C { rt }
+# #is non-@C { NULL }) into equivalence classes, placing two event
+# #resources into the same class when following the fixed assignment
+# #paths out of their tasks proves that their tasks must be assigned
+# #the same resources.  It then handles these monitors:
+# #@NumberedList
+# #
+# #@LI @OneRow {
+# #For each class, it groups the attached assign resource
+# #monitors that monitor the event resources of that class, giving any
+# #group monitors sub-tag @C { KHE_SUBTAG_ASSIGN_RESOURCE }.
+# #}
+# #
+# #@LI @OneRow {
+# #Within each class, it groups those attached prefer resources
+# #monitors that monitor the event resources of that class and
+# #whose constraints request the same set of resources, giving any
+# #group monitors sub-tag @C { KHE_SUBTAG_PREFER_RESOURCES }.
+# #}
+# #
+# #@EndList
+# #The fixed assignments underlying these groupings are usually
+# #due to avoid split assignments constraints.  Those constraints'
+# #monitors will have provably zero fixed cost and will be detached.
+# #@End @SubSection
+# #
+# # @LI @OneRow {
+# # For each set of unpreassigned tasks such that the fixed assignment
+# # paths out of those tasks end at the same task, group the attached
+# # demand monitors of those tasks, giving any group monitor sub-tag
+# # @C { KHE_SUBTAG_UNPREASSIGNED_DEMAND }.  The rationale is that defects
+# # here are more likely to be due to poor resource assignment than poor
+# # time assignment, so the monitors are associated with a task, not a meet.
+# # }
+# #
+# # @EndList
+# # In practice, most monitors are either detached because they have
+# # provably zero fixed cost, or taken into account by this standard
+# # grouping.  The exceptions are monitors derived from the six resource
+# # constraints and from workload demand tixels.  Although they do not
+# # change together, exactly, a solver might consider grouping those
+# # monitors of these kinds which relate to the same resource, if it is
+# # able to generate repairs based on a holistic analysis of a resource's
+# # timetable.
+# #
+# #@SubSection
+# #    @Title { Secondary groupings }
+# #    @Tag { time_structural.monitor.secondary }
+# #@Begin
+# #@LP
+# #@DP
+# #@I { needs redistribution below here }
+# # @PP
+# # The Kempe meet move operation (Section {@NumberOf time_solvers.kempe})
+# # needs access to a secondary group monitor which monitors the demand
+# # monitors of preassigned tasks.  Function
+# # @ID @C {
+# # KHE_GROUP_MONITOR KheKempeDemandGroupMonitorMake(KHE_SOLN soln);
+# # }
+# # makes such a monitor, giving it sub-tag @C { KHE_SUBTAG_KEMPE_DEMAND }.
+# # It must be called before calling any solver that calls
+# # @C { KheKempeMeetMove }.  Its children are the ordinary demand
+# # monitors of the preassigned tasks of @C { soln }.  No primary
+# # groupings are relevant here so primary group monitors never
+# # replace the ordinary demand monitors.
+# #@PP
+# #An ejection chain solver uses two secondary group monitors:  a
+# #@I { start group monitor } whose defects it targets for repair,
+# #and a @I { continue group monitor } whose defects it is willing
+# #to repair, but only to help with repairing the defects of the
+# #start group monitor (Section {@NumberOf ejection.solving}).
+# #@PP
+# #For the time repair ejection chain algorithm of
+# #Section {@NumberOf ejection.time_repair}, the continue group monitor
+# #needs to group monitors related to time repair:  assign time, prefer
+# #times, spread events, order events, and ordinary demand monitors.
+# #This grouping is carried out by function
+# #@ID @C {
+# #KHE_GROUP_MONITOR KheNodeTimeRepairGroupMonitorMake(KHE_NODE node);
+# #}
+# #It makes a group monitor with sub-tag @C { KHE_SUBTAG_NODE_TIME_REPAIR }
+# #whose children are monitors of the kinds listed that monitor the
+# #meets of @C { node } and its descendants, plus meets whose assignments
+# #are fixed, directly or indirectly, to them.  The primary grouping
+# #produced by @C { KheSolnPrimaryEventGroupMonitorsMake } is relevant
+# #here, and its group monitors will replace individual monitors as
+# #children of the new monitor, when they are present.
+# #@PP
+# #Only preassigned resources are assigned during time assignment, but
+# #these assignments may cause virtually any kind of resource defect.
+# #These resource defects can only be repaired by changing time assignments,
+# #just because the resources involved are preassigned.  Accordingly,
+# #@C { KheNodeTimeRepairGroupMonitorMake } includes all resource
+# #monitors in its grouping.  They are not themselves grouped by
+# #any primary grouping, since in practice, although two resource
+# #monitors may monitor the same resource, they do not monitor the
+# #same thing in the sense of one necessarily having non-zero cost
+# #when the other does.
+# #@PP
+# #This group monitor may also be used as the start group monitor.
+# #Alternatively, when repairing the time assignments made to one
+# #layer, the group monitor returned by function
+# #@ID @C {
+# #KHE_GROUP_MONITOR KheLayerTimeRepairGroupMonitorMake(KHE_LAYER layer);
+# #}
+# #may be better.  It makes a group monitor with sub-tag
+# #@C { KHE_SUBTAG_LAYER_TIME_REPAIR } whose children are monitors
+# #of the kinds listed that monitor the meets of the nodes of
+# #@C { layer } and their descendants, plus meets whose assignments
+# #are fixed, directly or indirectly, to them.  Again, relevant
+# #primary group monitors are substituted for individual monitors,
+# #and resource monitors are included, but only those which monitor
+# #the layer's resources.  Targeting only those assignments just made
+# #speeds the algorithm up and focuses it on places where successful
+# #repairs are most likely, given that defects in previously assigned
+# #layers have already resisted repair.
+# #@PP
+# #For the resource repair ejection chain algorithm of
+# #Section {@NumberOf ejection.resource_repair}, the continue group
+# #monitor needs to group all the monitors related to the repair of
+# #the assignments of the tasks of a given tasking:  assign resource
+# #monitors, prefer resources monitors, avoid split assignments
+# #monitors, and the six resource monitors.  If the tasking is for
+# #a particular resource type, only monitors of entities of that
+# #type are wanted.  This grouping is made by a call to
+# #@ID @C {
+# #KHE_GROUP_MONITOR KheTaskingGroupMonitorMake(KHE_TAS KING tasking);
+# #}
+# #The new group monitor has sub-tag @C { KHE_SUBTAG_TASKING }.  It
+# #builds on the primary grouping produced by
+# #@C { KheSolnPrimaryEventResourceGroupMonitorsMake } when present.
+# #It is used as both the start group monitor and the continue group
+# #monitor of the ejector object.
+# #@PP
+# #As well as start and continue group monitors, an ejector object
+# #accepts @I { limit group monitors }.  Ejection chains which
+# #cause the cost of these monitors to increase are rejected.
+# #During resource assignment it may be useful to limit the cost
+# #of the global tixel matching in this way.  Function
+# #@ID @C {
+# #KHE_GROUP_MONITOR KheAllDemandGroupMonitorMake(KHE_SOLN soln,
+# #  KHE_RESOURCE_TYPE rt);
+# #}
+# #groups all demand monitors (or all demand monitors of type @C { rt }
+# #if @C { rt } is non-@C { NULL }) under a group monitor with sub-tag
+# #@C { KHE_SUBTAG_ALL_DEMAND }.  No primary groupings are relevant here
+# #so the individual monitors grouped are ordinary demand and workload
+# #demand monitors, not group monitors.  The demand monitors could be
+# #disconnected from the solution while enforcing this limit, to save
+# #time, but @C { KheAllDemandGroupMonitorMake } does not do that.
+# #@End @SubSection
+# #
+# #@SubSection
+# #    @Title { Detaching resource monitors }
+# #    @Tag { time_structural.monitor.resource }
+# #@Begin
+# #@LP
+# # Ejection chains are likely to struggle when two monitors report the
+# # same defect.  The cost of each monitor separately might not be large
+# # enough to end the chain if removed, causing the chain to terminate
+# # in failure, whereas if it was clear that there was really only one
+# # defect, the chain might be able to go on and repair that defect.
+# # When this difficulty arises, there are basically two ways out of
+# # it:  either the monitors involved must be grouped, or one of them
+# # must be detached.
+# # @PP
+# # Ordinary demand monitors often report the same defects as avoid
+# # clashes monitors, and workload demand monitors often report the
+# # same defects as their originating avoid unavailable times, limit
+# # busy times, and limit workload monitors.  This does not matter
+# # during resource assignment, when demand monitors are grouped
+# # separately and used only to reject chains which increase the
+# # number of unmatched demand nodes.  But it does matter during
+# # time assignment.
+# # @PP
+# # Not having demand monitors would be a disaster for any instance
+# # with unpreassigned resources.  The standard example of the six
+# # simultaneous Science classes when there are only five Science
+# # laboratories makes that clear.  There are also examples involving
+# # workload demand monitors.  Demand monitors duplicate resource
+# # monitors, but they also do more.  If demand monitors must be
+# # present, then either the resource monitors must be detached, or
+# # else the demand monitors and resource monitors must be grouped
+# # together.
+# # @PP
+# # Not all avoid unavailable times, limit busy times, and limit
+# # workload monitors give rise to workload demand monitors:  soft
+# # ones don't, nor do those that fail to satisfy the subset tree
+# # condition (Section {@NumberOf matchings.workload.tree}).  There
+# # is no redundancy in these cases and nothing needs to be done.
+# # @PP
+# # When workload demand monitors are created, however, it makes
+# # sense to group those with the same originating monitor.  The
+# # question is, what to do about that monitor.  In addition
+# # to the upper limits handled by workload demand monitors,
+# # limit busy times and limit workload monitors may have lower
+# # limits which only they monitor, so they cannot be detached.
+# # The alternative is to group them with their workload demand
+# # monitors.  This also has the advantage of including the true
+# # cost of the defect in the accounting, not just the hard cost
+# # of 1 supplied by the workload demand monitors.
+# # So @C { KheSolnPrimaryEventGroupMonitorsMake }
+# # (Section {@NumberOf time_structural.monitor.primary}) does
+# # this for avoid unavailable times, limit busy times, and limit
+# # workload monitors which are originating monitors for workload
+# # demand monitors.
+# # @PP
+# # Avoid clashes monitors and ordinary demand monitors are simpler.
+# # Avoid clashes monitors do nothing that ordinary demand monitors
+# # don't (except possibly report a different cost), and they cannot
+# # be grouped with ordinary demand monitors in general, since they
+# # apply to specific resources whereas ordinary demand monitors do not
+# # (unless derived from preassigned tasks).  So all the indications
+# # here are that avoid clashes monitors should be detached.
+# #Functions
+# #@ID {0.98 1.0} @Scale @C {
+# #void KheSolnDetachAllResourceMonitors(KHE_SOLN soln, KHE_MONITOR_TAG tag);
+# #void KheSolnAttachAllResourceMonitors(KHE_SOLN soln, KHE_MONITOR_TAG tag);
+# #}
+# #may be used to ensure that all resource monitors with the
+# #given tag are detached or attached.
+# #@End @SubSection
+# #
+# #@SubSection
+# #    @Title { Conventions for attaching and grouping monitors }
+# #    @Tag { time_structural.monitor.conventions }
+# #@Begin
+# #@LP
+# #@End @SubSection
+# #
+# #@EndSubSections
+# @End @Section
+
+#@Section
+#    @Title { Miscellaneous }
+#    @Tag { time_structural.misc }
+#@Begin
+#@BeginSubSections
+
+@EndSections
+@End @Chapter

@@ -1,0 +1,1913 @@
+@Chapter
+    @Title { Extra Types for Solving }
+    @Tag { extras }
+@Begin
+This chapter introduces several types of objects that help with solving.
+Four of them (@I { nodes }, @I { layers }, @I { zones }, and @I { taskings })
+are integral to solutions, being copied when they are copied, for example.
+But they are not part of the XML model, so their use is optional.  Nodes
+and layers together define the @I { layer tree }, a data structure
+invented by the author @Cite { $kingston2006layer_tree } for use in
+time assignment.  Zones help to make time assignments regular, and
+taskings are used in resource assignment.
+@BeginSections
+
+@Section
+    @Title { Layer trees }
+    @Tag { extras.layer_trees }
+@Begin
+@LP
+The layer tree is a data structure for organizing solutions during
+time assignment.  It supports @I { hierarchical timetabling }, in
+which meets are timetabled together into small timetables called
+@I { tiles }, the tiles are timetabled together, and so on until
+a complete timetable is produced.  Layer trees are recommended
+when solving general instances, since they gracefully handle
+awkward cases, such as linked events whose durations differ.
+@PP
+Layer trees are made of @I { nodes }, which form a tree (actually, a
+forest).  Each node has an optional @I { parent node }.  The nodes
+with a given parent are its @I { children }.
+@PP
+Within each node lie any number of meets.  The @I { node rule }, part
+of the solution invariant (Section {@NumberOf solutions.invariant}),
+imposes a structure on how the meets of nodes may be assigned:  if
+@C { meet } is assigned to @C { target_meet } and lies in node
+@C { n }, then @C { n } has a parent node and @C { target_meet } lies
+in that parent node.  A layer tree usually has a single root node
+containing the cycle meets, called the @I { cycle node }.  If there
+is a cycle node, the node rule guarantees that if every non-cycle
+meet lying in a node is assigned to some meet, then every such
+meet is assigned a time.
+@PP
+A meet may lie in at most one node.  When using layer trees,
+it is conventional for every meet to lie in a node except
+when it has received its final assignment.  Omitting meets
+from nodes hides them from time assignment algorithms, which
+typically access meets via nodes.
+@PP
+When a meet splits, it is replaced in its node (if any) by the
+two fragments.  When two meets merge, they must lie in the
+same node (or none), and they are replaced by the merged meet.
+@PP
+A @I layer is a subset of the children of some node with the property
+that none of the meets in the nodes of the layer may overlap
+in time.  This could be for any reason, but it is usually because their
+meets all share a preassigned resource which possesses a required
+avoid clashes constraint.  The property is not enforced by KHE; it
+is merely a convention.
+@PP
+Here are some examples of layer trees.  The first has four nodes,
+@M { N }, @M { n sub 1 }, @M { n sub 2 }, and @M { n sub 3 }.  The
+@M { n sub i } share a layer and are children of @M { N }, so their
+meets must be assigned to meets of @M { N }
+and should not overlap in time:
+@CD @Tbl
+   aformat { @StartHSpan @Cell A | @HSpan | @HSpan | @HSpan }
+   bformat { @Cell 1c @Wide A | @StartHSpan @Cell 2c @Wide B | @HSpan |
+   @Cell 1c @Wide D }
+   r { yes }
+{
+@Rowa
+    A { @M { N } }
+@Rowb
+    A { @M { n sub 1 } }
+    B { @M { n sub 2 } }
+    D { @M { n sub 3 } }
+}
+The nodes are shown as rectangles.  The horizontal direction represents
+time.  That the @M { n sub i } share a layer is indicated by placing
+them alongside each other, and that they are children of @M { N } is
+indicated by placing them vertically below @M { N }.
+@PP
+In the next example, @M { N } has five children,
+# @M { n sub 1 },
+# @M { n sub 2 }, @M { n sub 3 }, @M { m sub 1 }, and @M { m sub 2 },
+lying in two layers, @M { lbrace n sub 1 , n sub 2 , n sub 3 rbrace }
+and @M { lbrace m sub 1 , m sub 2 rbrace }:
+@CD @Tbl
+   aformat { @StartHSpan @Cell A | @HSpan | @HSpan | @HSpan }
+   bformat { @Cell 1c @Wide A | @StartHSpan @Cell 2c @Wide B | @HSpan |
+   @Cell 1c @Wide D }
+   cformat { @StartHSpan @Cell 2c @Wide A | @HSpan | @StartHSpan @Cell 2c @Wide C |
+   @HSpan }
+   r { yes }
+{
+@Rowa
+    A { @M { N } }
+@Rowb
+    A { @M { n sub 1 } }
+    B { @M { n sub 2 } }
+    D { @M { n sub 3 } }
+@Rowc
+    A { @M { m sub 1 } }
+    C { @M { m sub 2 } }
+}
+# Neither child layer is constrained by the presence of the other.
+This could arise when one group of students attends the
+@M { n sub i } while another group attends the @M { m sub i }.
+@PP
+Finally, here is an example where a node lies in two layers
+(but still has only one parent):
+@CD @Tbl
+   aformat { @StartHSpan @Cell A | @HSpan | @HSpan | @HSpan }
+   bformat { @StartVSpan @Cell 2c @Wide A | @Cell 1c @Wide B |
+   @StartHSpan @Cell 2c @Wide C | @HSpan }
+   cformat { @VSpan | @StartHSpan @Cell 2c @Wide B | @HSpan |  @Cell 1c @Wide C }
+   r { yes }
+{
+@Rowa
+    A { @M { N } }
+@Rowb
+    A { @M { nm sub 1 } }
+    B { @M { n sub 2 } }
+    C { @M { n sub 3 } }
+@Rowc
+    B { @M { m sub 2 } }
+    C { @M { m sub 3 } }
+}
+The two layers @M { lbrace nm sub 1 , n sub 2 , n sub 3 rbrace }
+and @M { lbrace nm sub 1 , m sub 2 , m sub 3 rbrace } both contain
+node @M { nm sub 1 }.  This case arises naturally when an event (or
+a set of linked events) is attended by two groups of students, so
+that their timetables coincide at that event but may differ elsewhere.
+@PP
+The key operation in hierarchical timetabling is the assignment of
+the meets of the children of a node to the meets of the node, so
+that meets that share a layer do not overlap.  One way to construct
+a timetable is to build a layer tree containing every meet, whose
+root node contains the cycle meets, and apply this operation at each
+node, visiting the nodes in postorder (bottom up).
+@End @Section
+
+@Section
+    @Title { Nodes }
+    @Tag { extras.nodes }
+@Begin
+@LP
+To create a layer tree node, initially with no meets, no
+parent, and no children, call
+@ID @C {
+KHE_NODE KheNodeMake(KHE_SOLN soln);
+}
+Its back pointer may be accessed by
+@ID @C {
+void KheNodeSetBack(KHE_NODE node, void *back);
+void *KheNodeBack(KHE_NODE node);
+}
+and its visit number by
+@ID @C {
+void KheNodeSetVisitNum(KHE_NODE n, int num);
+int KheNodeVisitNum(KHE_NODE n);
+bool KheNodeVisited(KHE_NODE n, int slack);
+void KheNodeVisit(KHE_NODE n);
+void KheNodeUnVisit(KHE_NODE n);
+}
+as usual, and its other attributes may be retrieved by calling
+@ID @C {
+KHE_SOLN KheNodeSoln(KHE_NODE node);
+int KheNodeSolnIndex(KHE_NODE node);
+}
+@C { KheNodeSolnIndex } returns the @I { index } of @C { node }:  the
+value of @C { i } for which @C { KheSolnNode(soln, i) }
+(Section {@NumberOf solutions.top.traversal}) returns @C { node }.  The
+index may change when nodes are deleted (what actually happens is that
+the hole left by the deletion of a node, if not last, is plugged by the
+last node) so care is needed if indexes are stored.  To visit the
+nodes of a solution in increasing index order, use functions
+@C { KheSolnNodeCount } and @C { KheSolnNode } from
+Section {@NumberOf solutions.top.traversal}.  To delete a node, call
+@ID @C {
+bool KheNodeDeleteCheck(KHE_NODE node);
+bool KheNodeDelete(KHE_NODE node);
+}
+This deletes all parent-child links involving @C { node }, and deletes
+all meets from @C { node } (but does not delete them).  It is permitted
+only when no meets assigned to @C { node }'s meets lie in a node.
+@PP
+To make one node the parent of another, call
+@ID @C {
+bool KheNodeAddParentCheck(KHE_NODE child_node, KHE_NODE parent_node);
+bool KheNodeAddParent(KHE_NODE child_node, KHE_NODE parent_node);
+}
+These abort if @C { child_node } already has a parent; they return
+@C { false } and do nothing when adding the link would cause a cycle.
+To delete a parent-child link, call
+@ID @C {
+bool KheNodeDeleteParentCheck(KHE_NODE child_node);
+bool KheNodeDeleteParent(KHE_NODE child_node);
+}
+Deletion is permitted only when none of the meets of @C { child_node }
+is assigned.  The gap created in the list of child nodes of the parent
+node by the deletion of @C { child_node } is filled by shuffling the
+following nodes down one place.  To retrieve the parent of a node, call
+@ID @C {
+KHE_NODE KheNodeParent(KHE_NODE node);
+}
+This returns @C { NULL } when @C { node } has no parent.  Children are
+added and deleted, obviously, by adding and deleting parents.  Functions
+@ID @C {
+int KheNodeChildCount(KHE_NODE node);
+KHE_NODE KheNodeChild(KHE_NODE node, int i);
+}
+visit a node's children in the usual way.  There are also
+@ID @C {
+bool KheNodeIsDescendant(KHE_NODE node, KHE_NODE ancestor_node);
+bool KheNodeIsProperDescendant(KHE_NODE node, KHE_NODE ancestor_node);
+}
+@C { KheNodeIsDescendant } returns @C { true } when @C { node } is a
+descendant of @C { ancestor_node }, possibly @C { ancestor_node }
+itself; @C { KheNodeIsProperDescendant } returns @C { true } when
+@C { node } is a proper descendant of @C { ancestor_node }, that is,
+a descendant other than @C { ancestor_node } itself.  They work in the
+obvious way, searching upwards from @C { node } for @C { ancestor_node }.
+@PP
+Several helper functions for rearranging nodes appear in
+Section {@NumberOf time_structural.nodes}.  They are often more
+useful than @C { KheNodeAddParent } and @C { KheNodeDeleteParent }.
+Some of them call
+@ID {0.98 1.0} @Scale @C {
+void KheNodeSwapChildNodesAndLayers(KHE_NODE node1, KHE_NODE node2);
+}
+This function makes all the child nodes and child layers of
+@C { node1 } into child nodes and child layers of @C { node2 } and
+vice versa.  The child nodes and layers are the exact same objects
+as before, stored in the same order as before; only their parent
+node is changed.  Any assigned meets lying in child nodes of either
+node are unassigned (otherwise the node rule would be violated).
+@PP
+A meet may lie in at most one node, and function @C { KheMeetNode }
+(Section {@NumberOf solutions.meets}) returns the node containing
+a given meet, if any.  To add a meet to a node and delete it, the
+operations are
+@ID @C {
+bool KheNodeAddMeetCheck(KHE_NODE node, KHE_MEET meet);
+bool KheNodeAddMeet(KHE_NODE node, KHE_MEET meet);
+bool KheNodeDeleteMeetCheck(KHE_NODE node, KHE_MEET meet);
+bool KheNodeDeleteMeet(KHE_NODE node, KHE_MEET meet);
+}
+@C { KheNodeAddMeetCheck } and @C { KheNodeAddMeet }
+abort if @C { meet } already lies in a node, and return @C { false }
+if it is already assigned to a meet not in the parent of
+@C { node }.  @C { KheNodeDeleteMeetCheck } and
+@C { KheNodeDeleteMeet } abort if @C { meet } does not lie in
+@C { node }, and return @C { false } if a meet from a
+child of @C { node } is assigned to @C { meet }.  Functions
+@ID @C {
+int KheNodeMeetCount(KHE_NODE node);
+KHE_MEET KheNodeMeet(KHE_NODE node, int i);
+}
+visit the meets of a node in the usual way.  The order that
+meets are stored in nodes and returned by these functions is
+arbitrary, and the user can change it by calling
+@ID @C {
+void KheNodeMeetSort(KHE_NODE node,
+  int(*compar)(const void *, const void *))
+}
+where @C { compar } is a comparison function suitable for
+passing to @C { qsort }.  Two such comparison functions
+are supplied.  One sorts the meets into decreasing duration
+order:
+@ID @C {
+int KheMeetDecreasingDurationCmp(const void *p1, const void *p2);
+}
+Here is the implementation:
+@ID @C {
+int KheMeetDecreasingDurationCmp(const void *p1, const void *p2)
+{
+  KHE_MEET meet1 = * (KHE_MEET *) p1;
+  KHE_MEET meet2 = * (KHE_MEET *) p2;
+  if( KheMeetDuration(meet1) != KheMeetDuration(meet2) )
+    return KheMeetDuration(meet2) - KheMeetDuration(meet1);
+  else
+    return KheMeetIndex(meet1) - KheMeetIndex(meet2);
+}
+}
+Ties are broken by referring to the meet index.  The other sorts
+meets by increasing value of the index of the target meet,
+breaking ties by increasing value of the target offset:
+@ID @C {
+int KheMeetIncreasingAsstCmp(const void *p1, const void *p2)
+}
+This brings together meets whose assignments place them adjacent
+in time.  Unassigned meets appear after assigned ones, but are
+not themselves sorted into any particular order.
+@PP
+Unlike cycle meets, which are different behind the scenes from
+other meets, cycle nodes are just ordinary nodes whose meets
+happen to be cycle meets.  Accordingly, function
+@ID @C {
+bool KheNodeIsCycleNode(KHE_NODE node);
+}
+merely returns @C { true } if @C { node } contains at least one
+meet, and its first meet is a cycle meet.
+@PP
+The total duration, assigned duration, and demand of the
+meets of @C { node } are returned by
+@ID @C {
+int KheNodeDuration(KHE_NODE node);
+int KheNodeAssignedDuration(KHE_NODE node);
+int KheNodeDemand(KHE_NODE node);
+}
+The duration is kept up to date and stored in the node, so
+@C { KheNodeDuration } costs almost nothing.  The other two have
+to sum values stored in the meets, which is slower but still fast.
+@PP
+Following the pattern laid down in Section {@NumberOf intro.common},
+function
+@ID @C {
+bool KheNodeSimilar(KHE_NODE node1, KHE_NODE node2);
+}
+returns @C { true } when @C { node1 } and @C { node2 } are similar:
+when they contain similar events.  The exact rule is as follows.  If
+@C { node1 } and @C { node2 } are the same node, they are similar.  A
+node is @I { admissible } if all of its meets are derived from
+events, and for each event found among those meets, all of the
+meets of that event lie in the node.  Thus, an admissible node
+can be considered as a set of events.  Two distinct nodes are
+similar if they are admissible and each event in one can be
+matched up with a similar event in the other.  The definition of
+similarity for events is as in Section {@NumberOf events_events}.
+@PP
+A similar property is @I { regularity } (Section {@NumberOf extras.zones}).
+Two nodes are regular when they are the same node or contain meets of
+equal durations and equal time domains.  Function
+@ID @C {
+bool KheNodeRegular(KHE_NODE node1, KHE_NODE node2, int *regular_count);
+}
+returns @C { true } when @C { node1 } and @C { node2 } are regular,
+and @C { false } otherwise.  Either way, it reorders the meets of
+both nodes so that corresponding meets have equal durations and
+equal time domains, as far as possible; @C { *regular_count } is
+the number of such pairs.  (So @C { true } is returned when
+@C { *regular_count } equals the number of meets in both nodes.)
+@PP
+Another function useful to solvers is
+@ID @C {
+int KheNodeResourceDuration(KHE_NODE node, KHE_RESOURCE r);
+}
+This returns the total duration of meets in @C { node } and its
+descendants that contain a preassignment of @C { r }.  If a meet
+contains two such preassignments, its duration is only counted once.
+#@PP
+#Two nodes may be merged by calling
+#@ID @C {
+#bool KheNodeMergeCheck(KHE_NODE node1, KHE_NODE node2);
+#bool KheNodeMerge(KHE_NODE node1, KHE_NODE node2, KHE_NODE *res);
+#}
+#The nodes may be merged if they have the same parent node and
+#lie in the same layers.
+#@PP
+#The meets of the result, @C { *res }, are the meets of @C { node1 }
+#followed by the meets of @C { node2 }, and the child nodes of
+#@C { *res } are the child nodes of @C { node1 } followed by the
+#child nodes of @C { node2 }.  The two nodes must either lie in
+#the same layers and have the same parent, or have no parent,
+#otherwise @C { KheNodeMerge } aborts.  This implies that node merging
+#cannot violate the cycle rule, or any rule.  As usual with merging,
+#@C { node1 } and @C { node2 } are undefined afterwards (actually,
+#@C { node1 } is recycled as @C { *res } and @C { node2 } is freed),
+#but one may write, for example,
+#@ID @C { KheNodeMerge(node1, node2, &node1); }
+#to re-use variable @C { node1 } to hold the result.
+#@PP
+#In timetabling terms, merging permits the meets of the
+#child nodes of the two nodes to be assigned to the meets
+#of either node, rather than to just one as before.  For example,
+#suppose the layer tree rooted at @C { node1 } contains the Science
+#events of several groups of Year 7 students, and the layer tree
+#rooted at @C { node2 } contains the Music events of the same
+#groups of students.  Then originally the Science events must
+#be simultaneous and the Music events must be simultaneous,
+#whereas afterwards the two kinds of events may intermingle.
+#This may be useful if, for example, there are few Music teachers
+#and Music rooms, so that the Music events must be spread out in
+#time.  This kind of arrangement is well known to manual timetablers;
+#it has various names, including @I { runaround }.
+#@PP
+#A node may be split into two nodes by calling
+#@ID { 0.98 1.0 } @Scale @C {
+#bool KheNodeSplitCheck(KHE_NODE node, int meet_count1, int child_count1);
+#bool KheNodeSplit(KHE_NODE node, int meet_count1, int child_count1,
+#  KHE_NODE *res1, KHE_NODE *res2);
+#}
+#The first of the two result nodes, @C { *res1 }, holds the first
+#@C { meet_count1 } meets of @C { node }, and the first
+#@C { child_count1 } children of @C { node }, while the second result
+#node, @C { *meet2 }, holds the rest.  Both result nodes have the
+#same parent node as @C { node }.  The operations return @C { false }
+#if the split would violate the node rule (because some of the meets
+#of the child nodes of @C { *res1 } would be assigned to meets of
+#@C { *res2 }, or vice versa).  As usual, @C { node } is undefined
+#after a successful split (actually it is recycled as @C { *res1 }),
+#and @C { *res1 } and @C { *res2 } are not changed by an unsuccessful
+#one, so that, for example,
+#@ID @C {
+#KheNodeSplit(node, meet_count1, child_count1, &node, &other_node);
+#}
+#does the right thing whether the split succeeds or not.
+#@PP
+#Typically, a split is used to undo a merge that did not work out, like this:
+#@ID @C {
+#meet_count1 = KheNodeMeetCount(node1);
+#child_count1 = KheNodeChildCount(node1);
+#KheNodeMerge(node1, node2, &merged_node);
+#... decide that the merge is not a good idea after all ...
+#KheNodeSplit(merged_node, meet_count1, child_count1, &node1, &node2);
+#}
+#The meets and children of nodes are re-ordered only when
+#some are added or deleted, so, assuming this has not happened, this
+#split returns @C { node1 } and @C { node2 } to their original state.
+#With a little careful record-keeping, one can merge a whole set of
+#nodes, and recover them later by splitting in reverse order.  At
+#present, marks and paths cannot undo node splits and merges.
+@PP
+To make a debug print of @C { node } onto file @C { fp } with a
+given verbosity and indent, call
+@ID @C {
+void KheNodeDebug(KHE_NODE node, int verbosity, int indent, FILE *fp);
+}
+Verbosity 1 prints just the node index number, verbosity 2 adds the
+duration and meets, verbosity 3 adds the node's children, and verbosity
+4 adds its segments.  There is also
+@ID @C {
+void KheNodePrintTimetable(KHE_NODE node, int cell_width,
+  int indent, FILE *fp);
+}
+which prints a timetable showing the meets of @C { node } across the
+top, and the assigned meets lying in child nodes of @C { node } on
+subsequent lines, one line per child layer.  (So @C { node } needs
+to have child layers when it is called.)  Parameter @C { cell_width }
+is the width of each cell, in characters.
+# , those layers are used; otherwise
+# @C { KheNodeChildLayersMake } and @C { KheNodeChildLayersDelete }
+# are called to create layers at the start and delete them at the
+# end.
+#@BeginSubSections
+#
+#@SubSection
+#    @Title { Node moving }
+#    @Tag { extras.nodes.move }
+#@Begin
+#@LP
+#A node may be made the child of @C { parent_node }, instead of its
+#current parent, by calling
+#@ID @C {
+#bool KheNodeMoveCheck(KHE_NODE child_node, KHE_NODE parent_node);
+#bool KheNodeMove(KHE_NODE child_node, KHE_NODE parent_node);
+#}
+#This does the same as the sequence
+#@ID @C {
+#KheNodeDeleteParent(child_node);
+#KheNodeAddParent(child_node, parent_node);
+#}
+#except that this sequence will fail if any of @C { child_node }'s
+#meets are assigned initially, whereas @C { KheNodeMove } deals
+#with such assignments and can fail only the cycle rule.
+#@PP
+#In most cases, @C { KheNodeMove } begins by deassigning those
+#meets of @C { child_node } that are assigned.  However, there is one
+#interesting exception.  Suppose that @C { child_node }'s new parent node
+#is an ancestor of @C { child_node }'s current parent node:
+#@CD @Diag {
+#@Tbl
+#    aformat { @Cell A | @Cell @M { arrowright } | @Cell B }
+#    mb { 0i }
+#{
+#@Rowa
+#    A { @Tree {
+#	  @Circle blabel { @C { parent_node } } {}
+#	  @LeftSub {
+#	    @Circle {}
+#	    @LeftSub {
+#	      @Circle {}
+#	      @LeftSub @Circle blabel { @C { child_node } } {}
+#	    }
+#	  }
+#      } }
+#    B { @Tree {
+#	  @Circle alabel { @C { parent_node } } {}
+#	  @LeftSub {
+#	    @Circle {}
+#	    @LeftSub @Circle {}
+#	  }
+#	  @RightSub @Circle alabel { @C { child_node } } {}
+#      } }
+#}
+#}
+#In each case where a complete chain of assignments reaches from a
+#meet @C { meet } of @C { child_node } to a meet
+#of @C { parent_node }, @C { meet } will be assigned afterwards, to
+#the meet at the end of the chain, with offset equal to
+#the sum of the offsets along the chain.  This must be valid because
+#it does not change the timetable.  Where there is no complete
+#chain of assignments, @C { meet } will be unassigned afterwards.
+#@PP
+#For example, suppose node @C { p } has accumulated children to
+#make the timetable regular, but now the children's original
+#freedom to be assigned elsewhere needs to be restored:
+#@ID @C {
+#while( KheNodeChildCount(p) > 0 )
+#  KheNodeMove(KheNodeChild(p, 0), KheNodeParent(p));
+#}
+#@C { KheNodeMove } preserves the current timetable during these relinkings.
+#@End @SubSection
+#
+#@SubSection
+#    @Title { Node meet swapping and assignment }
+#    @Tag { extras.nodes.swap }
+#@Begin
+#@LP
+#These functions swap the assignments of the meets of two nodes:
+#@ID @C {
+#bool KheNodeMeetSwapCheck(KHE_NODE node1, KHE_NODE node2);
+#bool KheNodeMeetSwap(KHE_NODE node1, KHE_NODE node2);
+#}
+#Both @C { node1 } and @C { node2 } must be non-@C { NULL }.  Both
+#functions return @C { true } if the nodes have the same number of
+#meets, and a sequence of @C { KheMeetSwap } operations applied to
+#corresponding meets would succeed.  @C { KheNodeMeetSwapCheck } just
+#makes the check, while @C { KheNodeMeetSwap } performs the meet swaps
+#as well.  If @C { node1 } and @C { node2 } are the identical same
+#node, @C { false } is returned.  As usual when swapping, the code
+#fragment
+#@ID @C {
+#if( KheNodeMeetSwap(node1, node2) )
+#  KheNodeMeetSwap(node1, node2);
+#}
+#is guaranteed to change nothing, whether the first swap succeeds or not.
+#@PP
+#To maximize the chances of success it is naturally best to sort
+#the meets before calling these functions, probably like this:
+#@ID @C {
+#KheNodeMeetSort(node1, &KheMeetDecreasingDurationCmp);
+#KheNodeMeetSort(node2, &KheMeetDecreasingDurationCmp);
+#}
+#This sorting has been omitted from @C { KheNodeMeetSwapCheck } and
+#@C { KheNodeMeetSwap } for efficiency, since each node's meets need
+#to be sorted only once, yet the node may be swapped many times.
+#The user is expected to sort the meets of every relevant node,
+#perhaps like this:
+#@ID @C {
+#for( i = 0;  i < KheSolnNodeCount(soln);  i++ )
+#  KheNodeMeetSort(KheSolnNode(soln, i), &KheMeetDecreasingDurationCmp);
+#}
+#before any swapping begins.  Some other functions, for example
+#@C { KheNodeRegular } (Section {@NumberOf extras.nodes}), also
+#sort meets, so care is needed.
+#@PP
+#There are also functions
+#@ID @C {
+#bool KheNodeRegularAssignCheck(KHE_NODE node, KHE_NODE sibling_node);
+#bool KheNodeRegularAssign(KHE_NODE node, KHE_NODE sibling_node);
+#void KheNodeUnAssign(KHE_NODE node);
+#}
+#@C { KheNodeRegularAssignCheck } calls @C { KheNodeRegular }
+#(Section {@NumberOf extras.nodes}) to check that the two nodes
+#are regular, and if they are, it goes on to check that each
+#meet in @C { sibling_node } is assigned, and that each meet
+#of @C { node } is either already assigned to the same meet and
+#offset that the corresponding meet of @C { sibling_node } is
+#assigned to, or else may be assigned to that meet and offset.
+#@C { KheNodeRegularAssign } makes all these checks too, and
+#then carries out the assignments if the checks all pass.
+#Finally, @C { KheNodeUnAssign } unassigns all the meets of
+#@C { node } (even preassigned ones, so some care is needed here).
+#@End @SubSection
+#
+#@SubSection
+#    @Title { Node merging and splitting }
+#    @Tag { extras.nodes.split }
+#@Begin
+#@LP
+#@End @SubSection
+#
+#@SubSection
+#    @Title { Node meet merging and splitting }
+#    @Tag { extras.nodes.meet_split }
+#@Begin
+#@LP
+#Node meet splitting and merging (not to be confused with node merging
+#and splitting above) split the meets of a node as much as possible,
+#and merge them together as much as possible:
+#@ID @C {
+#void KheNodeMeetSplit(KHE_NODE node, bool recursive);
+#void KheNodeMeetMerge(KHE_NODE node, bool recursive);
+#}
+#Both operations always succeed, although they may do nothing.
+#@PP
+#For every offset of every meet of @C { node }, @C { KheNodeMeetSplit }
+#calls @C { KheMeetSplit }, passing it the @C { recursive } parameter.
+#In this way, the meets become as split up as possible.
+#@PP
+#@C { KheNodeMeetMerge } sorts the meets so that meets assigned to the
+#same target meets are adjacent, with their target offsets in increasing
+#order, using @C { KheMeetIncreasingAsstCmp } from
+#Section {@NumberOf extras.nodes}.  Unassigned meets go at the end.
+#It then tries to merge each pair of adjacent meets.  Any calls to
+#@C { KheMeetMerge } it makes are passed the @C { recursive } parameter.
+#@End @SubSection
+#
+#@SubSection
+#    @Title { Vizier nodes }
+#    @Tag { extras.nodes.vizier }
+#@Begin
+#@LP
+#A @I vizier (Arabic @I { wazir }) is a senior official, the
+#one who actually runs the country while the nominal ruler gets
+#the adulation.  In a similar way, a @I { vizier node } sits below
+#another node and does what that other node nominally does:  act
+#as the common parent of the subordinate nodes, and hold the meets
+#that those nodes' meets assign themselves to.
+#@PP
+#Any node can have a vizier, but only the cycle node really has
+#a use for one.  By connecting everything to the cycle node
+#indirectly via a vizier, it becomes trivial to try time repairs
+#in which the meets of the vizier node change their assignments,
+#effecting global alterations such as swapping everything on
+#Tuesday morning with everything on Wednesday morning.  Function
+#@ID @C {
+#KHE_NODE KheNodeVizierSplit(KHE_NODE parent_node);
+#}
+#inserts a new vizier node directly below @C { parent_node }.
+#Afterwards, @C { parent_node } has exactly one child node, the
+#vizier; it may be accessed using @C { KheNodeChild(parent_node, 0) }
+#as usual, and it is also the return value.  For every meet @C { pm }
+#of the parent node, the vizier has one meet @C { vm } with the same
+#duration as @C { pm } and assigned to @C { pm } at offset 0.  The
+#domain of @C { vm } is @C { NULL }, and nothing about it is fixed.
+#Each child node of @C { parent_node } becomes a child of the vizier,
+#each child layer of @C { parent_node } becomes a child layer of the
+#vizier, and each meet assigned to a meet of the parent node becomes
+#assigned to the corresponding meet of the vizier.  If @C { parent_node }
+#has zones, the vizier is given new corresponding zones, and the parent
+#node's zones are removed.
+#@PP
+#All this leaves the timetable unchanged, including constraints
+#imposed by domains and zones.  The vizier takes over without
+#affecting anyone's existing rights and privileges.
+#@PP
+#A vizier node is not different from any other node; only its role
+#is special.  However, for the convenience of repair operations
+#that would waste time if tried at vizier nodes, function
+#@ID @C {
+#bool KheNodeIsVizier(KHE_NODE node);
+#}
+#is offered; it returns @C { true } when @C { node } was created
+#by a call to @C { KheNodeVizierSplit }.
+#@PP
+#To undo the effect of an earlier call to
+#@C { KheNodeVizierNodeSplit }, call
+#@ID @C {
+#void KheNodeVizierMerge(KHE_NODE parent_node);
+#}
+#This requires @C { parent_node } to have no child layers, no zones,
+#and exactly one child node, which it takes to be the vizier.  It
+#makes the child nodes of the vizier node into child nodes of
+#@C { parent_node }, and the child layers of the vizier node into
+#child layers of @C { parent_node }.  Any assignments to meets in
+#the child nodes of the vizier must be to meets in the vizier, and
+#they are converted into assignments to meets in @C { parent_node }
+#where possible (when the target meet in the vizier is itself
+#assigned, to a meet in the parent).  New zones are created in
+#@C { parent_node } based on the zones and meet assignments in
+#the vizier.  Finally the vizier and its meets are deleted.
+#@PP
+#Zones are not preserved across calls to @C { KheNodeVizierSplit }
+#and @C { KheNodeVizierMerge } in the exact way that child nodes
+#and child layers are.  The zones added to the vizier node by
+#@C { KheNodeVizierSplit } are freshly created zones, although they
+#do correspond exactly with the zones in the parent node.  The zones
+#added to the parent node by @C { KheNodeVizierMerge } are also
+#freshly created, but there will be a zone in a given parent meet
+#at a given offset only if there was a meet in the vizier which was
+#assigned that parent meet and was running (with a zone) at that offset.
+#If vizier meets overlap in time (which is not impossible), that will
+#further confuse the reassignment of zones.  It may be best to follow
+#@C { KheNodeVizierMerge } by a call to some function which ensures
+#that every offset of every meet in the parent has a zone, for example
+#@C { KheNodeExtendZones } (Section {@NumberOf time_structural.zones}).
+#@PP
+#Function @C { KheNodeMeetSplit }
+#(Section {@NumberOf extras.nodes.meet_split}) is useful with
+#vizier nodes.  Splitting a vizier's meets non-recursively opens
+#the way to fine-grained swaps, between half-mornings instead of
+#full mornings, and so on.  (A wild idea, that the author has not
+#tried, is to have an unsplit vizier with its own split vizier.
+#Then the larger swaps and the smaller ones are available together.)
+#In general, there are problems with using @C { KheNodeMeetMerge }
+#to undo these splits, so it is best to remove the entire vizier
+#node using @C { KheNodeVizierMerge } instead.  A fresh vizier
+#node can always be created later, at little cost.
+#@End @SubSection
+#
+#@EndSubSections
+@End @Section
+
+@Section
+    @Title { Layers }
+    @Tag { extras.layers }
+@Begin
+@LP
+A @I { layer } (not to be confused with the resource layer of
+Section {@NumberOf resources_layer}) is a subset of the child
+nodes of some node.  The intention is that the meets of a
+layer's nodes should not overlap in time, although this
+condition is not enforced.
+@PP
+For a given node there are two sets of layers of interest:  the
+node's @I { parent layers }, which are the layers it lies in (it
+may lie in several), and its @I { child layers }, which are subsets
+of its child nodes.  A node is a member of all of its parent layers
+and none of its child layers.
+# The @I { layer }, or just @I { layer }, of a resource
+# @C { r } with respect to a node @C { parent_node } is the set of
+# child nodes of @C { parent_node } which contain meets
+# derived from the events of @C { r }'s resource layer, either
+# directly within the nodes, or within their descendants, or assigned
+# to their meets or their descendants' meets,
+# directly or indirectly.  Typically, this requires the nodes of a
+# layer to be disjoint in time.  Function
+@PP
+To create a layer of children of a given parent node, initially with
+no nodes, call
+@ID @C {
+KHE_LAYER KheLayerMake(KHE_NODE parent_node);
+}
+It has a back pointer and a visit number, accessed by
+@ID @C {
+void KheLayerSetBack(KHE_LAYER layer, void *back);
+void *KheLayerBack(KHE_LAYER layer);
+
+void KheLayerSetVisitNum(KHE_LAYER layer, int num);
+int KheLayerVisitNum(KHE_LAYER layer);
+bool KheLayerVisited(KHE_LAYER layer, int slack);
+void KheLayerVisit(KHE_LAYER layer);
+void KheLayerUnVisit(KHE_LAYER layer);
+}
+as usual.  Functions
+@ID @C {
+KHE_NODE KheLayerParentNode(KHE_LAYER layer);
+int KheLayerParentNodeIndex(KHE_LAYER layer);
+}
+return the parent node of @C { layer } and the value of @C { i } for
+which @C { KheNodeChildLayer(KheLayerParentNode(layer), i) } returns
+@C { layer }.  For convenience the solution containing it can be found by
+@ID @C {
+KHE_SOLN KheLayerSoln(KHE_LAYER layer);
+}
+To delete the layer (but not its nodes), call
+@ID @C {
+void KheLayerDelete(KHE_LAYER layer);
+}
+To add and delete a child node of @C { parent_node } from a layer, call
+@ID @C {
+void KheLayerAddChildNode(KHE_LAYER layer, KHE_NODE node);
+void KheLayerDeleteChildNode(KHE_LAYER layer, KHE_NODE node);
+}
+@C { KheLayerAddChildNode } aborts if @C { node }'s parent node and
+@C { layer }'s parent node are different, and @C { KheLayerDeleteChildNode }
+aborts if @C { node } does not lie in @C { layer }; otherwise, both succeed.
+When a child node is deleted from a layer, all later nodes are shuffled
+up one place to fill the gap.  To visit the child nodes of a layer, call
+@ID @C {
+int KheLayerChildNodeCount(KHE_LAYER layer);
+KHE_NODE KheLayerChildNode(KHE_LAYER layer, int i);
+}
+To sort the child nodes of a layer, call
+@ID @C {
+void KheLayerChildNodesSort(KHE_LAYER layer,
+  int(*compar)(const void *, const void *));
+}
+where @C { compar } is a function suited to passing to @C { qsort }
+when it sorts an array of nodes.
+@PP
+Although much about layers is taken on trust, the @I { layer rule }
+is enforced:  the parent node of each node of a layer equals the
+parent node of the layer.  When the parent of a node is changed,
+the node is deleted from all the layers it lies in.
+# When a node
+# is split, its fragments lie in all the layers it did.  When two
+# nodes are merged, they must lie in the same layers, and the merged
+# result lies in those layers too.
+@PP
+The usual reason why nodes are placed into a layer together is
+because their meets have one or more preassigned resources in
+common, and the resources have hard avoid clashes constraints,
+preventing the meets from overlapping in time.  To document this
+reason when it applies, a layer contains a set of resources.
+To add and delete a resource from this set, the functions are
+@ID @C {
+void KheLayerAddResource(KHE_LAYER layer, KHE_RESOURCE r);
+void KheLayerDeleteResource(KHE_LAYER layer, KHE_RESOURCE r);
+}
+To visit this set of resources, the functions are
+@ID @C {
+int KheLayerResourceCount(KHE_LAYER layer);
+KHE_RESOURCE KheLayerResource(KHE_LAYER layer, int i);
+}
+There is no check that these resources are actually preassigned
+to the layer's meets.
+@PP
+When @C { KheLayerMake(parent_node) } is called, the resulting layer
+becomes a @I { child layer } of @C { parent_node }.  To visit the
+child layers of a given node, call
+@ID @C {
+int KheNodeChildLayerCount(KHE_NODE parent_node);
+KHE_LAYER KheNodeChildLayer(KHE_NODE parent_node, int i);
+}
+Also,
+@ID @C {
+void KheNodeChildLayersSort(KHE_NODE parent_node,
+  int(*compar)(const void *, const void *));
+}
+sorts the child layers of @C { parent_node }, using @C { compar }
+(a function suited to passing to @C { qsort }) as the comparison
+function, and
+@ID @C {
+void KheNodeChildLayersDelete(KHE_NODE parent_node);
+}
+deletes all the child layers of @C { parent_node }, without
+deleting any nodes.
+@PP
+When @C { KheLayerAddChildNode(layer, node) } is called, @C { layer }
+becomes a @I { parent layer } of @C { node }.  To visit a node's parent
+layers, call
+@ID @C {
+int KheNodeParentLayerCount(KHE_NODE child_node);
+KHE_LAYER KheNodeParentLayer(KHE_NODE child_node, int i);
+}
+It is important to allow multiple parent layers in this way.  For
+example, suppose there is one layer for the meets attended by Year
+12 students and another for the meets attended by Year 11 students.
+If one of the Year 11 events is linked to one of the Year 12 events
+by a link events constraint, then there will usually be a single
+node whose subtree contains the meets of both events, and this node
+will appear in both layers.  Function
+@ID @C {
+bool KheNodeSameParentLayers(KHE_NODE node1, KHE_NODE node2);
+}
+returns @C { true } when @C { node1 } and @C { node2 } have the
+same parent layers.
+@PP
+Functions
+@ID @C {
+int KheLayerDuration(KHE_LAYER layer);
+int KheLayerMeetCount(KHE_LAYER layer);
+}
+return the total duration of @C { layer }'s child nodes and the
+number of meets in them.  These values are stored in the layer and
+kept up to date as it changes, in the expectation that they will
+be used when sorting layers.  Similarly,
+@ID @C {
+int KheLayerAssignedDuration(KHE_LAYER layer);
+int KheLayerDemand(KHE_LAYER layer);
+}
+return the total duration of the assigned meets of @C { layer }'s
+child nodes, and their total demand.  These values are calculated
+on demand, not stored, so the functions are a bit slower.  There
+are also set operations, implemented efficiently using bit vectors
+of node indexes:
+@ID @C {
+bool KheLayerEqual(KHE_LAYER layer1, KHE_LAYER layer2);
+bool KheLayerSubset(KHE_LAYER layer1, KHE_LAYER layer2);
+bool KheLayerDisjoint(KHE_LAYER layer1, KHE_LAYER layer2);
+bool KheLayerContains(KHE_LAYER layer, KHE_NODE node);
+}
+These return @C { true } if @C { layer1 } and @C { layer2 } contain
+the same nodes, if every node of @C { layer1 } is a node of
+@C { layer2 }, if @C { layer1 } and @C { layer2 } contain no nodes in
+common, and if @C { node } lies in @C { layer }.
+@PP
+Three functions offer more complex comparisons between layers:
+@ID @C {
+bool KheLayerSame(KHE_LAYER layer1, KHE_LAYER layer2, int *same_count);
+bool KheLayerSimilar(KHE_LAYER layer1, KHE_LAYER layer2,
+  int *similar_count);
+bool KheLayerRegular(KHE_LAYER layer1, KHE_LAYER layer2,
+  int *regular_count);
+}
+These work in the same general way:  they reorder the nodes in the
+two layers so that the first @C { *same_count } (etc.) nodes in
+@C { layer1 } are equivalent in some way to the corresponding nodes
+in @C { layer2 }, returning @C { true } if this accounts for all
+the nodes in both layers.  @C { KheLayerSame } aligns nodes that
+are the identical same node; @C { KheLayerSimilar } aligns
+nodes that are similar, according to @C { KheNodeSimilar } from
+Section {@NumberOf extras.nodes}; and @C { KheLayerRegular }
+aligns nodes that are regular, according to @C { KheNodeRegular }
+from Section {@NumberOf extras.nodes}.  If @C { layer1 } and
+@C { layer2 } are the same layer, all three functions return
+@C { true } and set their count variable to the number of nodes
+in the layer.  If some nodes are shared between the two layers,
+these are always considered equivalent and they always appear
+first after the layers are ordered.
+@PP
+These functions are implemented by calls to a more general function:
+@ID @C {
+bool KheLayerAlign(KHE_LAYER layer1, KHE_LAYER layer2,
+  bool (*node_equiv)(KHE_NODE node1, KHE_NODE node2), int *count);
+}
+which does the same kind of alignment, first bringing identical
+nodes to the front of both layers, then ordering the other nodes,
+calling @C { node_equiv } to decide whether two nodes are equivalent.
+# @PP
+# Another useful function when solving is
+# @ID @C {
+# bool KheLayerMonitoredBy(KHE_LAYER layer, KHE_MONITOR m);
+# }
+# It returns @C { true } if @C { m } (or its descendants if
+# @C { m } is a group monitor) monitors any of the solution
+# events or tasks of @C { layer }.
+@PP
+Two layers that share a common parent node may be merged:
+@ID @C {
+void KheLayerMerge(KHE_LAYER layer1, KHE_LAYER layer2, KHE_LAYER *res);
+}
+The layers are deleted and replaced by layer @C { *res }, containing
+the nodes and resources of @C { layer1 } and @C { layer2 }.  It makes
+sense to merge, for example, when one layer is a subset of the other.
+@PP
+As an aid to debugging, KHE offers function
+@ID { 0.98 1.0 } @Scale @C {
+void KheLayerDebug(KHE_LAYER layer, int verbosity, int indent, FILE *fp);
+}
+It sends a debug print of @C { layer } to @C { fp } in the usual way.
+@End @Section
+
+@Section
+    @Title { Zones }
+    @Tag { extras.zones }
+@Begin
+@LP
+A @I regular timetable is one which has a pattern that makes it easy
+to understand.  For example, if a train comes every 15 minutes, then
+that is a regular train timetable.
+@PP
+In high school timetabling, two forms of regularity are important.
+@I { Meet regularity } is achieved when meets which overlap in
+time have the same starting times and durations.  It is automatic
+when all meets have duration 1, but not otherwise.  For example,
+if there are two meets of duration 2, and one starts at the first
+time on Mondays while the second starts at the second time, that
+is not regular.  Most instances seem to have meets of durations
+1 and 2, with just a few meets of higher durations, and under
+those circumstances meet regularity is easy to achieve.
+@PP
+@I { Node regularity } is achieved when the meets of two nodes
+which overlap in time have the same starting times and durations.
+Node regularity makes a timetable easy to understand, and
+simplifies resource assignment by reducing the number of pairs
+of events whose meets overlap in time, by ensuring that
+they generally either overlap completely or not at all.
+@PP
+There seems to be little value in measuring regularity formally;
+the important thing is to encourage it.  This is what zones are for.
+@PP
+For any node @M { n }, consider the set of all pairs of the form
+@M { (m, o) }, where @M { m } is a meet lying in @M { n }, and
+@M { o } is a legal offset of @M { m }:  if @M { m } has duration
+1, @M { o } may only be 0; if @M { m } has duration 2, @M { o } may
+be 0 or 1; and so on.  Such a pair is called a @I { meet-offset of }
+@M { n }.  For example, if @M { n } contains the cycle meets, then
+there is a meet-offset of @M { n } for each time of the cycle.
+@PP
+A @I { zone } of node @M { n } is a subset of the meet-offsets of
+@M { n }.  A zone may be created by calling
+@ID @C {
+KHE_ZONE KheZoneMake(KHE_NODE node);
+}
+Initially it contains no meet-offsets.  Functions
+@ID @C {
+KHE_NODE KheZoneNode(KHE_ZONE zone);
+int KheZoneNodeIndex(KHE_ZONE zone);
+}
+return @C { zone }'s node, which never changes, and the value of
+@C { i } for which @C { KheNodeZone(node, i) } returns @C { zone }.
+When a zone is deleted, the indexes of other zones in its node may
+change.  (As usual, the gap left by the deletion of the zone is
+plugged by moving the last zone into it, unless the deleted
+zone was the last zone.)  For convenience there is also
+@ID @C {
+KHE_SOLN KheZoneSoln(KHE_ZONE zone);
+}
+which returns the solution containing @C { zone }'s node.
+@PP
+A zone has has the usual back pointer and visit number:
+@ID @C {
+void KheZoneSetBack(KHE_ZONE zone, void *back);
+void *KheZoneBack(KHE_ZONE zone);
+
+void KheZoneSetVisitNum(KHE_ZONE zone, int num);
+int KheZoneVisitNum(KHE_ZONE zone);
+bool KheZoneVisited(KHE_ZONE zone, int slack);
+void KheZoneVisit(KHE_ZONE zone);
+void KheZoneUnVisit(KHE_ZONE zone);
+}
+A zone may be deleted by calling
+@ID @C {
+void KheZoneDelete(KHE_ZONE zone);
+}
+and all the zones of a node may be deleted by calling
+@ID @C {
+void KheNodeDeleteZones(KHE_NODE node);
+}
+Each meet-offset may lie in at most one zone.  To add a meet-offset
+to a zone, and to delete a meet-offset from a zone, the operations are
+@ID @C {
+void KheZoneAddMeetOffset(KHE_ZONE zone, KHE_MEET meet, int offset);
+void KheZoneDeleteMeetOffset(KHE_ZONE zone, KHE_MEET meet, int offset);
+}
+To retrieve the zone of a meet-offset, call
+@ID @C {
+KHE_ZONE KheMeetOffsetZone(KHE_MEET meet, int offset);
+}
+All these functions abort if @C { offset } is not a legal offset
+of @C { meet }.  @C { KheZoneAddMeetOffset } also aborts if the
+meet-offset already lies in a zone, or @C { zone } is @C { NULL },
+or @C { meet } does not lie in a node, or @C { zone } is not a
+zone of the node containing @C { meet }.  @C { KheMeetOffsetZone }
+returns @C { NULL } if the meet-offset does not lie in any zone,
+as is the case by default.
+@PP
+The zones of a node may be accessed from the node in the usual way:
+@ID @C {
+int KheNodeZoneCount(KHE_NODE node);
+KHE_ZONE KheNodeZone(KHE_NODE node, int i);
+}
+They are returned in an arbitrary order.  The meet-offsets of a zone
+may be accessed by calling
+@ID { 0.97 1.0 } @Scale @C {
+int KheZoneMeetOffsetCount(KHE_ZONE zone);
+void KheZoneMeetOffset(KHE_ZONE zone, int i, KHE_MEET *meet, int *offset);
+}
+They are returned in an arbitrary order.  Function
+@ID @C {
+void KheZoneDebug(KHE_ZONE zone, int verbosity, int indent, FILE *fp);
+}
+produces a debug print of @C { zone } onto @C { fp } in the usual way.
+@PP
+When a meet is deleted from a node or deleted altogether, all the
+meet-offsets involving that meet are removed from their zones.  When
+a meet is split or merged, the meet-offsets mutate in the appropriate
+way, but preserve their zones.  For example, when a meet @M { m } of
+duration 3 is split into a meet @M { m sub 1 } of duration 1 and a
+meet @M { m sub 2 } of duration 2, the meet-offsets mutate as follows:
+@ID @Math {
+(m, 0), (m, 1), (m, 2) --> ( m sub 1 , 0), ( m sub 2 , 0), ( m sub 2 , 1)
+}
+Nothing constrains a zone to hold any particular meet-offsets, and
+indeed nothing requires zones to be created at all.  The basic
+operations of KHE are not restricted in any way by zones.  By
+convention only, some solvers use zones to encourage meet and
+node regularity.  See Section {@NumberOf time_structural.zones}
+for solvers that install zones.
+@PP
+A useful helper function when using zones is
+@ID @C {
+bool KheMeetMovePreservesZones(KHE_MEET meet1, int offset1,
+  KHE_MEET meet2, int offset2, int durn);
+}
+Assuming that a meet of duration @C { durn } may be assigned to
+@C { meet1 } at @C { offset1 } and to @C { meet2 } at @C { offset2 },
+this function returns @C { true } if that meet would be assigned to
+the same zones either way.  It treats the @C { NULL } value returned
+at times by @C { KheMeetOffsetZone } as though it was a zone.
+@PP
+Another useful function is
+@ID @C {
+int KheNodeIrregularity(KHE_NODE node);
+}
+It returns the @I { irregularity } of @C { node }:  0 if none of its meets
+is assigned, else the number of distinct zones of @C { n }'s parent node
+that the assigned meets of @C { n } are assigned to (counting @C { NULL }
+as a zone), minus one.  For example, when @C { n }'s parent node has no
+zones, or all of the meets of @C { n } are assigned to the same zone,
+@C { n }'s irregularity is 0.  One reasonable way to preserve existing
+regularity is to measure the irregularity of the nodes affected by an
+operation beforehand, measure it again afterwards, and undo the
+operation if irregularity has increased.
+@End @Section
+
+# @Section
+#     @Title { Taskings }
+#     @Tag { extras.taskings }
+# @Begin
+# @LP
+# A @I { tasking } is an object of type @C { KHE_TAS KING } representing
+# a set of tasks.  A task may lie in at most one tasking at any one time.
+# Taskings make useful parameters to resource solvers:  the solver's job
+# can be to assign resources to the tasks of the tasking---any subset of
+# the tasks of a solution.  For a deeper analysis of the role of taskings,
+# see Section {@NumberOf resource_structural.task_trees}.
+# @PP
+# To create a tasking, initially with no tasks, call
+# @ID @C {
+# KHE_TAS KING KheTaskingMake(KHE_SOLN soln, KHE_RESOURCE_TYPE rt);
+# }
+# When @C { rt } is non-@C { NULL }, it signifies that all the tasks of
+# the tasking have that type; but it may also be @C { NULL }, in which
+# case there is no restriction.  To retrieve the two attributes, call
+# @ID @C {
+# KHE_SOLN KheTaskingSoln(KHE_TASK ING tasking);
+# KHE_RESOURCE_TYPE KheTaskingResourceType(KHE_T ASKING tasking);
+# }
+# To visit the taskings of a solution, call functions
+# @C { KheSolnTaskingCount } and @C { KheSolnTasking } from
+# Section {@NumberOf solutions.top.traversal}.  To delete a tasking,
+# without deleting its tasks, call
+# @ID @C {
+# void KheTaskingDelete(KHE_TA SKING tasking);
+# }
+# To add a task to a tasking, and to delete it from a tasking, call
+# @ID @C {
+# void KheTaskingAddTask(KHE_TAS KING tasking, KHE_TASK task);
+# void KheTaskingDeleteTask(KHE_T ASKING tasking, KHE_TASK task);
+# }
+# @C { KheTaskingAddTask } aborts if @C { task } already lies in a
+# tasking, or if the resource type of @C { tasking } is non-@C { NULL }
+# and @C { task } does not have that resource type.
+# @C { KheTaskingDeleteTask } aborts if @C { task } does not lie in
+# @C { tasking }.  Functions
+# @ID @C {
+# int KheTaskingTaskCount(KHE_TA SKING tasking);
+# KHE_TASK KheTaskingTask(KHE_TASK ING tasking, int i);
+# }
+# visit the tasks of a tasking in the usual way, and
+# @ID @C {
+# void KheTaskingDebug(KHE_TASK ING tasking, int verbosity,
+#   int indent, FILE *fp);
+# }
+# produces a debug print of @C { tasking }.
+# @PP
+# File @C { khe.h } also defines a function called
+# @C { KheTaskingSortForTaskGroups }.  This is a helper function for
+# creating task groups (Section {@NumberOf resource_solvers.task_groups})
+# and is not intended to be called directly.
+# @End @Section
+
+@Section
+    @Title { Task sets }
+    @Tag { extras.task_sets }
+@Begin
+@LP
+A @I { task set } is like a tasking in that it represents a set
+of tasks.  It is different in that a task may lie in any number
+of task sets, but it does not know which task sets it lies in.
+@PP
+To create a new, empty task set for holding tasks from @C { soln },
+call
+@ID @C {
+KHE_TASK_SET KheTaskSetMake(KHE_SOLN soln);
+}
+The @C { soln } attribute is stored in the task set and may be
+accessed by calling
+@ID @C {
+KHE_SOLN KheTaskSetSoln(KHE_TASK_SET ts);
+}
+To delete a task set (but not its tasks), call
+@ID @C {
+void KheTaskSetDelete(KHE_TASK_SET ts);
+}
+This places the task set object on a free list in its solution
+object, where it is available for use by subsequent calls to
+@C { KheTaskSetMake } on the same solution object.
+# If a task set is not deleted when it is no longer wanted, its memory
+# will leak.  If it is deleted, it goes on a free list in the solution
+# object and becomes available for re-use, and eventually gets deleted
+# when the solution is deleted.
+@PP
+To clear a task set back to the empty set of tasks, call
+@ID @C {
+void KheTaskSetClear(KHE_TASK_SET ts);
+}
+To clear a task set from the end back to a point where it contains
+@C { count } elements, call
+@ID @C {
+void KheTaskSetClearFromEnd(KHE_TASK_SET ts, int count);
+}
+To remove the last @C { n } tasks from a task set, call
+@ID @C {
+void KheTaskSetDropFromEnd(KHE_TASK_SET ts, int n);
+}
+To add a task to a task set, call
+@ID @C {
+void KheTaskSetAddTask(KHE_TASK_SET ts, KHE_TASK task);
+}
+To add the tasks of @C { ts2 } to @C { ts }, call
+@ID @C {
+void KheTaskSetAddTaskSet(KHE_TASK_SET ts, KHE_TASK_SET ts2);
+}
+# void KheTaskSetAddTaskSorted(KHE_TASK_SET ts, KHE_TASK task,
+#   int(*compar)(const void *, const void *));
+# If @C { KheTaskSetAddTaskSorted } is called whenever a task
+# is added to @C { ts }, then the task set will be sorted as
+# @C { KheTaskSetSort(ts, compar) } would sort it.
+To delete a task, call
+@ID @C {
+void KheTaskSetDeleteTask(KHE_TASK_SET ts, KHE_TASK task);
+}
+@C { KheTaskSetDeleteTask } aborts if @C { task } is not in
+@C { ts }.  If the tasks of @C { ts } are equivalent, the best
+way to extract one task is
+@ID @C {
+KHE_TASK KheTaskSetLastAndDelete(KHE_TASK_SET ts);
+}
+This deletes and returns the last task of @C { ts }; it aborts
+if @C { ts } is empty.
+@PP
+To search a task set for a given task, call
+@ID @C {
+bool KheTaskSetContainsTask(KHE_TASK_SET ts, KHE_TASK task, int *pos);
+}
+If this returns @C { true }, it sets @C { *pos } to the index of
+@C { task } in @C { ts }.  To visit the tasks of a task set, call
+@ID @C {
+int KheTaskSetTaskCount(KHE_TASK_SET ts);
+KHE_TASK KheTaskSetTask(KHE_TASK_SET ts, int i);
+}
+as usual.  There are also
+@ID @C {
+KHE_TASK KheTaskSetFirst(KHE_TASK_SET ts);
+KHE_TASK KheTaskSetLast(KHE_TASK_SET ts);
+}
+which return the first and last tasks.  To sort the tasks, call
+@ID @C {
+void KheTaskSetSort(KHE_TASK_SET ts,
+  int(*compar)(const void *, const void *));
+void KheTaskSetSortUnique(KHE_TASK_SET ts,
+  int(*compar)(const void *, const void *));
+}
+@C { KheTaskSetSortUnique } calls @C { HaArraySortUnique }
+(Section {@NumberOf ha.arrays}).
+@PP
+Functions
+@ID @C {
+int KheTaskSetTotalDuration(KHE_TASK_SET ts);
+float KheTaskSetTotalWorkload(KHE_TASK_SET ts);
+}
+return the total duration or total workload of the task set:
+the sum, over all tasks @C { t }, of the total duration or
+total workload of @C { t }.
+# @PP
+# Function
+# @ID @C {
+# void KheTaskSetUnGroup(KHE_TASK_SET ts);
+# }
+# is useful when @C { ts } is being used to record a set of tasks
+# which were assigned to other tasks in order to ensure that they
+# would be assigned the same resource.  It removes the assignments
+# of the tasks of @C { ts }, but then assigns the tasks directly
+# to the resources (cycle tasks) that they were previously indirectly
+# assigned to, if any, or unassigns them otherwise.
+# @PP
+# There is another possible specification for @C { KheTaskSetUnGroup },
+# saying that the assignment in each task of @C { ts } is changed to
+# the grandparent task (whatever the current assignment is assigned to).
+# This was rejected because it misbehaves in some cases when groupings
+# are made in stages, with one task assigned to another and then that
+# task assigned to a third.  The preferred specification cuts the knot
+# by ungrouping the tasks from all groupings.
+@PP
+Function
+@ID @C {
+bool KheTaskSetNeedsAssignment(KHE_TASK_SET ts);
+}
+returns @C { true } if @C { KheTaskNeedsAssignment } returns
+@C { true } for at least one task in @C { ts }.
+@PP
+There are functions for visiting the tasks of a task set, following
+the usual pattern:
+@ID @C {
+void KheTaskSetSetVisitNum(KHE_TASK_SET ts, int num);
+int KheTaskSetGetVisitNum(KHE_TASK_SET ts);
+bool KheTaskSetAllVisited(KHE_TASK_SET ts, int slack);
+bool KheTaskSetAnyVisited(KHE_TASK_SET ts, int slack);
+void KheTaskSetAllVisit(KHE_TASK_SET ts);
+void KheTaskSetAllUnVisit(KHE_TASK_SET ts);
+}
+These just call the corresponding task visit operation on each task of
+@C { ts }, except that @C { KheTaskSetGetVisitNum } returns the visit
+number of @C { ts }'s first task, aborting if @C { ts } is empty.
+@C { KheTaskSetAllVisited } returns @C { true } when all the calls on
+individual tasks return @C { true }, and @C { KheTaskSetAnyVisited }
+returns @C { true } when any of the calls on individual tasks
+return true.  Which of these two truly represents the condition
+`@C { ts } has been visited' is a matter of opinion.
+@PP
+There are also functions for moving, assigning, and unassigning all
+the tasks of a task set:
+@ID @C {
+bool KheTaskSetMoveResourceCheck(KHE_TASK_SET ts, KHE_RESOURCE r);
+bool KheTaskSetMoveResource(KHE_TASK_SET ts, KHE_RESOURCE r);
+bool KheTaskSetAssignResourceCheck(KHE_TASK_SET ts, KHE_RESOURCE r);
+bool KheTaskSetAssignResource(KHE_TASK_SET ts, KHE_RESOURCE r);
+bool KheTaskSetUnAssignResourceCheck(KHE_TASK_SET ts);
+bool KheTaskSetUnAssignResource(KHE_TASK_SET ts);
+}
+These are like @C { KheTaskMoveResourceCheck } and so on, except that they
+apply to all the tasks of @C { ts }:  @C { KheTaskSetMoveResourceCheck }
+checks that all the tasks of @C { ts } can be moved to @C { r },
+@C { KheTaskSetMoveResource } checks and moves, and so on.  If
+@C { false } is returned, some tasks may have been changed and
+others not.  If that does not suit, check first before trying
+to change anything.  There are also
+@ID @C {
+bool KheTaskSetPartMoveResourceCheck(KHE_TASK_SET ts,
+  int first_index, int last_index, KHE_RESOURCE r);
+bool KheTaskSetPartMoveResource(KHE_TASK_SET ts,
+  int first_index, int last_index, KHE_RESOURCE r);
+}
+which are like @C { KheTaskSetMoveResourceCheck } and
+@C { KheTaskSetMoveResource }, but applied only to the tasks
+with indexes between @C { first_index } and @C { last_index }
+(inclusive).
+@PP
+KHE's policy is for operations to return @C { false } when they
+change nothing, on the grounds that no solver wants to waste time
+on operations that do nothing.  However this policy does not seem
+to work very well here, because very often the task set move or
+assignment is just one part of a larger operation.  Certainly, we
+do not want to waste time on the larger operation if it does
+nothing, but that does not prevent one part of it from doing
+nothing.  Accordingly, these operations all succeed (return
+@C { true }) when @C { ts } is empty.
+@PP
+Functions
+@ID @C {
+void KheTaskSetAssignFix(KHE_TASK_SET ts);
+void KheTaskSetAssignUnFix(KHE_TASK_SET ts);
+}
+call @C { KheTaskAssignFix } or @C { KheTaskAssignUnFix } on
+each task of @C { ts }.
+@PP
+Finally,
+@ID {0.95 1.0} @Scale @C {
+void KheTaskSetDebug(KHE_TASK_SET ts, int verbosity, int indent, FILE *fp);
+}
+produces a debug print of @C { ts } onto @C { fp } with the given
+verbosity and indent.
+@End @Section
+
+@Section
+    @Title { Meet sets }
+    @Tag { extras.meet_sets }
+@Begin
+@LP
+A @I { meet set } is like a node in that it represents a set
+of meets.  It is different in that a meet may lie in any number
+of meet sets, but it does not know which.  Meet sets correspond
+closely with task sets, so we will be brief.  To create a new,
+empty meet set for holding meets from @C { soln }, call
+@ID @C {
+KHE_MEET_SET KheMeetSetMake(KHE_SOLN soln);
+}
+To delete a meet set (but not its meets), call
+@ID @C {
+void KheMeetSetDelete(KHE_MEET_SET ms);
+}
+A deleted meet set goes on a free list in the solution object and
+becomes available for re-use.
+@ID @C {
+void KheMeetSetClear(KHE_MEET_SET ms);
+}
+clears @C { ms } back to the empty set of meets, and
+@ID @C {
+void KheMeetSetDropFromEnd(KHE_MEET_SET ms, int n);
+}
+removes the last @C { n } meets from @C { ms }.  To add and delete
+a meet, call
+@ID @C {
+void KheMeetSetAddMeet(KHE_MEET_SET ms, KHE_MEET meet);
+void KheMeetSetDeleteMeet(KHE_MEET_SET ms, KHE_MEET meet);
+}
+@C { KheMeetSetDeleteMeet } aborts if @C { meet } is not
+present.  To search a meet set, call
+@ID @C {
+bool KheMeetSetContainsMeet(KHE_MEET_SET ms, KHE_MEET meet, int *pos);
+}
+If this returns @C { true }, it sets @C { *pos } to the index of
+@C { meet } in @C { ms }.  To visit the meets, call
+@ID @C {
+int KheMeetSetMeetCount(KHE_MEET_SET ms);
+KHE_MEET KheMeetSetMeet(KHE_MEET_SET ms, int i);
+}
+as usual.  To sort the meets, call
+@ID @C {
+void KheMeetSetSort(KHE_MEET_SET ms,
+  int(*compar)(const void *, const void *));
+void KheMeetSetSortUnique(KHE_MEET_SET ms,
+  int(*compar)(const void *, const void *));
+}
+@C { KheMeetSetSortUnique } calls @C { HaArraySortUnique }
+(Section {@NumberOf ha.arrays}).  Function
+@ID @C {
+int KheMeetSetTotalDuration(KHE_MEET_SET ms);
+}
+the sum, over all meets @C { m } in @C { ms }, of the duration
+of @C { m }.
+@PP
+There are functions for visiting the meets of a meet set, following
+the usual pattern:
+@ID @C {
+void KheMeetSetSetVisitNum(KHE_MEET_SET ms, int num);
+int KheMeetSetGetVisitNum(KHE_MEET_SET ms);
+bool KheMeetSetVisited(KHE_MEET_SET ms, int slack);
+void KheMeetSetVisit(KHE_MEET_SET ms);
+void KheMeetSetUnVisit(KHE_MEET_SET ms);
+}
+These just call the corresponding meet visit operation on each meet of
+@C { ms }, except that @C { KheMeetSetGetVisitNum } returns the visit
+number of @C { ms }'s first meet, aborting if @C { ms } is empty.
+@C { KheMeetSetVisited } returns @C { true } when all the calls on
+individual meets return @C { true }.  Finally,
+@ID {0.95 1.0} @Scale @C {
+void KheMeetSetDebug(KHE_MEET_SET ms, int verbosity, int indent, FILE *fp);
+}
+produces a debug print of @C { ms } onto @C { fp } with the given
+verbosity and indent.
+@End @Section
+
+@Section
+    @Title { Time sets }
+    @Tag { extras.time_sets }
+@Begin
+@LP
+A @I { time set } is like a time group in that it represents a set
+of times.  However, it carries less baggage:  it has no name, and
+there is nothing equivalent to @C { KheTimeGroupNeighbour }.  It
+is a convenient type to use when a set of times is needed during
+solving.  Internally, a time set holds the instance that the times
+come from and a sorted array of time indexes, nothing more.
+@PP
+To create a new, empty time set, call
+@ID @C {
+KHE_TIME_SET KheTimeSetMake(KHE_INSTANCE ins, HA_ARENA a);
+}
+Another way to make a time set is
+@ID @C {
+KHE_TIME_SET KheTimeSetCopy(KHE_TIME_SET ts, HA_ARENA a);
+}
+This makes a fresh copy of @C { ts } in arena @C { a }.  There is also
+@ID @C {
+void KheTimeSetCopyElements(KHE_TIME_SET dst_ts, KHE_TIME_SET src_ts);
+}
+which replaces the times of time set @C { dst_ts }, whatever
+they are, with the times of @C { src_ts }.
+@PP
+To retrieve a time set's instance, call
+@ID @C {
+KHE_INSTANCE KheTimeSetInstance(KHE_TIME_SET ts);
+}
+There is no function to delete a time set; it is deleted when
+its arena is deleted.  But a time set can be cleared back to
+the empty set of times, by calling
+@ID @C {
+void KheTimeSetClear(KHE_TIME_SET ts);
+}
+To add times to a time set, the following operations are available:
+@ID @C {
+void KheTimeSetAddTime(KHE_TIME_SET ts, KHE_TIME t);
+void KheTimeSetAddTimeGroup(KHE_TIME_SET ts, KHE_TIME_GROUP tg);
+void KheTimeSetAddTaskTimes(KHE_TIME_SET ts, KHE_TASK task);
+}
+These add a time, or the times of a time group, or the times a task
+is running (including tasks assigned, directly or indirectly, to that
+task).  To add the times of a time set, call @C { KheTimeSetUnion }
+below.  Here and elsewhere, adding a time that is already present
+does nothing.
+@PP
+For deleting times there are
+@ID @C {
+void KheTimeSetDeleteTime(KHE_TIME_SET ts, KHE_TIME t);
+void KheTimeSetDeleteLastTime(KHE_TIME_SET ts);
+}
+@C { KheTimeSetDeleteTime } deletes @C { t } from @C { ts }, or
+does nothing if it is not present.  @C { KheTimeSetDeleteLastTime }
+deletes the last time from @C { ts }; it must be present.
+@PP
+To visit the times of a time set, call
+@ID @C {
+int KheTimeSetTimeCount(KHE_TIME_SET ts);
+KHE_TIME KheTimeSetTime(KHE_TIME_SET ts, int i);
+}
+in the usual way.  There is also
+@ID @C {
+int KheTimeSetTimeIndex(KHE_TIME_SET ts, int i);
+}
+which returns the index of the @C { i }th time, rather than the
+time itself.  Irrespective of the order in which the times were
+added, they are stored and visited in order of increasing index.
+@PP
+There are also set operations on time sets:
+@ID @C {
+void KheTimeSetUnion(KHE_TIME_SET ts1, KHE_TIME_SET ts2);
+void KheTimeSetIntersect(KHE_TIME_SET ts1, KHE_TIME_SET ts2);
+void KheTimeSetDifference(KHE_TIME_SET ts1, KHE_TIME_SET ts2);
+}
+These update @C { ts1 } to hold its union, intersection, or
+difference with @C { ts2 }.  Also,
+@ID @C {
+int KheTimeSetUnionCount(KHE_TIME_SET ts1, KHE_TIME_SET ts2);
+int KheTimeSetIntersectCount(KHE_TIME_SET ts1, KHE_TIME_SET ts2);
+int KheTimeSetDifferenceCount(KHE_TIME_SET ts1, KHE_TIME_SET ts2);
+}
+return the cardinality of the union, intersection, and difference
+without building the actual set.  @C { KheTimeSetIntersectCount }
+is optimized for the case of intersecting a small (and presumably
+localized) set with a large one:  it uses binary search to retrieve
+the indexes of the first and last elements of the smaller set in
+the larger one, then only traverses the larger one in that range.
+This idea could be applied to other operations, but so far it has
+not been.
+@PP
+Several set queries are available:
+@ID @C {
+bool KheTimeSetEmpty(KHE_TIME_SET ts);
+bool KheTimeSetEqual(KHE_TIME_SET ts1, KHE_TIME_SET ts2);
+bool KheTimeSetSubset(KHE_TIME_SET ts1, KHE_TIME_SET ts2);
+bool KheTimeSetDisjoint(KHE_TIME_SET ts1, KHE_TIME_SET ts2);
+bool KheTimeSetContainsTime(KHE_TIME_SET ts, KHE_TIME t);
+}
+These return @C { true } when @C { ts } is empty, when @C { ts1 }
+is equal to @C { ts2 }, when @C { ts1 } is a subset of @C { ts2 },
+when @C { ts1 } is disjoint from @C { ts2 }, and when @C { ts }
+contains @C { t }.
+@PP
+For applications in which a time set is used as the key into
+a hash table, there is
+@ID @C {
+int KheTimeSetHash(KHE_TIME_SET ts);
+}
+At present the value returned is the sum of the indexes of the
+first, middle, and last times, after shifting left 16, 8, and 0
+places respectively, or 0 if @C { ts } is empty.
+@PP
+Four other comparison functions are available:
+@ID @C {
+int KheTimeSetCmp(const void *t1, const void *t2);
+int KheTimeSetTypedCmp(KHE_TIME_SET ts1, KHE_TIME_SET ts2);
+}
+@C { KheTimeSetCmp } is suitable for passing to @C { HaArraySort },
+to bring equal time sets together.  @C { KheTimeSetTypedCmp } is the
+typed equivalent of @C { KheTimeSetCmp }.  And
+@ID @C {
+int KheTimeSetCmpReverse(const void *t1, const void *t2);
+int KheTimeSetTypedCmpReverse(KHE_TIME_SET ts1, KHE_TIME_SET ts2);
+}
+are like @C { KheTimeSetCmp } and @C { KheTimeSetTypedCmp }, except
+that they sort in the reverse order.
+@PP
+Unlike time groups, time sets allow @C { NULL } to be a member.  It
+is handled like any other time:  it can be added and deleted, and it
+participates in set operations.  It has index @C { -1 }, which means
+that, if present, it is the result of @C { KheTimeSetTime(ts, 0) }.
+@PP
+Finally,
+@ID {0.96 1.0} @Scale @C {
+void KheTimeSetDebug(KHE_TIME_SET ts, int verbosity, int indent, FILE *fp);
+}
+produces a debug print of @C { ts } onto @C { fp } with the given
+verbosity and indent, as usual.  Since the time set has no name,
+this can only be done by printing its elements.  When @C { verbosity }
+is 1 or @C { indent } is negative, only the first and last elements
+(at most) are printed.
+@End @Section
+
+@Section
+    @Title { Resource sets }
+    @Tag { extras.resource_sets }
+@Begin
+@LP
+A @I { resource set } is like a resource group in that it represents a set
+of resources of a particular type.  However, it carries less baggage:
+it has no name, for example.  It is a convenient type to use when a set
+of resources is needed during solving.  Internally, a resource set holds
+the resource type that the resources must share, and a sorted array of
+resource indexes in that resource type.
+@PP
+Resource sets are virtually clones of time sets, with some extra
+operations that might find their way into time sets eventually.
+To create a new, empty resource set of a given type, call
+@ID @C {
+KHE_RESOURCE_SET KheResourceSetMake(KHE_RESOURCE_TYPE rt, HA_ARENA a);
+}
+Another way to make a resource set is
+@ID @C {
+KHE_RESOURCE_SET KheResourceSetCopy(KHE_RESOURCE_SET rs, HA_ARENA a);
+}
+It makes a fresh copy of @C { rs } in arena @C { a }.  Either way, it
+will be deleted when @C { a } is deleted.  Also,
+@ID @C {
+void KheResourceSetCopyElements(KHE_RESOURCE_SET dst_rs,
+  KHE_RESOURCE_SET src_rs);
+}
+replaces the resources of resource set @C { dst_rs }, whatever they
+are, with the resources of @C { src_rs }.
+@PP
+To retrieve a resource
+set's resource type, call
+@ID @C {
+KHE_RESOURCE_TYPE KheResourceSetResourceType(KHE_RESOURCE_SET rs);
+}
+To clear a resource set back to the empty set of resources, call
+@ID @C {
+void KheResourceSetClear(KHE_RESOURCE_SET rs);
+}
+To add resources to a resource set, the following operations are available:
+@ID @C {
+void KheResourceSetAddResource(KHE_RESOURCE_SET rs, KHE_RESOURCE r);
+void KheResourceSetAddResourceGroup(KHE_RESOURCE_SET rs,
+  KHE_RESOURCE_GROUP rg);
+}
+These add a resource, or the resources of a resource group.  To add the
+resources of a resource set, call @C { KheResourceSetUnion } below.
+Here and elsewhere, adding a resource that is already present does nothing.
+@PP
+For deleting resources there are
+@ID @C {
+void KheResourceSetDeleteResource(KHE_RESOURCE_SET rs, KHE_RESOURCE r);
+void KheResourceSetDeleteLastResource(KHE_RESOURCE_SET rs);
+}
+@C { KheResourceSetDeleteResource } deletes @C { r } from @C { rs }, or
+does nothing if it is not present.  @C { KheResourceSetDeleteLastResource }
+deletes the last resource from @C { rs }; it must be present.
+@PP
+To visit the resources of a resource set, call
+@ID @C {
+int KheResourceSetResourceCount(KHE_RESOURCE_SET rs);
+KHE_RESOURCE KheResourceSetResource(KHE_RESOURCE_SET rs, int i);
+}
+in the usual way.  There is also
+@ID @C {
+int KheResourceSetResourceIndex(KHE_RESOURCE_SET rs, int i);
+}
+which returns the index in the resource set's resource type of the
+@C { i }th resource, rather than the resource itself.  Irrespective
+of the order in which the resources were added, they are stored and
+visited in order of increasing index.
+@PP
+There are also set operations on resource sets.  These come in various
+forms, all of which are illustrated by the operations for set union:
+@ID {0.98 1.0} @Scale @C {
+void KheResourceSetUnion(KHE_RESOURCE_SET rs1, KHE_RESOURCE_SET rs2);
+void KheResourceSetUnionGroup(KHE_RESOURCE_SET rs1,
+  KHE_RESOURCE_GROUP rg2);
+int KheResourceSetUnionCount(KHE_RESOURCE_SET rs1, KHE_RESOURCE_SET rs2);
+int KheResourceSetUnionCountGroup(KHE_RESOURCE_SET rs1,
+  KHE_RESOURCE_GROUP rg2);
+}
+@C { KheResourceSetUnion } updates @C { rs1 } to hold the set union of itself
+with @C { rs2 }, eliminating duplicates.  @C { KheResourceSetUnionGroup }
+is the same, except that the second parameter is a resource group.
+@C { KheResourceSetUnionCount } and @C { KheResourceSetUnionCountGroup }
+return the number of elements in the union, without actually building
+it.  This is faster, when it suits.
+@PP
+A resource group does actually hold a resource set, but it would not
+be safe to make that set available directly, because resource groups
+are supposed to be immutable after their creation ends.  A copy of it
+is easily made, by starting with an empty resource set and calling
+@C { KheResourceSetUnionGroup }.
+@PP
+Corresponding operations are available for set intersection:
+@ID {0.98 1.0} @Scale @C {
+void KheResourceSetIntersect(KHE_RESOURCE_SET rs1, KHE_RESOURCE_SET rs2);
+void KheResourceSetIntersectGroup(KHE_RESOURCE_SET rs1,
+  KHE_RESOURCE_GROUP rg2);
+int KheResourceSetIntersectCount(KHE_RESOURCE_SET rs1,
+  KHE_RESOURCE_SET rs2);
+int KheResourceSetIntersectCountGroup(KHE_RESOURCE_SET rs1,
+  KHE_RESOURCE_GROUP rg2);
+}
+and set difference:
+@ID {0.98 1.0} @Scale @C {
+void KheResourceSetDifference(KHE_RESOURCE_SET rs1,KHE_RESOURCE_SET rs2);
+void KheResourceSetDifferenceGroup(KHE_RESOURCE_SET rs1,
+  KHE_RESOURCE_GROUP rg2);
+int KheResourceSetDifferenceCount(KHE_RESOURCE_SET rs1,
+  KHE_RESOURCE_SET rs2);
+int KheResourceSetDifferenceCountGroup(KHE_RESOURCE_SET rs1,
+  KHE_RESOURCE_GROUP rg2);
+}
+For symmetric difference, at present only the count operations are offered:
+@ID {0.98 1.0} @Scale @C {
+int KheResourceSetSymmetricDifferenceCount(KHE_RESOURCE_SET rs1,
+  KHE_RESOURCE_SET rs2);
+int KheResourceSetSymmetricDifferenceCountGroup(KHE_RESOURCE_SET rs1,
+  KHE_RESOURCE_GROUP rg2);
+}
+This is because building the actual set is awkward.
+@PP
+For the Boolean-valued set operations, again the second parameter
+may be a resource group, but there is no need for count operations.
+So for equality we have
+@ID {0.98 1.0} @Scale @C {
+bool KheResourceSetEqual(KHE_RESOURCE_SET rs1, KHE_RESOURCE_SET rs2);
+bool KheResourceSetEqualGroup(KHE_RESOURCE_SET rs1,
+  KHE_RESOURCE_GROUP rg2);
+}
+and similarly for subset:
+@ID {0.98 1.0} @Scale @C {
+bool KheResourceSetSubset(KHE_RESOURCE_SET rs1, KHE_RESOURCE_SET rs2);
+bool KheResourceSetSubsetGroup(KHE_RESOURCE_SET rs1,
+  KHE_RESOURCE_GROUP rg2);
+}
+and testing for disjointness:
+@ID {0.98 1.0} @Scale @C {
+bool KheResourceSetDisjoint(KHE_RESOURCE_SET rs1, KHE_RESOURCE_SET rs2);
+bool KheResourceSetDisjointGroup(KHE_RESOURCE_SET rs1,
+  KHE_RESOURCE_GROUP rg2);
+}
+There is also
+@ID {0.98 1.0} @Scale @C {
+bool KheResourceSetContainsResource(KHE_RESOURCE_SET rs, KHE_RESOURCE r);
+}
+which returns @C { true } when @C { rs } contains @C { r }.
+@PP
+Two other comparison functions are available:
+@ID @C {
+int KheResourceSetCmp(const void *t1, const void *t2);
+int KheResourceSetTypedCmp(KHE_RESOURCE_SET rs1, KHE_RESOURCE_SET rs2);
+}
+@C { KheResourceSetCmp } is suitable for passing to @C { HaArraySort }, to
+bring equal resource sets together.  (It is not for sorting the resources
+of one resource set; their order is fixed.)  @C { KheResourceSetTypedCmp }
+is the typed equivalent of @C { KheResourceSetCmp }.
+@PP
+Unlike resource groups, resource sets allow @C { NULL } to be a member.
+It is handled like any other resource:  it can be added and deleted, and
+it participates in set operations.  It has index @C { -1 }, which means
+that, if present, it is the result of @C { KheResourceSetResource(rs, 0) }.
+@PP
+Finally,
+@ID @C {
+void KheResourceSetDebug(KHE_RESOURCE_SET rs, int verbosity,
+  int indent, FILE *fp);
+}
+produces a debug print of @C { rs } onto @C { fp } with the given
+verbosity and indent, as usual.  Since the resource set has no name,
+this can only be done by printing its elements.  When @C { verbosity }
+is 1 or @C { indent } is negative, only the first and last elements
+(at most) are printed.
+@End @Section
+
+@Section
+    @Title { Time frames }
+    @Tag { extras.frames }
+@Begin
+@LP
+A @I { time frame }, or just @I { frame }, is a sequence of time groups.
+Frames satisfy a practical need during solving; they help to bridge the
+gap between the high school and nurse rostering time models.
+@PP
+A frame has type @C { KHE_FRAME }, the usual pointer to a private
+struct, lying in heap memory and holding the enclosing solution,
+the time groups, and some other things.
+@PP
+The operations for creating a frame are:
+@ID @C {
+KHE_FRAME KheFrameMakeBegin(KHE_INSTANCE ins, HA_ARENA a);
+void KheFrameAddTimeGroup(KHE_FRAME frame, KHE_TIME_GROUP tg);
+void KheFrameMakeEnd(KHE_FRAME frame, bool sort_time_groups);
+}
+@C { KheFrameMakeBegin } starts the creation of the frame.  This is
+followed by any number of calls to @C { KheFrameMakeAddTimeGroup },
+which add the time groups.  The creation ends with a call to
+@C { KheFrameMakeEnd }.  After this, further calls to
+@C { KheFrameAddTimeGroup } are not allowed.
+@PP
+If the @C { sort_time_groups } parameter of @C { KheFrameMakeEnd }
+is @C { true }, @C { KheFrameMakeEnd } sorts the time groups into
+increasing first time order.
+@PP
+There is no operation to delete a frame; it remains in existence
+until arena @C { a } is deleted or recycled.  To access the
+attributes of a frame, the calls are
+@ID @C {
+KHE_INSTANCE KheFrameInstance(KHE_FRAME frame);
+int KheFrameTimeGroupCount(KHE_FRAME frame);
+KHE_TIME_GROUP KheFrameTimeGroup(KHE_FRAME frame, int i);
+}
+These return the instance that @C { frame } is for, and the
+time groups in the usual way.
+@PP
+A frame is @I { disjoint } when its time groups are pairwise disjoint,
+and @I { complete } when every time in the cycle lies in at least one
+of its time groups.  Frames do not have to satisfy these conditions, but
+some applications of frames require them.  They are returned by functions
+@ID @C {
+bool KheFrameIsDisjoint(KHE_FRAME frame, int *problem_index1,
+  int *problem_index2);
+bool KheFrameIsComplete(KHE_FRAME frame, KHE_TIME *problem_time);
+}
+If the frame is disjoint, @C { KheFrameIsDisjoint } returns @C { true }
+with @C { *problem_index1 } and @C { *problem_index2 } set to @C { -1 };
+otherwise it returns @C { false } with @C { *problem_index1 } and
+@C { *problem_index2 } set to the indexes of two overlapping time
+groups.  If the frame is complete, @C { KheFrameIsComplete }
+returns @C { true } with @C { *problem_time } set to @C { NULL };
+otherwise it returns @C { false } with @C { *problem_time } set to
+a time of the instance which is not in any of @C { frame }'s time
+groups.
+@PP
+@C { KheFrameIsDisjoint } and @C { KheFrameIsComplete } are typically
+called at most once per frame, after @C { KheFrameMakeEnd }.
+An efficient implementation has not been thought necessary.
+But this function is implemented efficiently:
+@ID @C {
+int KheFrameTimeIndex(KHE_FRAME frame, KHE_TIME t);
+}
+It returns the index in @C { frame } of the time group containing time
+@C { t }.  If there is no such time group (implying that the frame is
+not complete), @C { -1 } is returned.  If there is more than one such
+time group (implying that the frame is not disjoint), the index of
+one of the time groups is returned.  The time group itself can then
+be retrieved using @C { KheFrameTimeGroup }.  There is also
+@ID @C {
+KHE_TIME_GROUP KheFrameTimeTimeGroup(KHE_FRAME frame, KHE_TIME t);
+}
+which combines the two steps, returning the time group of @C { frame }
+that contains @C { t }, or aborting if there is no such time group.
+And
+@ID @C {
+int KheFrameTimeOffset(KHE_FRAME frame, KHE_TIME t);
+}
+returns the offset of time @C { t } in its frame time group; that
+is, the index of @C { t } minus the index of the first time in time
+group @C { KheFrameTimeTimeGroup(frame, t) }.  In nurse rostering,
+this offset identifies the shift type (morning, afternoon, or whatever).
+@PP
+Frames arise naturally in employee scheduling when each employee
+can work at most one shift per day (evidenced by a hard limit busy
+times constraint with non-zero cost, maximum limit 1, and one time
+group for each day).  When this is true of all resources, function
+@ID @C {
+KHE_FRAME KheFrameMakeCommon(KHE_INSTANCE ins, HA_ARENA a);
+}
+returns a frame with one time group per day.  The time groups do not
+have to actually represent days, they merely need to be the same for
+all resources and to be disjoint and complete.  When there is no
+common frame, @C { NULL } is returned.
+@PP
+When @C { KheFrameMakeCommon } returns @C { NULL }, as a fallback there is
+@ID @C {
+KHE_FRAME KheFrameMakeSingletons(KHE_INSTANCE ins, HA_ARENA a);
+}
+This returns a frame with one time group for each time, containing
+just that single time.
+@PP
+Once created, frames of this kind do not change.  So it makes sense
+to share a single one between solvers, by storing it in the solvers'
+shared options object.  A convenient way do this is
+@ID {0.98 1.0} @Scale @C {
+KHE_FRAME KheOptionsFrame(KHE_OPTIONS options, char *key, KHE_SOLN soln);
+}
+from Section {@NumberOf general_solvers.options}.  This returns the frame
+stored in @C { options } under the given @C { key }.  If there is no
+object in @C { options } under that key, it first creates one, by calling
+@C { KheFrameMakeCommon }, followed by @C { KheFrameMakeSingletons } if
+necessary, and storing the result in @C { options } under @C { key }.
+Thus, if all solvers that need a frame call this function to obtain it,
+they will all share the same frame, the one created the first time this
+function is called.  By convention, the key to use is
+@C { "gs_common_frame" }, and so
+@ID @C {
+frame = KheOptionsFrame(options, "gs_common_frame", soln);
+}
+is the recommended way to obtain this kind of frame.
+@PP
+Function
+@ID @C {
+bool KheFrameIntersectsTimeGroup(KHE_FRAME frame, KHE_TIME_GROUP tg);
+}
+returns @C { true } when @C { tg } shares at least one time with
+at least one of the time groups of @C { frame }.
+@PP
+There is the usual debug function:
+@ID {0.95 1.0} @Scale @C {
+void KheFrameDebug(KHE_FRAME frame, int verbosity, int indent, FILE *fp);
+}
+This prints @C { frame } onto @C { fp } with the given verbosity and
+indent.  Here @C { frame } may be @C { NULL }.
+@PP
+Finally, here are three related miscellaneous functions:
+@ID @C {
+bool KheFrameResourceHasClashes(KHE_FRAME frame, KHE_RESOURCE r,
+  KHE_SOLN soln);
+void KheFrameResourceAssertNoClashes(KHE_FRAME frame, KHE_RESOURCE r,
+  KHE_SOLN soln);
+void KheFrameAssertNoClashes(KHE_FRAME frame, KHE_SOLN soln);
+}
+These help to debug solvers that preserve an invariant stating that
+each resource attends at most one task during each time group of
+@C { frame }.  @C { KheFrameResourceHasClashes } returns @C { true } if
+@C { r } violates this condition; @C { KheFrameResourceAssertNoClashes }
+aborts the run if it is violated for resource @C { r }, after printing out
+information about which resource and time group is involved; and
+@C { KheFrameAssertNoClashes } calls @C { KheFrameResourceAssertNoClashes }
+for all resources.
+@End @Section
+
+@EndSections
+@End @Chapter

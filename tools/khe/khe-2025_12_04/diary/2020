@@ -1,0 +1,3345 @@
+KHE diary for 2020
+==================
+
+At the end of 2019 I was in the middle of (well, getting towards the
+end of) my nurse rostering solving adventure, beginning to circle in
+on a nurse rostering paper to submit to PATAT 2020 by the deadline
+at the end of January 2020.
+
+31 December 2019.  Wrote code for printing archive read and
+  write times, seems to be working.  Have to get the CQ14
+  read and write times at some stage.
+
+  Adjusted function names and documentation to replace KHE18
+  by KHE20.
+
+  Working on INRC1-ML02.  Actually I worked on it before (from
+  8 November 2019).  It inspired KhePropagateUnavailableTimes,
+  which is still in use.  But can we do even better?
+
+    INRC1-ML02 costs                 GOAL     KHE20x8
+    -------------------------------------------------
+    Unavailable times                   3        9
+    Friday night before free weekend    0        1
+    Workload overloads                  2        2  (same two)
+    Consecutive busy weekends           3        4
+    Consecutive busy days               7        8
+    Consecutive free days               3        5
+    -------------------------------------------------
+      Total                            18       29
+
+1 January 2020.  Tried to get read and write times for CQ14, and
+  the process got killed.  So I've started work on large and small
+  arenas.
+
+2 January 2020.  Working on large and small arenas.  All implemented
+  and documented, and tests show that it is working as expected, e.g.
+  we went right through the 8 solves of CQ14-14 without a single
+  call to calloc over 500K.  In fact we got to the end of CQ14-19
+  without needing more memory.  But CQ14-20 has been using more:
+
+  Looked into the demand by cluster busy times and limit busy times
+  monitors for memory by having a fixed array of time groups.  But
+  I've already done it.
+
+3 January 2020.  Doubling the running time limit on COI-MER gives
+
+    [ "COI-MER", 4 threads, 8 solves, 8 distinct costs, 19.0 mins:
+      0.08239 0.08339 0.08466 0.08480 0.08501 0.08672 0.08836 0.08850
+    ]
+
+  which I've reported in the paper.
+
+  Now turning to arenas, sort -u shows that there are 15 large ones:
+
+    large arena 0x2337808
+    large arena 0x2ba1980009a8
+    large arena 0x2ba1980587a8
+    large arena 0x2ba1980fee48
+    large arena 0x2ba1981cf9f8
+    large arena 0x2ba19822fc88
+    large arena 0x2ba198552658
+    large arena 0x2ba198612b78
+    large arena 0x2ba19c0009a8
+    large arena 0x2ba19c0587a8
+    large arena 0x2ba19c7749a8
+    large arena 0x2ba1a00dd8d8
+    large arena 0x2ba1a017e118
+    large arena 0x2ba1a033fcf8
+    large arena 0x2ba1a069dcc8
+
+  This does at least prove that we are not using up new large
+  arenas with every instance, since that would require at least
+  24 large arenas.  But we need to reduce this number somehow.
+
+  Why are there so many?  First of all, the archive lies in a large
+  arena, which presumably accounts for 0x2337808.  Then, if the
+  first solution to a given instance is not equal to the best
+  solution, we need two large arenas to hold these two in each
+  thread, which makes another 8 large arenas when there are 4
+  threads.
+
+  Updated the "Placeholder and invalid solutions" section and
+  implemented it all and the consequential changes.  I've also
+  audited the revised documentation.
+
+4 January 2020.  Revised the new placeholder interface and
+  implemented and documented the revisions.  It's pretty
+  good now, audited and ready to test.  Test revealed that
+  KheSolnCopyDoPhase1 at present does nothing special if
+  the solution to be copied is a placeholder.  It should.
+  Fixed and back to testing.  Only five large arenas made
+  after about 8 instances solved, which is the minimum,
+  so it's all going well.  But there is a problem with
+  running time reporting.
+
+5 January 2020.  Fixed the running time bug.  It was due to
+  keeping two copies of the running time, one in the solution
+  and another in the write-only solution.  I've removed all
+  redundancy from the write-only solution now, and all is well.
+
+6 January 2020.  I ran the aspects runs overnight last night,
+  and today I looked through the results and revised the text
+  of the aspects section of the PATAT paper.  I've written
+  two versions of that section, one for the submitted paper
+  and one for the extended version.
+
+7 January 2020.  Decided to spend some time on CQ14-13, whose
+  results stand out as being quite poor.  Here is KHE20:
+
+    [ "CQ14-13", 1 solution, in 187.2 secs: cost 0.02162 ]
+
+  which compares quite badly with Gurobi's 1388.  The main
+  problem is unassigned shifts - Gurobi has 11, KHE20 has 17,
+  and at cost 100 each they contribute 600 of the 774 difference.
+  The rest has to do with time on requests.  Doubling time limits
+  gives this from KHE20 and KHE20x8:
+
+    [ "CQ14-13", 1 solution, in 6.1 mins: cost 0.01744 ]
+
+    [ "CQ14-13", 4 threads, 8 solves, 7 distinct costs, 12.3 mins:
+      0.01950 0.01955 0.01968 0.01994 0.02034 0.02034 0.02058 0.02223
+    ]
+
+  Yikes, it got worse when I ran 8.  Qaudruple time limits:
+
+    [ "CQ14-13", 4 threads, 8 solves, 8 distinct costs, 24.3 mins:
+      0.01668 0.01692 0.01772 0.01774 0.01776 0.01784 0.01806 0.01985
+    ]
+
+  which is competitive in cost and shows that run time is the issue.
+
+    [ "CQ14-13", 4 threads, 8 solves, 8 distinct costs, 29.6 mins:
+      0.01656 0.01657 0.01663 0.01668 0.01701 0.01769 0.01804 0.01884
+    ]
+
+8 January 2020.  Decided to have a go at grinding down CQ14-13.
+  As I say above, the main problem is unassigned shifts.  So I
+  need to look into workload limits and so on.
+
+9 January 2020.  There is workload available.  The problem must be
+  elsewhere.
+
+11 January 2020.  I've taken some time off to write a discussion
+  paper about unifying timetabling models for submission to
+  PATAT 2020.  It's a good way to get my ideas about this out
+  despite the fact that I have not yet come up with a formal
+  model, and have no time to do that now.  Virtually finished.
+
+13 January 2020.  Finished off the discussion paper today; it's
+  ready to submit.
+
+  Started a long aspects run but got a core dump:
+
+    parallel solve of COI-Millar-2.1: starting solve 1
+    parallel solve of COI-Millar-2.1: starting solve 2
+    parallel solve of COI-Millar-2.1: starting solve 3
+    parallel solve of COI-Millar-2.1: starting solve 4
+    parallel solve of COI-Millar-2.1: starting solve 5
+    Segmentation fault (core dumped)
+    make: *** [KHE20-COI-aspects6.xml] Error 139
+
+  The call was to
+
+    KheArchiveParallelSolve(COI) soln_group KHE20x8-EW8, threads 4,
+      make 8, keep 1, time shared, limit -1.0)
+
+14 January 2020.  Working on yesterday's crash.  But a cut-down
+  version did not crash, so I am going to have to run make and
+  see what it does.  Can't get it to crash, doing nothing for now.
+
+16 January 2020.  Submitted the unified model discussion paper
+  to PATAT 2020 today.
+
+  Went over the whole KHE package.  It's ready to archive as
+  Version 2.4, nominal date 20 January 2020, which I will do
+  as soon as I have rerun all the experiments and submitted
+  the paper.
+
+  Remade the nurse rostering archives, and checked that the
+  costs of the solutions in them have not changed.
+
+  Fixed bug in makefile entry for aspects3, it will be right
+  next time I run that test.
+
+  Done quite a lot of supposedly final runs, in fact everything
+  except the aspects and the long run of INRC2-8 which is not
+  in the makefile yet.  The CQ14 run went very smoothly, with
+  the fast write at the end I got before.  So that's all good.
+
+18 January 2020.  Getting close now.  Tidy up khe20_supp.pdf,
+  make sure its results are reflected in khe20.pdf, and submit.
+
+19 January 2020.  Getting very close now.  The supplementary
+  paper is finished, and so is the main paper.
+
+20 January 2020.  Finishing off the main PATAT paper today.
+
+    Place new results files, correctly named, on web site - done
+    Place papers (main and supp, .pdf and .tex) on web site - done
+    Update XESTT web site (transfer whole site) - done
+    Submit main paper to PATAT 2020 - done
+
+21 January 2020.  Posted new version (2.4) of KHE on my web site.
+
+  By way of a holiday, I started work on a document entitled
+  "The XUTT Timetable Model and Format".  I think that such a
+  document will give me the space to develop the ideas in full.
+
+22 January 2020.  Still giving myself a holiday, working on
+  XUTT today.
+
+22 January 2020.  More XUTT today.  Sorting out the awkward
+  details of the time model.  All done except time groups.
+
+23 January 2020.  More XUTT today.  Time groups done, indeed
+  the whole Times section seems to be in good shape now.  And
+  in fact all done except Events and Constraints.
+
+26 January 2020.  Working steadily on XUTT.  Did some stuff
+  about displaying timetables today.  There is a problem with
+  whether a time can be an interval or a set of intervals,
+  and how the domains of events are defined - as sets of
+  times, or sets of sets of times.
+
+29 January 2020.  Family distractions at the moment, but I
+  have settled on a plan for the time model and what partial
+  assignments in events mean, and I'm documenting that today.
+
+30 January 2020.  Wrote the Events section today, finally.
+
+31 January 2020.  Flew in the previous Constraints section and
+  converted it from TeX to Lout.  It doesn't fit very well; it
+  was composed for a paper, and just skates over things like
+  the full syntax.
+
+1 February 2020.  Finished a rewrite of the solutions section,
+  which went very well.  I'm now working on the Evaluation
+  subsection of the Constraints section.
+
+2 February 2020.  Worked on the first subsection of the Constraints
+  section, which explains targets, determinants, deviations, and costs.
+
+3 February 2020.  Started work on task constraints.
+
+4 February 2020.  Fixed the problem with how tasks were defined, and
+  did some very good work on documenting task constraints and meet
+  constraints.
+
+5 February 2020.  More of less finished the constraints section now.
+  So that finishes the description of XUTT itself.  What I have to
+  do now is go through each of the other models, show how everything
+  is convertible, and update XUTT as new features become needed.
+
+7 February 2020.  Fixed a tiny bug for a KHE user today and posted
+  the fix on my web site as KHE Version 2.5.  At the same time, I
+  wrote a handy version publication checklist.
+
+  Started work on converting models.  So far I have just set up a
+  structure of chapters.  Have to start fleshing it out now.
+
+8 February 2020.  Working on documenting the conversion from XHSTT.
+  Done the Times section and audited it.  It's pretty good.  Also did
+  the Resources section (trivial) and began work on the Events section.
+
+9 February 2020.  Added a short section on event groups.  But I've
+  mainly worked on the high school chapter, which is going well.
+  I've finished converting event resource constraints, except that
+  the link events constraint requires times to be broken into their
+  atomic components, and I don't yet know how to do that.
+
+10 February 2020.  I've been working on the XUTT specification for
+  about three weeks now.  I could easily afford a few more weeks.
+  I defined atomic task sets and atomic meet sets, and used them to
+  implement clash checking and conversion of XHSTT link events
+  constraints to XUTT.  Also converted the XHSTT event resource
+  constraints.
+
+11 February 2020.  Changed the reported value from a Boolean to
+  an integer - the deviation.  All good, ready to go on to
+  spread events constraints and limit busy times constraints.
+
+12 February 2020.  Working through the consequences of changing
+  the reported value from a boolean to an integer deviation.  I've
+  now completely documented the conversion from XHSTT to XUTT.
+
+13 February 2020.  Added the "internal" discriminant function.
+  Also added resource history and said that attributes of
+  loop index variables may be given.  That finishes off XESTT.
+
+14 February 2020.  Emailed Gerhard asking him about conversion
+  of the Toronto exam timetabling instances to XHSTT.  Did some
+  work on exam timetabling, found a couple of non-trivial
+  constraints in the Qu et al. paper.
+
+15 February 2020.  Working on examination timetabling.  All done,
+  except I did flag a need for a form of prefer times and prefer
+  resources constraint that makes it easy to give a different
+  penalty to each time or resource.
+
+16 February 2020.  Working on examination timetabling.  Gerhard
+  says he thought about it but never did it.  Finished that,
+  then went on to university course timetabling.  Going well.
+
+17 February 2020.  Going well on university course timetabling.
+  I've done everything except explicity constraints and UniTime.
+
+18 February 2020.  Carrying on with university course timetabling.
+
+19 February 2020.  Carrying on with university course timetabling.
+  Finished the student conflicts section, it is very good.  Back
+  to the explicit constraints section; it's less good.
+
+20 February 2020.  Carrying on with explicit constraints in
+  university course timetabling.  Actually what I did was
+  explain their philosophy, in the Introduction chapter.
+
+21 February 2020.  Carrying on with explicit constraints in
+  university course timetabling.
+
+23 February 2020.  Auditing the constraints section of the instances
+  chapter, and today I'm hoping to add some new determinant functions.
+  Off-site backup of XUTT today.
+
+24 February 2020.  Worked hard on trawling through the various
+  UniTime documents, transferring parts of them verbatim to
+  the XUTT document, and discussing their conversion.
+
+26 February 2020.  Still trawling through the various
+  UniTime documents, transferring parts of them verbatim to
+  the XUTT document, and discussing their conversion.
+  Finished copying over all the constraints from all the
+  sources, then took a break from that and set up the
+  sports scheduling chapter.
+
+29 February 2020.  Working on sports scheduling.  Emailed
+  david.vanbulck about byes in road trips and whether road
+  trips have to be maximal, especially wrt BR4.
+
+1 March 2020.  Working on sports scheduling.  I've been right
+  through the list of constraints, converting some and marking
+  others "still to do".  According to fgrep there are 8 "still
+  to do" constraints.
+
+2 March 2020.  Still working on sports scheduling.  What I've
+  done seems fine, but there are still so many gaps.
+
+4 March 2020.  Taking a few days off real work to catch up with
+  my refereeing.  I've fallen a bit behind.
+
+5 March 2020.  Received an email from Bulck giving details of
+  how road trips and home stands are defined.  I'm now quoting
+  his email in my XUTT document.
+
+6 March 2020.  Still mainly doing refereeing.  But I've been
+  through the new version of the EJOR paper that I received
+  from Bulck, and incorporated the resulting minor changes
+  into my XUTT document.
+
+7 March 2020.  Still mainly doing refereeing.  But I converted the
+  RobinX SE2 constraint today, so there are now 8 still to do.
+
+8 March 2020.  Finished with refereeing, hurrah.  Found and fixed
+  an error in the constraint tree for student sectioning, and did
+  some thinking about whether a solver could be built on such trees.
+
+10 March 2020.  Still thinking about student scheduling.  It would
+  be good to either simplify the constraint tree or prove that it
+  can't be simpler.
+
+14 March 2020.  I've been refereeing PATAT papers for the last few
+  days, and doing miscellaneous work on XUTT.  Not a lot to show
+  for it but still progressing slowly.
+
+15 March 2020.  I've decided to bite the bullet and work through
+  the ITC 2019 and UniTime constraints today.  They are basically
+  about defining specialized determinant functions.  I've made
+  some pretty good progress.
+
+16 March 2020.  I'm close to finishing the ITC 2019 and UniTime
+  constraints, so doing that is my plan for today.  Also make
+  sure that all the determinant functions are listed together.
+  I've done a fair amount of work, and now there are 9 still to
+  do's in the courses chapter.
+
+17 March 2020.  Soldiering on with ITC 2019 and UniTime.  Down
+  to the hard residuum now.  I've just done Precedence.  Just
+  three to go:  MaxBreaks, MaxBlock, and Can Share Room.
+
+18 March 2020.  Worked on the university course timetabling
+  discussion section today.  All done.  I need to go back
+  to MaxBreaks, MaxBlock, and Can Share Room now.
+
+19 March 2020.  Working on the last few university course
+  timetabling constraints.  But took some time off to define
+  the ForEachPatternMatch iterator, which will be very useful
+  in sports scheduling.
+
+20 March 2020.  Off-site backup of XUTT document today.
+
+21 March 2020.  Added "distinct" to support resource stability
+  directly.  It will be much more efficient that way.  I can use
+  the existing implementation for the avoid split assignments
+  constraint.  Got rid of the consec and internal determinant functions.
+
+22 March 2020.  Converted RobinX FA6 today.  Also added an Expressions
+  section to the instances chapter.  Also composed an email to the
+  RobinX people about remaining issues.
+
+23 March 2020.  Sent to_robinx05 today.
+
+24 March 2020.  Working on cost expressions today.
+
+25 March 2020.  Working on a "Constraint trees, targets, and costs"
+  section.  Finished that and finished auditing the entire constraints
+  section.  And I actually converted RobinX FA4 (COE and weighted COE),
+  although the cyclic part is still to do.
+
+26 March 2020.  Answer received, see from_bulck03.pdf, I need to go
+  through it all now.
+
+28 March 2020.  Sent off to_robinx06, my response to from_bulck03.pdf.
+  Finished FA4 (COE and weighted COE) by doing the `cyclic' part.
+
+29 March 2020.  Finished off BR1 and BR3 today.  I started by fixing
+  up the "Byes, breaks, and road trips" section.  It's great now,
+  if only my definitions are confirmed by the RobinX people.
+
+30 March 2020.  Finished off FA5.  Started work on sorting out the
+  iterators.
+
+31 March 2020.  Finished off the "Types and expressions" section.
+
+1 April 2020.  Finished off the "Events" section today.
+
+2 April 2020.  Worked on various things today, finishing with
+  making a start on revising the "Iterators" section.
+
+3 April 2020.  Finished revising the "Iterators" section, now I
+  need to go through all the applications again.  I've started
+  on high school timetabling and did everything except resource
+  constraints.
+
+4 April 2020.  Revising XHSTT resource constraints today.
+  Wanted to say "not in resource group" and this led me on
+  to defining much more complex (constant) expressions.
+
+5 April 2020.  Finished the XHSTT resource constraints, and so XHSTT.
+  Also finished XESTT and exam timetabling.
+
+6 April 2020.  Starting to revise university course timetabling.
+  Added "from" to time assign fields and included some discussion.
+  Basically it is there to define fixed domains for time fields.
+
+7 April 2020.  Reformatted the university course timetabling.  But
+  I need to go through it again to sort out the semantics.
+
+8 April 2020.  Working through university course timetabling.  Just
+  finished rewriting the Events section.
+
+9 April 2020.  Had the long-awaited email from the RobinX people
+  today.  Very satisfactory, they accepted by clarifications.
+  Continued working through university course timetabling.
+
+11 April 2020.  Finished re-doing university course timetabling
+  yesterday, and re-did sports scheduling today.  Made sure that
+  each occurrence of MeetSet and TaskSet ends with "/>".  Off-site
+  backup today.
+
+12 April 2020.  I seem to be running out of energy on XUTT.  Today
+  I have written up a plan for time groups and and time group
+  sequences, and I have applied it, with great success, to high
+  school timetabling.
+
+13 April 2020.  Made it clear that a base is only wanted in time
+  patterns when times have intervals.  Worked through the high
+  school chapter again; it's in brilliant shape now.  Pattern
+  matching works on Seq(Time) now as well as Seq(Seq(Time)).
+  Also done nurse rostering.
+
+14 April 2020.  Exam timetabling done.  Started work on
+  university course timetabling.
+
+15 April 2020.  Continuing with university course timetabling.
+  Removed "not" option from iterators, and made "from" an
+  expression.  Working on Section 7.5.4 now.  I've copied the
+  *detailed* descriptions of the constraints from the web site
+  (I should have done that before).  Now I need to implement
+  them all.  I've just finished SameDays.
+
+16 April 2020.  Continuing with Section 7.5.4 of university course
+  timetabling.  MaxDayLoad is next.
+
+17 April 2020.  Continuing with Section 7.5.4 of university course
+  timetabling.  MaxDayLoad is done, MaxBreaks and MaxBlock still to do.
+
+18 April 2020.  Finished university course timetabling, except that I
+  decided to leave MaxBreaks and MaxBlock for a while.  I have a design
+  (see below) but I want to leave it fallow for a while.   Now working
+  through sports scheduling, it is in pretty good shape although I have
+  found a few things to change.  Ready to start Separation constraints now.
+
+19 April 2020.  Finished sports scheduling, although I have left the
+  "games" form of SE1 for now; I'll do it later, when Bulck has given
+  a concrete specification of it.  So that finishes the XUTT design
+  except for SE1 games, ITC MaxBreaks and MaxBlock, and atomic vs
+  non-atomic meets and tasks.  Off-site backup today.
+
+20 April 2020.  Atomic vs non-atomic meets and tasks.
+
+      High school timetabling - non-atomic doubles and triples
+
+         The event constraints are a big problem.  High school
+	 timetabling distinguishes between two soln events
+	 assigned Mon1 and Mon2 and one soln event assigned
+	 Mon12.  This basically implies that there has to be
+	 some constraint which recognizes the difference.  Or
+	 we could go non-exact and call Mon1 plus Mon2 a double.
+
+      Nurse rostering - atomic only
+      Exam timetabling - atomic only
+      University course timetabling - non-atomic but many time
+	assign fields have max=1, which simplifies in another way
+      Sports scheduling - atomic only
+
+  Suppose t="non-atomic time" is equivalent to a time group
+  containing those times.  Or it could be forbidden.
+
+  Assigning a compound time to an event is equivalent to assigning
+  the atomic times that it is made up of, except in two respects:
+
+  * The compound time counts as 1 time when implementing "max"
+
+  * Any time, compound or otherwise, must be present in "from"
+    as itself, otherwise the assignment is invalid.
+
+  Atomic tasks
+  ------------
+
+    XHSTT event resource constraints
+
+    XHSTT resource constraints
+
+    ITC course constraints - arguably non-atomic although it
+    doesn't matter because if you assign a resource to a lab
+    or something you assign it at all its atomic times.
+
+    ITC room assignment - can be atomic tasks or non-atomic tasks
+
+    ITC room unavailabilities and clashes - atomic tasks
+
+    ITC student conflicts - atomic
+
+    Summary: we definitely need atomic tasks, they are what
+    constraints on the timetables of individual resources are
+    built from.
+
+  Atomic meets
+  ------------
+
+    XHSTT assign time constraint - meet set, could be atomic or
+    non-atomic, we just need the total duration.  But in university
+    course timetabling we would ordinarily make it atomic so that
+    we can optimize it.
+
+    ITC explicit SameDays, DifferentDays, SameWeeks, DifferentWeeks -
+    atomic, essentially, although done in a way that allows non-atomic.
+
+    ITC explicit Overlap, NotOverlap, SameAttendees - atomic, indeed
+    atomic tasks in some cases, but could be done for reasons akin
+    the XHST spread events constraint below.
+
+    ITC explicit SameRoom, DifferentRoom - don't care
+
+    ITC explicit WorkDay, MinGap, MaxDays, MaxDayLoad, MaxBreaks,
+    MaxBlock - atomic (really atomic tasks)
+
+    XHSTT spread events constraint - has to be atomic
+    XHSTT link events constraint - has to be atomic
+
+    Summary: atomic meets have some dubious uses, but when we
+    come to spread through the week (XHSTT spread events, ITC
+    explicit NotOverlap) they seem unavoidable.
+
+  Non-atomic meets
+  ----------------
+
+    XHSTT prefer times, split events, distribute split events
+    constraint - depends on doubles so has to be non-atomic
+
+    ITC implicit time assignment - like XHSTT prefer times,
+    it can't be expressed atomically:  it's not atomic times
+    that we prefer, it's compound times.
+
+    ITC explicit SameStart, SameTime, DifferentTime - here we have
+    to select the first time interval, so we gather non-atomic
+    meets but then select one to bring us down to atomic
+
+    ITC explicit Precedence - non-atomic, although could be
+    done atomically.
+
+    Summary:  essential for distinguishing Mon12 from Mon1 and
+    Mon2 in high school timetabling.  We can't really give that up.
+    But we can minimize it and separate it from meets and tasks.
+    Perhaps it could be called CompoundTimeSet or something.
+  -------------------------------------------------------
+
+22 April 2020.  Not sure what to do about meets and tasks at the
+  moment.  Logically they use compound times but then the
+  constraints often need atomic times.  So I'm giving some time
+  to the implementation of symmetry to see if that sheds light.
+
+23 April 2020.  Still thinking about symmetry.  Done some
+  writing, more to do.
+
+25 April 2020.  Had yesterday off.  Still thinking about symmetry.
+  Done some writing, more to do.
+
+28 April 2020.  Still thinking about symmetry.  Not getting very far.
+
+30 April 2020.  Still thinking about symmetry.  Finally starting
+  to get somewhere.
+
+1 May 2020.  Still working on symmetry.  Made good progress today.
+
+2 May 2020.  Still working on symmetry.  Audited what I wrote
+  yesterday, it has a few vague patches but it is basically in
+  good shape.
+
+3 May 2020.  Worked through the ITC 2019 constraints to see how
+  they go with symmetry.  All good.
+
+4 May 2020.  Working on symmetry.  Probably time for a concrete
+  proposal.  I need to find a way to characterize constraints
+  that are *not* resource constraints.
+
+5 May 2020.  Thinking about how to present the new ideas; I've
+  tried "meet, task, and tixel constraints", but I'm not sure.
+
+7 May 2020.  I've hit on a plan for integrating the new stuff
+  elegantly with the rest, which is to make <TaskSet> (and also
+  <MeetSet>) the root node of the atomic tree, the latter being
+  presented as a form of "further analysis" of the task set or
+  meet set.  Working on this new structure:
+
+    3.7 Constraints
+       Constraint trees, targets, and costs
+       Task sets and meet sets (including determinant functions)
+       Trees (including determinant functions)
+       Weighted domains
+    3.8 Iterators
+       Basic iterators
+       Timetable iterators
+       Pattern iterators
+       How to identify a target
+
+  Section 3.7 is done and audited, and the new "Timetable iterators"
+  section is under construction.
+
+9 May 2020.  Finished the new "Timetable iterators" section.  Also
+  changed "time pattern" to "time template" to avoid a terminology
+  conflict with "pattern matching".  Off-site backup today.
+
+10 May 2020.  Have to rethink how to handle atomic times, because
+  what I've done works for university course timetabling but not
+  for high school timetabling.
+
+    3.7 Constraints
+       Constraint trees, targets, and costs
+       Meet sets and atom sets (including determinant functions)
+       Trees (including determinant functions)
+       Weighted domains
+    3.8 Iterators
+       Basic iterators
+       Timetable iterators
+       Template iterators
+       How to identify a target
+
+11 May 2020.  Working on the "meets and atoms" approach.
+
+12 May 2020.  Working on the "meets and atoms" approach.
+
+13 May 2020.  Sorted out the interaction between template
+  iterators and pattern matching.  All good.  Documented
+  WeeksOfSemester etc. in time templates section.  Audited
+  template iterators section, all good.
+
+14 May 2020.  Converted high school timetabling and nurse rostering,
+  In ForEachPatternMatch, moved initial and final to Pattern.  After
+  all they are part of the pattern, like ^ and $.
+
+15 May 2020.  Working on university course timetabling today.
+  Got most of the way through UniTime.
+
+16 May 2020.  Finished university course timetabling and
+  sports scheduling.
+
+17 May 2020.  Working on Chapter "compress" today.  Got right
+  through it but there are some things I don't really understand.
+  I need to go over it again more thoughtfully.
+
+18 May 2020.  Picking off the last few things in chapter "compress"
+  today.  Also decided that only atom sets can appear in template
+  iterators.  Sorted out first_start and first_stop.
+
+19 May 2020.  Still finishing off Chapter "compress", working on
+  SameDays.  It's more or less done now.  Anyway I don't have the
+  interest to pursue it further.
+
+  Off-site backup today, and I will now give XUTT a rest for a
+  while.  I started it on 21 January 2020; four months' work.
+
+26 July 2020.  Decided to do some more nurse rostering.  I've
+  started looking at CQ14-20.  I'll try repairing hard constraints
+  only.  Added gs_hard_constraints_only option, ready to use now.
+
+27 July 2020.  Auditing the gs_hard_constraints_only option.  With
+  a long run it got to this without gs_hard_constraints_only:
+
+  [ "CQ14-20", 4 threads, 8 solves, 8 distinct costs, first 1.08955, 30.1 mins:
+    1.06977 1.07845 1.08043 1.08955 2.07093 3.08261 4.07416 4.08525
+  ]
+
+  Smet has 0.04769 in 18,000 seconds, and there is also a lower bound
+  on Tim Curtois' web site with the same value.  Same long run, but with
+  gs_hard_constraints_only=true:
+
+  [ "CQ14-20", 4 threads, 8 solves, 8 distinct costs, first 24.99999, 16.5 mins:
+    9.99999 14.99999 16.99999 17.99999 17.99999 22.99999 24.99999 29.99999
+  ]
+
+  So that's no good then.  Here's a really long run without it:
+
+  [ "CQ14-20", 4 threads, 8 solves, 7 distinct costs, first 1.05526, 90.1 mins:
+    0.05231 0.05265 0.05341 0.05394 0.05401 0.05401 1.05356 1.05526
+  ]
+
+  Not a bad result for 90 x 60 = 5400 seconds.  It's about 10% worse.
+  Here is an even longer run:
+
+  [ "CQ14-20", 4 threads, 8 solves, 8 distinct costs, first 0.05302, 180.1 mins:
+    0.05098 0.05103 0.05239 0.05273 0.05302 0.05340 0.05346 1.05162
+  ]
+
+  This one is about 7% worse.
+
+29 July 2020.  Decided to just pick up where I left off, more or less,
+  and go to work on INRC2-4-030-1-6291.  I'm currently solving in just
+  5.6 seconds, so it will be a good test.
+
+  Comparing my KHE20x1 solution (cost 1980) with the LOR solution
+  (cost 1695), the roughly 300 points are spread through a variety
+  of constraints.  There is no specific area that needs work.
+  I don't have the CS solution (cost 1700), but I'm guessing
+  that if I did, the same observation would apply.
+
+  MaxWorkingWeekends is a hot spot, can we look at that?  In LOR
+  there are 3 defects, total 150, and in mine there are 6 defects,
+  total 270.  So there are 120 of the extra points already.
+
+  What's wrong with 3Tue Early NU_10 -> NU_3?  It violates
+  consecutive same shifts days, which has weight 15.
+
+  Are there "lemons" - resources with very poor outcomes?
+  I've done some printing and need to look over the lemons
+  and see what I think about them.
+
+31 July 2020.  Spent today adding a "success in practice"
+  appendix to the future paper.  Audited KheFindTasksInInterval.
+
+1 August 2020.  Adding all intervals swap today.  Tested it
+  carefully.  It found no improvements at all.
+
+3 August 2020.  Still thinking about how to improve KHE20.  Best
+  of 32 is no better than best of 8, and still a long way from
+  LOR17's 1695:
+
+    [ "INRC2-4-030-1-6291", 4 threads, 32 solves, 20 distinct costs, 94.5 secs:
+      0.01835 0.01860 0.01875 0.01875 0.01880 0.01900 0.01910 0.01930
+      0.01930 0.01940 0.01940 0.01945 0.01950 0.01950 0.01950 0.01970
+      0.01980 0.01980 0.01990 0.01995 0.01995 0.02000 0.02000 0.02005
+      0.02005 0.02005 0.02015 0.02015 0.02015 0.02030 0.02050 0.02100
+    ]
+
+  Implemented randomized ejection chains, but I need to look through
+  some debug output to mke sure it's working as expected.
+
+4 August 2020.  I've done some debugging, and though the
+  randomization is not perfect (see KheTryRuns), it is as
+  good as I can easily get.  Here are the results:
+
+    [ "INRC2-4-030-1-6291", 1 solution, in 90.3 secs: cost 0.02200 ]
+
+    [ "INRC2-4-030-1-6291", 4 threads, 8 solves, 8 distinct costs, 180.8 secs:
+      0.02160 0.02200 0.02210 0.02230 0.02250 0.02280 0.02325 0.02355
+    ]
+
+  Not good.  I need to either improve the randomization, or give up.
+
+5 August 2020.  Working on optimal repair.  The widened task set
+  may be the best place to put it.  Wrote "Widened task set optimal
+  extended moves" section of Guide.  I need to implement it, then
+  use it.  Started implementing KheWidenedTaskSetOptimalMove.
+
+6 August 2020.  Working on KheWidenedTaskSetOptimalMove.  Have
+  clean compile of somewhat audited version, need to use it now
+  in place of all those swaps of different lengths.
+
+7 August 2020.  Finished KheWidenedTaskSetOptimalMove.  Audited
+  and ready to use now.  Also wrote KheWidenedTaskSetMakeFlexible.
+  Made KheWidenedTaskSetOptimalMove repeat what it does when called
+  with the same value of to_r consecutively.
+
+8 August 2020.  Auditing everything and carrying on.  I've done
+  everything in khe_sr_task_finder.c, and I'm currently working
+  on khe_se_solvers.c.  I've rearranged khe_sr_task_finder.c,
+  and its documentation.
+
+9 August 2020.  Audited everything, ready to test.  Here is the
+  supposedly unchanged version (not randomized, not optimal):
+
+    [ "INRC2-4-030-1-6291", 1 solution, in 12.4 secs: cost 0.01935 ]
+
+  Previously, in my KHE20 paper, I was getting 1980 in 5.6 seconds,
+  so something has changed.  Best of 8:
+
+    [ "INRC2-4-030-1-6291", 4 threads, 8 solves, 8 distinct costs, 27.0 secs:
+      0.01930 0.01935 0.01945 0.01970 0.01980 0.02005 0.02020 0.02055
+    ]
+
+  The result in the KHE20 paper is 1835 in 26.5 seconds.  I changed the
+  random offsets, that may explain the difference.  Now with optimal moves:
+
+    [ "INRC2-4-030-1-6291", 1 solution, in 4.5 secs: cost 0.02055 ]
+
+    [ "INRC2-4-030-1-6291", 4 threads, 8 solves, 8 distinct costs, 13.8 secs:
+      0.02055 0.02065 0.02090 0.02115 0.02175 0.02235 0.02300 0.02330
+    ]
+
+  It's faster, but the results are worse.  Let's try 8 extra days:
+
+    [ "INRC2-4-030-1-6291", 1 solution, in 10.0 secs: cost 0.02075 ]
+
+    [ "INRC2-4-030-1-6291", 4 threads, 8 solves, 6 distinct costs, 18.3 secs:
+      0.02030 0.02030 0.02075 0.02085 0.02085 0.02140 0.02145 0.02150
+    ]
+
+  Slower, and not really better.  Now 4 extra days:
+
+    [ "INRC2-4-030-1-6291", 1 solution, in 4.2 secs: cost 0.02040 ]
+
+    [ "INRC2-4-030-1-6291", 4 threads, 8 solves, 8 distinct costs, 14.3 secs:
+      0.02035 0.02040 0.02060 0.02065 0.02085 0.02140 0.02150 0.02220
+    ]
+
+  These results could all be described as uniformly mediocre.  Time for
+  some debug output, to see what is actually going on.
+
+  Tried the optimized moves on the COI archive.  Most of the results
+  are somewwhat worse in cost.  Running time is a quite a lot faster,
+  but not enough to justify the increased solution cost.  There was
+  one better result, for COI-HED01:  146, when previous was 151.
+
+                                       Av Cost  Optimals  Av Time
+    -------------------------------------------------------------
+    Previous KHE20x8 averages:             665        11     89.7
+    Optimal move KHE20x8 averages:         726               81.5
+    Non-optimal move KHE20x8 results       667        12     89.7
+    -------------------------------------------------------------
+
+  So the previous algorithm is still working essentially as before.
+
+10 August 2020.  I should probably do some more empirical work on
+  optimal moves.  But I'm giving it a res for the moment and taking
+  a look at fixing the busy days of maximum workload resources.
+
+11 August 2020.  Nothing accomplished today.  Set up the boilerplate
+  for function KheEnforceWorkPatterns, which is for enforcing work
+  patterns.
+
+12 August 2020.  Working on work patterns.  At present I'm analysing
+  cluster busy times and limit active intervals monitors, all good
+  so far except I have to think about what I want with history.
+
+13 August 2020.  Working on work patterns.  Got history in order
+  and added unavailable days.  Now I need to add wanted days.
+  Actually there are none of those, but there are complete
+  weekends and max weekends.
+
+14 August 2020.  I'm having second thoughts about on work patterns.
+  Comparing my 1935 solution with LOR's 1695 solution, the full time
+  workers are as highly occupied in my solution as they are in LOR's.
+  My extra defects are spread widely across the constraints, and
+  don't seem to be caused by under-utilization of full-time nurses.
+  Plus handling max weekends is not trivial.
+
+15 August 2020.  Here's the current solve, it does a lot of grouping
+  by resource constraints:
+
+    [ "INRC2-4-030-1-6291", 1 solution, in 12.3 secs: cost 0.01935 ]
+
+    [ "INRC2-4-030-1-6291", 4 threads, 8 solves, 8 distinct costs, 27.8 secs:
+      0.01930 0.01935 0.01945 0.01970 0.01980 0.02005 0.02020 0.02055
+    ]
+
+  And here it is with grouping by resource constraints turned off:
+
+    [ "INRC2-4-030-1-6291", 1 solution, in 8.9 secs: cost 0.02050 ]
+
+    [ "INRC2-4-030-1-6291", 4 threads, 8 solves, 7 distinct costs, 24.7 secs:
+      0.01900 0.01945 0.01970 0.01975 0.02015 0.02020 0.02050 0.02050
+    ]
+
+  It's better but overall it just seems to be random variation.  The
+  grouping includes a lot of Sat/Sun grouping, and some profile
+  grouping caused by the random variation in the number of nurses
+  required each day.
+
+16 August 2020.  I'm in need of some good ideas for solving the
+  INRC2 instances.  Comparing my solution (cost 1935) with the
+  LOR solution (cost 1695) today, in search of bright ideas.
+
+                             LOR         KHE20
+  --------------------------------------------------------------
+  MaxWorkingWeekends         150           330
+  --------------------------------------------------------------
+
+  The difference in total cost is 1935 - 1695 = 240, whereas
+  the difference in MaxWorkingWeekends cost is 330 - 150 = 180.
+  So most of the difference is in MaxWorkingWeekends violations.
+  So it would be good to find a way to remove these violations.
+  Each costs 30, so LOR has 5 violations and KHE20 has 11.
+
+  The supply of weekend labour is:
+
+    Contract-HalfTime (10 nurses)    * 1 =  10
+    Contract-PartTime (8 nurses)     * 2 =  16
+    Contract-FullTime (12 nurses)    * 2 =  24
+    ------------------------------------------
+					    50
+
+  There are 6 requests for weekend time off, but these can be
+  accommodated without harm to this total because no nurse
+  requests more than one weekend off.
+
+  The demand for weekend labour is:
+
+                   KHE20    LOR17
+    1Sat-1Sun:        13       13
+    2Sat-2Sun:        13       14
+    3Sat-3Sun:        12       12
+    4Sat-4Sun:        13       12
+                     ---      ---
+		      51       51
+
+  So demand and supply are basically even.  Any nurse that does not
+  work the maximum number of weekends is the cause of some other nurse
+  working over the maximum.  So arguably the real problem is to get
+  all nurses to work at their workload limits but also to work their
+  maximum number of weekends as well.
+
+  Although both solutions have 51 weekends being worked, the LOR17
+  solution spreads this more fairly over the nurses, and so it has
+  many fewer (6 fewer) MaxWorkingWeekends violations, saving cost 180.
+  For example, in the KHE20 solution, full-time nurse CT_17 could work
+  2 weekends but in fact works none.
+
+  If we increase the max working weekend limit for part-time and
+  full-time nurses from 2 to 3, we get this:
+
+    [ "INRC2-4-030-1-6291", 1 solution, in 5.0 secs: cost 0.01755 ]
+
+    [ "INRC2-4-030-1-6291", 4 threads, 8 solves, 6 distinct costs, 22.5 secs:
+      0.01730 0.01745 0.01745 0.01755 0.01790 0.01790 0.01795 0.01835
+    ]
+
+  which just goes to show.  This would be good enough, if only we
+  could get it.
+
+  Looking into NU_14 and NU_15, which together account for 4 of the
+  extra 6 violations (on current runs, there are 5 extra violations).
+
+  Reinstated KheResourcePairSimpleRepair, in the hope that it would
+  find ways to improve busy weekends.  With the default options I got:
+
+    [ "INRC2-4-030-1-6291", 1 solution, in 12.9 secs: cost 0.01935 ]
+
+    [ "INRC2-4-030-1-6291", 4 threads, 8 solves, 8 distinct costs, 28.2 secs:
+      0.01930 0.01935 0.01945 0.01970 0.01980 0.02005 0.02020 0.02055
+    ]
+
+  So there is no improvement.  Let's try a longer search.  Setting
+  rs_pair_parts to 14 and rs_pair_increment to 7 gives:
+
+    [ "INRC2-4-030-1-6291", 1 solution, in 46.9 secs: cost 0.01935 ]
+
+    [ "INRC2-4-030-1-6291", 4 threads, 8 solves, 8 distinct costs, 116.1 secs:
+      0.01930 0.01935 0.01945 0.01970 0.01980 0.02005 0.02020 0.02055
+    ]
+
+  So KheResourcePairSimpleRepair finds no improvements.
+
+  KheResourcePairRunRepair is in use and it is finding improvements,
+  including the final one:
+
+    [ KheResourcePairRunRepair(soln of INRC2-4-030-1-6291, options)
+      KheRunSolverSolvePair(rs, NU_4, NU_6, 0, 27) true (0.01945 -> 0.01935)
+    ] KheResourcePairRunRepair returning true (0.01945 -> 0.01935)
+
+  So perhaps this could be developed further, say swapping triples.
+
+17 August 2020.  Decided to implement KheResourcePairRunRepair for
+  more than two resources.  Need to implement two pruning rules:
+
+    * Don't try assignments that overlap with previous assignments,
+      as determined by intervals.  Do this by sorting the runs by
+      interval and assigning them in increasing order.
+
+    * Don't try assignments that a previous test has revealed
+      will not work
+
+    * Don't try assignments that will overlap with runs that
+      cannot move.
+
+  Find all runs
+  Find all fixed runs
+  Find domains, which are all resources that can be assigned to
+  the run and don't have any overlapping fixed funs.
+
+  for each run R
+     for each resource r in D(R) that can be assigned to R without overlap
+        assign r to R
+	recurse
+	unassign r from R
+
+18 August 2020.  Working on khe_sr_resource_run.c.  All good, nearly
+  finished.
+
+19 August 2020.  Working on khe_sr_resource_run.c.  Have clean compile.
+  It now needs a careful audit and then it will be ready to test.
+
+20 August 2020.  Working on khe_sr_resource_run.c.  Finished auditing,
+  it all seems good.  I've started testing.  Found and fixed a logic
+  bug with rr->defective, now called rr->state.
+
+21 August 2020.  Finally got KheResourceRunRepair working today.  Here
+  are the first test results.  For resource_count == 2:
+
+    KheResourceRunSolverDoSolve(rrs, 0, 27) ret. true (317.23360 -> 317.23350)
+    KheResourceRunSolverDoSolve(rrs, 0, 27) returning true (0.02090 -> 0.02080)
+    KheResourceRunSolverDoSolve(rrs, 0, 27) returning true (0.02060 -> 0.02050)
+    KheResourceRunSolverDoSolve(rrs, 0, 27) returning true (0.01945 -> 0.01935)
+    [ "INRC2-4-030-1-6291", 1 solution, in 12.4 secs: cost 0.01935 ]
+
+    [ "INRC2-4-030-1-6291", 8 threads, 8 solves, 8 distinct costs, 24.5 secs:
+      0.01930 0.01935 0.01945 0.01980 0.02005 0.02035 0.02040 0.02055
+    ]
+
+  And for resource_count == 3:
+
+    [ "INRC2-4-030-1-6291", 1 solution, in 251.2 secs: cost 0.01995 ]
+
+    [ "INRC2-4-030-1-6291", 8 threads, 8 solves, 7 distinct costs, 6.8 mins:
+      0.01900 0.01915 0.01930 0.01995 0.02000 0.02000 0.02015 0.02020
+    ]
+
+  The results are better but not dramatically better, and the running
+  time is very mediocre.  Pretty much what I expected.  Now with two
+  half-runs (0-13 and 14-27):
+
+    [ "INRC2-4-030-1-6291", 8 threads, 8 solves, 7 distinct costs, 28.0 secs:
+      0.01920 0.01940 0.01955 0.01990 0.02030 0.02030 0.02035 0.02070
+    ]
+
+  It's much faster.  And now with rs_run_parts=14 and rs_run_increment=7:
+
+    [ "INRC2-4-030-1-6291", 8 threads, 8 solves, 8 distinct costs, 33.4 secs:
+      0.01920 0.01940 0.01955 0.01980 0.02005 0.02020 0.02030 0.02050
+    ]
+
+  Much the same, a bit slower naturally.  What about 4 resources, but
+  with a small value of rs_run_parts (say, 7)?  Let's make
+  resource_count an option, with default value 2.
+
+    [ "INRC2-4-030-1-6291", 8 threads, 8 solves, 7 distinct costs, 23.9 secs:
+      0.01930 0.01945 0.01945 0.01980 0.02005 0.02020 0.02035 0.02055
+    ]
+
+  Here are runs with rs_run_parts = 7 and rs_run_resource = 4:
+
+    [ "INRC2-4-030-1-6291", 1 solution, in 48.4 secs: cost 0.01910 ]
+
+    [ "INRC2-4-030-1-6291", 8 threads, 8 solves, 8 distinct costs, 82.2 secs:
+      0.01890 0.01910 0.01915 0.01930 0.01940 0.01985 0.02000 0.02030
+    ]
+
+  This is my best result so far, 200 behind LOR17.
+
+  Here are runs with rs_run_parts = 7 and rs_run_resources = 5:
+
+    [ "INRC2-4-030-1-6291", 1 solution, in 23.9 mins: cost 0.01910 ]
+
+  Too slow, really, to be worth trying best of 8.
+
+  What about trying to add an unassigned task into the mix?  One
+  running when not all of the others are running.  Could simply
+  try to assign it to each of them.
+
+  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  Pairs off, runs off:  (pairs here means KheResourcePairSimpleRepair)
+
+    [ "INRC2-4-030-1-6291", 1 solution, in 16.3 secs: cost 0.01885 ]
+
+    [ "INRC2-4-030-1-6291", 8 threads, 8 solves, 8 distinct costs, 22.8 secs:
+      0.01880 0.01915 0.01925 0.01930 0.01940 0.02000 0.02010 0.02020
+    ]
+
+  Pairs off, runs on with rs_run_resources=2:
+
+    [ "INRC2-4-030-1-6291", 1 solution, in 12.5 secs: cost 0.01935 ]
+
+    [ "INRC2-4-030-1-6291", 8 threads, 8 solves, 8 distinct costs, 24.1 secs:
+      0.01930 0.01935 0.01945 0.01980 0.02005 0.02020 0.02035 0.02055
+    ]
+
+  Pairs off, runs on with rs_run_resources=3:
+
+    [ "INRC2-4-030-1-6291", 1 solution, in 238.3 secs: cost 0.01995 ]
+
+  Pairs on, runs off:
+
+    [ "INRC2-4-030-1-6291", 1 solution, in 17.1 secs: cost 0.01885 ]
+
+    [ "INRC2-4-030-1-6291", 8 threads, 8 solves, 8 distinct costs, 23.7 secs:
+      0.01880 0.01915 0.01925 0.01930 0.01940 0.02000 0.02010 0.02030
+    ]
+  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+  These are all with the basic time limit.  Doubling the time limit
+  gives
+
+    [ "INRC2-4-030-1-6291", 1 solution, in 16.4 secs: cost 0.01885 ]
+
+  for pairs off and runs off; the same, basically.
+
+  KheResourcePairRunRepair has been off all this time; I need to
+  compare it, not KheResourcePairSimpleRepair, with the new code.
+
+22 August 2020.  Comparing KheResourcePairRunRepair with
+  KheResourceRunRepair:
+
+  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  Pairs off, runs off:  (pairs here means KheResourcePairRunRepair)
+
+    [ "INRC2-4-030-1-6291", 1 solution, in 16.4 secs: cost 0.01885 ]
+
+    [ "INRC2-4-030-1-6291", 4 threads, 8 solves, 8 distinct costs, 27.6 secs:
+      0.01880 0.01885 0.01915 0.01930 0.01940 0.02000 0.02010 0.02020
+    ]
+
+  Pairs off, runs on with rs_run_resources=2:
+
+    [ "INRC2-4-030-1-6291", 1 solution, in 12.7 secs: cost 0.01935 ]
+
+    [ "INRC2-4-030-1-6291", 4 threads, 8 solves, 8 distinct costs, 27.8 secs:
+      0.01930 0.01935 0.01945 0.01980 0.02005 0.02020 0.02035 0.02055
+    ]
+
+  Pairs on, runs off:
+
+    [ "INRC2-4-030-1-6291", 1 solution, in 13.0 secs: cost 0.01935 ]
+
+    [ "INRC2-4-030-1-6291", 4 threads, 8 solves, 8 distinct costs, 30.7 secs:
+      0.01930 0.01935 0.01945 0.01970 0.01980 0.02005 0.02020 0.02055
+    ]
+
+  Pairs off, runs on with rs_run_resources=3 and a big time limit:
+
+    [ "INRC2-4-030-1-6291", 1 solution, in 238.4 secs: cost 0.01995 ]
+
+    [ "INRC2-4-030-1-6291", 4 threads, 8 solves, 8 distinct costs, 9.3 mins:
+      0.01870 0.01900 0.01930 0.01970 0.01980 0.01995 0.02015 0.02020
+    ]
+
+  Pairs off, runs on with resources=3, parts=14, and a big time limit:
+
+    [ "INRC2-4-030-1-6291", 4 threads, 8 solves, 7 distinct costs, 37.7 mins:
+      0.01880 0.01905 0.01915 0.01935 0.02020 0.02020 0.02035 0.02070
+    ]
+
+  Pairs off, runs off with the same big time limit:
+
+    [ "INRC2-4-030-1-6291", 4 threads, 8 solves, 8 distinct costs, 26.3 secs:
+      0.01880 0.01885 0.01915 0.01930 0.01940 0.02000 0.02010 0.02020
+    ]
+  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+  In short, pairs and runs don't seem to help at all.  I was actually
+  getting 1835 from KHE18x8 earlier on.  Time for a full run of the
+  4-week instances.
+
+  Did a full run of the INRC2 4-week instances, got an average cost
+  of 2487 in 152.5 seconds (pairs off, runs off).  Previously (8 August)
+  I was getting 2468 in 149.7, so this is slightly worse than before.
+  Now trying pairs off, runs on: 2476 in 153.0 secs, which is much
+  the same as what I was getting before.
+
+  Executive summary:  in the time available, runs do nothing useful.
+
+23 August 2020.  Had some thoughts about "success in practice" that
+  I typed up this morning.  Then back to highlighted tables.
+
+    ResourceTimetableHTMLOneForAllWeeks
+
+    rt : WeeksOfCycle : DaysOfWeek
+
+             Mon  Tue  Wed  Thu  Fri  Sat  Sun
+    ------------------------------------------
+    Week 1
+    Week 2
+    Week 3
+    Week 4
+    ------------------------------------------
+
+    ResourceTimetableHTMLOnePerWeek
+
+    rt : WeeksOfCycle : TimesOfDay : DaysOfWeek
+
+    Week 1   Mon  Tue  Wed  Thu  Fri  Sat  Sun
+    ------------------------------------------
+    Time 1
+    Time 2
+    Time 3
+    Time 4
+    ------------------------------------------
+
+    rt : PermutedTimesOfCycle
+
+    ResourceTypePlanningTimetableHTML (permuted times)
+
+            Time1 Time2 Time3 Time4 ...  TimeZ
+    ------------------------------------------
+    Nurse1
+    Nurse2
+    ------------------------------------------
+
+    rt : DaysOfCycle
+
+    ResourceTypeDailyPlanningTimetableHTML
+
+            Day1  Day2  Day3  Day4  ...   DayZ
+    ------------------------------------------
+    Nurse1
+    Nurse2
+    ------------------------------------------
+
+  Need to replace weeks and days by a general skeleton
+  structure.  This can have multiple tables as the first
+  dimension, and be indexed by various things.
+
+24 August 2020.  Implementing space.c today.  Going well.
+
+25 August 2020.  Implementing space.c today.  Sorted out
+  tasks with unassigned resources.
+
+26 August 2020.  Implementing space.c today.  Going well.
+  All done except SpaceDisplay.
+
+27 August 2020.  Implemented SpaceDisplay today.  Now have
+  clean compile, including using it in timetable.c.
+
+28 August 2020.  Spanning columns and rows done.  Working on
+  day and week errors - they are implemented but not yet used.
+
+29 August 2020.  Now using day and week errors in timetable.c,
+  in the form of SpaceCheck, which prints error messages about
+  them.  In fact I've brought timetable.c to its final form,
+  roughly; it needs an audit though.
+
+30 August 2020.  Audited and tested today, and added various
+  minor things that were missing.  It took a while but it seems
+  to be working well now, including on high school solutions.
+
+31 August 2020.  Working on highlighting defects today.  All
+  done, audited, tested, and polished.  It's great.  I started
+  table printing on 23 August, so about one week.  Well worth
+  it.  Off-site backup today.
+
+2 September 2020.  Took a day off to referee a paper.
+
+4 September 2020.  Implemented TripleSimpleRepairByConstraint, the
+  idea being to select triples of resources using MaxWorkingWeekends,
+  then optimally reassign them.  With it there was one success
+  (0.02040 -> 0.02020) and the final result was
+
+    [ "INRC2-4-030-1-6291", 1 solution, in 22.4 secs: cost 0.01970 ]
+
+    [ "INRC2-4-030-1-6291", 4 threads, 8 solves, 8 distinct costs, 60.1 secs:
+      0.01880 0.01940 0.01970 0.01980 0.02035 0.02045 0.02075 0.02090
+    ]
+
+  Without it the final result was
+
+    [ "INRC2-4-030-1-6291", 1 solution, in 16.7 secs: cost 0.01885 ]
+
+    [ "INRC2-4-030-1-6291", 4 threads, 8 solves, 8 distinct costs, 27.4 secs:
+      0.01880 0.01885 0.01915 0.01930 0.01940 0.02000 0.02010 0.02020
+    ]
+
+  So it has consumed time but not come up with anything much.  But
+  it shows that triples have little to offer.
+
+5 September 2020.  Realized that yesterday's results were for one-week
+  sub-intervals of the cycle.  Need to test on larger sub-intervals.
+  With rs_triple_parts=14:
+
+    [ "INRC2-4-030-1-6291", 1 solution, in 16.3 secs: cost 0.01970 ]
+
+  With rs_triple_parts=28 and rs_triple_max=100000:
+
+    [ "INRC2-4-030-1-6291", 1 solution, in 46.1 secs: cost 0.01970 ]
+
+  With rs_triple_parts=28 and rs_triple_max=1000000:
+
+    [ "INRC2-4-030-1-6291", 1 solution, in 6.1 mins: cost 0.01970 ]
+
+  It looks like we can conclude that there are no useful triples.
+  Without triples, best of 1 gives 1885 in 16.7 seconds as above.
+  Here is best of 32:
+
+    [ "INRC2-4-030-1-6291", 4 threads, 32 solves, 23 distinct costs, 90.9 secs:
+      0.01865 0.01880 0.01885 0.01915 0.01920 0.01930 0.01940 0.01940
+      0.01955 0.01955 0.01965 0.01970 0.01990 0.01995 0.02000 0.02005
+      0.02010 0.02020 0.02020 0.02020 0.02025 0.02025 0.02025 0.02040
+      0.02040 0.02050 0.02050 0.02060 0.02065 0.02075 0.02075 0.02085
+    ]
+
+  Not wonderful.  And here is best of 32 with time limits doubled:
+
+    [ "INRC2-4-030-1-6291", 4 threads, 32 solves, 23 distinct costs, 86.2 secs:
+      0.01865 0.01880 0.01885 0.01915 0.01920 0.01930 0.01940 0.01940
+      0.01955 0.01955 0.01965 0.01970 0.01990 0.01995 0.02000 0.02005
+      0.02010 0.02020 0.02020 0.02020 0.02025 0.02025 0.02025 0.02040
+      0.02040 0.02050 0.02050 0.02060 0.02065 0.02075 0.02075 0.02085
+    ]
+
+  showing that time limits are not the problem here.
+
+  I really need to test quadruples before I leave this whole area.
+
+  Worked on khe_sr_reassign.c.  All done, basically.
+
+6 September 2020.  Audited khe_sr_reassign.c and removed all the
+  old code that it replaces, from both the compilation and the
+  documentation.  Have clean compile, ready to test.
+
+7 September 2020.  Testing khe_sr_reassign.c today.  It all seems
+  to work, for example
+
+    KheReassignSolverSolve(rs, 1Mon-4Sun:runs) [CT_24, NU_10, NU_12, CT_21]
+      returning true (0.02100 -> 0.02090)
+
+  but very little benefit accrues.  This improvement was part of a
+  run whose end result was
+
+    [ "INRC2-4-030-1-6291", 1 solution, in 122.8 secs: cost 0.01980 ]
+
+  I need to try something else now, reassignment does not cut it.
+
+11 September 2020.  Working on the task finder today.
+
+12 September 2020.  Working on the task finder today.  Finished revising
+  KheFindTasksInInterval, it's pretty good.
+
+13 September 2020.  Finished KheFindTasksInInterval, KheFindTaskRunRight,
+  and KheFindTaskRunLeft.  Not tested, but audited and will work.  Also
+  finished redoing all calls on these functions (in khe_sr_reassign.c).
+  Documented and implemented the new rs_reassign_null option.
+
+  Here are some results for 2 resources without NULL:
+
+    [ "INRC2-4-030-1-6291", 1 solution, in 12.6 secs: cost 0.01915 ]
+
+  Here are some results for 2 resources with NULL:
+
+    [ "INRC2-4-030-1-6291", 1 solution, in 18.5 secs: cost 0.01965 ]
+
+  Adding NULL found the same improvements as not adding NULL, and
+  took longer.  Here are some results for 3 resources without NULL:
+
+    [ "INRC2-4-030-1-6291", 1 solution, in 14.1 secs: cost 0.01925 ]
+
+  Here are some results for 3 resources with NULL:
+
+    [ "INRC2-4-030-1-6291", 1 solution, in 5.8 mins: cost 0.01925 ]
+
+  Note the long run time.  All of these are finding pretty much
+  the same improvements, and those are tiny.  All these runs are
+  for MaxWorkingWeekends with 28 parts and runs.
+
+14 September 2020.  Here's another run, 2 resources + NULL, with
+  minimal grouping:
+
+    [ "INRC2-4-030-1-6291", 1 solution, in 100.3 secs: cost 0.01885 ]
+
+  This is back to the usual sort of value, only slow.  Here is a
+  best of 8 run with no reassignment at all:
+
+    [ "INRC2-4-030-1-6291", 4 threads, 8 solves, 6 distinct costs, 29.1 secs:
+      0.01880 0.01885 0.01970 0.02010 0.02010 0.02010 0.02020 0.02055
+    ]
+
+  This suggests that reassignment is not useful at all.
+
+  Redone the documentation of the three basic task finding operations
+  to make everything crystal clear.  Now need to re-implement.
+
+15 September 2020.  Audited the revised documentation, and implemented
+  it.  It's pretty good now.  Also revised all calls on the revised
+  functions and documented the changes there too.  All good.
+
+16 September 2020.  Audited KheFindTasksInInterval and
+  KheFindFirstRunInInterval, all good.  Did some testing,
+  it all seems to be working.
+
+  Designed and documented new parameters and options for resource
+  reassignment that support matching.  Need to implement them now.
+  Interface and boilerplate done.
+
+17 September 2020.  Tidying up reassign today.  I've been right
+  through it but I am not happy with it yet.  Needs a rethink.
+
+18 September 2020.  Took yesterday off.  Time to add matching to
+  reassign.  I've added "all" to rs_reassign_resources.  And I've
+  also added the matching code.  Need to add some solid debug code,
+  and then do some testing.
+
+21 September 2020.  I could do more matching testing, but it's
+  pretty clear that nothing would come of it.  So I'm going
+  back to studying the solution I have:
+
+    [ "INRC2-4-030-1-6291", 4 threads, 8 solves, 6 distinct costs, 27.3 secs:
+      0.01880 0.01885 0.01970 0.02010 0.02010 0.02010 0.02020 0.02055
+    ]
+
+  and thinking up ways to get the weekend work better allocated.  But
+  just to mix things up a bit, here is what I get with matching
+  reassignment with parts=2:
+
+    [ "INRC2-4-030-1-6291", 4 threads, 8 solves, 8 distinct costs, 25.4 secs:
+      0.01870 0.01930 0.01960 0.01975 0.01990 0.02005 0.02020 0.02045
+    ]
+
+  It's faster with a better best, although a worse second best.
+  The 1870 was not the result of a matching, rather it put the
+  solver onto a track that led to that result.  Best of 32, no
+  matching:
+
+    [ "INRC2-4-030-1-6291", 4 threads, 32 solves, 24 distinct costs, 86.5 secs:
+      0.01880 0.01885 0.01920 0.01940 0.01955 0.01955 0.01960 0.01965
+      0.01970 0.01970 0.01990 0.01990 0.02005 0.02010 0.02010 0.02010
+      0.02015 0.02020 0.02020 0.02025 0.02040 0.02050 0.02050 0.02055
+      0.02060 0.02075 0.02080 0.02085 0.02090 0.02095 0.02095 0.02115
+    ]
+
+  Best of 32, with matching and pairs=2:
+
+    [ "INRC2-4-030-1-6291", 4 threads, 32 solves, 21 distinct costs, 82.6 secs:
+      0.01870 0.01925 0.01930 0.01930 0.01950 0.01955 0.01955 0.01960
+      0.01960 0.01970 0.01975 0.01985 0.01985 0.01985 0.01990 0.01995
+      0.02005 0.02015 0.02015 0.02020 0.02020 0.02025 0.02035 0.02035
+      0.02035 0.02045 0.02045 0.02050 0.02050 0.02055 0.02090 0.02095
+    ]
+
+  So there is little to gain, with or without matching, from going
+  beyond best of 8; although again it's slightly faster.
+
+  In the 1880 solution, looking at MaxWorkingWeekends, the overloaded
+  resources are:
+
+    HN_0	FullTime
+    NU_14	FullTime
+    NU_15	FullTime
+    CT_24	FullTime
+    TR_25	PartTime
+    TR_28	FullTime
+
+  The slack resources are:
+
+    NU_12	PartTime
+    CT_17	FullTime
+    CT_19	FullTime
+    CT_20	PartTime
+
+  There are 12 full-time nurses and 18 other nurses altogether,
+  so full-time nurses are clearly over-represented in both these
+  lists.  The basic problem is that it is very difficult to
+  fully utilize a full-time nurse without either overloading or
+  underloading it on weekends.  That's because Consecutive free
+  days = 2-3, and consecutive busy days = 3-5, so if you minimize
+  free days and maximize busy days you repeat every 7 days.
+
+  I tried a test where the minimum limit for max working weekends
+  was equal to the maximum limit.  No change in the results, but
+  it might be worth pursuing finding these minimums automatically,
+  plus some kind of change to time sweep that takes minimums into
+  account.  But it would need some serious lookahead.
+
+22 September 2020.  Started documenting ejection beams.
+
+23 September 2020.  Working on ejection beams.  Written the main
+  beam functions, now I have to use them.
+
+24 September 2020.  Working on ejection beams.  Need to withdraw
+  ejection trees now.
+
+25 September 2020.  Working on ejection beams.
+
+26 September 2020.  Working on ejection beams.  Removed major and
+  minor schedules from the ejector interface; just a schedules
+  string remains there now.  Too convoluted for what it did.
+  Worked on the main thing, which is vertices and how the graph
+  search grows and shrinks.  Done well, have clean compile, now
+  it needs a careful audit, then it will be time to test it.
+
+27 September 2020.  Tidying up ejection beams.  Moving the trace
+  object from the vertex to the ejector - we only need one.
+  Also sorted out vertex handling.  So it's basically all
+  done.  I've also done a fairly careful audit, things are
+  looking very good indeed now.
+
+28 September 2020.  Audited khe_se_ejector.c and tidied up a couple
+  of things.  It's ready to test now.
+
+29 September 2020.  Testing khe_se_ejector.c.  It's only been a
+  week since I started work on ejection beams - not bad.  Had a
+  few small problems, now fixed.  First results, with max_beam=1:
+
+    [ "INRC2-4-030-1-6291", 4 threads, 8 solves, 8 distinct costs, 20.2 secs:
+      0.01890 0.01920 0.01945 0.02000 0.02020 0.02045 0.02050 0.02060
+    ]
+
+  This is pretty much back to what it was before.  Now, max_beam=2:
+
+    [ "INRC2-4-030-1-6291", 1 solution, in 24.7 secs: cost 0.01870 ]
+
+    [ "INRC2-4-030-1-6291", 4 threads, 8 solves, 7 distinct costs, 53.9 secs:
+      0.01870 0.01900 0.01970 0.01985 0.02005 0.02015 0.02015 0.02060
+    ]
+
+    [ "INRC2-4-030-1-6291", 4 threads, 32 solves, 23 distinct costs, 212.1 secs:
+      0.01855 0.01870 0.01895 0.01900 0.01915 0.01925 0.01925 0.01930
+      0.01930 0.01945 0.01945 0.01950 0.01955 0.01965 0.01965 0.01965
+      0.01970 0.01985 0.01990 0.01990 0.01995 0.02005 0.02010 0.02010
+      0.02015 0.02015 0.02025 0.02030 0.02035 0.02060 0.02065 0.02065
+    ]
+
+  This 1855 seems to be the best result so far.  And max_beam=3:
+
+    [ "INRC2-4-030-1-6291", 1 solution, in 27.7 secs: cost 0.01990 ]
+
+    [ "INRC2-4-030-1-6291", 4 threads, 8 solves, 8 distinct costs, 74.4 secs:
+      0.01940 0.01965 0.01990 0.02025 0.02050 0.02055 0.02095 0.02135
+    ]
+
+    [ "INRC2-4-030-1-6291", 4 threads, 32 solves, 23 distinct costs, 264.2 secs:
+      0.01930 0.01940 0.01945 0.01945 0.01960 0.01965 0.01965 0.01965
+      0.01980 0.01990 0.01990 0.02010 0.02015 0.02015 0.02025 0.02040
+      0.02045 0.02050 0.02050 0.02055 0.02065 0.02070 0.02070 0.02075
+      0.02080 0.02095 0.02095 0.02095 0.02135 0.02150 0.02155 0.02165
+    ]
+
+  And max_beam=8:
+
+    [ "INRC2-4-030-1-6291", 4 threads, 32 solves, 18 distinct costs, 171.7 secs:
+      0.02055 0.02060 0.02060 0.02070 0.02075 0.02075 0.02075 0.02085
+      0.02085 0.02110 0.02110 0.02110 0.02110 0.02115 0.02115 0.02120
+      0.02135 0.02135 0.02140 0.02140 0.02145 0.02160 0.02170 0.02170
+      0.02175 0.02180 0.02190 0.02190 0.02195 0.02195 0.02195 0.02200
+    ]
+
+  Noticeably worse.
+
+30 September 2020.  Pondering what to do next.  Did a complete INCR2-4
+  run.  The previous KHE20x8 averages were 2476 for cost and 153.0 for
+  time.  The new averages are 2476 for cost (again!) and 143.7 for time.
+  So a bit faster but costs are no better.
+
+  Worked on hseval, got it to print relative cost columns.
+
+  Best of 32, with max_beam=1 and no resource reassignment:
+
+    [ "INRC2-4-030-1-6291", 4 threads, 32 solves, 23 distinct costs, 84.5 secs:
+      0.01885 0.01890 0.01895 0.01910 0.01915 0.01915 0.01920 0.01920
+      0.01920 0.01920 0.01945 0.01955 0.01980 0.01985 0.01990 0.01990
+      0.01995 0.02000 0.02000 0.02005 0.02015 0.02015 0.02020 0.02030
+      0.02045 0.02050 0.02050 0.02055 0.02055 0.02060 0.02090 0.02110
+    ]
+
+2 October 2020.  Working on making it possible to unassign tasks that
+  don't need assignment during resource pair reassignment.  All done
+  and ready to test.  With new reassignment:
+
+    [ "INRC2-4-030-1-6291", 4 threads, 8 solves, 6 distinct costs, 21.4 secs:
+      0.01880 0.01915 0.01980 0.01980 0.02035 0.02040 0.02040 0.02050
+    ]
+
+  With new reassignment but with the new NULL stuff turned off:
+
+    [ "INRC2-4-030-1-6291", 4 threads, 8 solves, 7 distinct costs, 20.6 secs:
+      0.01880 0.01945 0.01980 0.02035 0.02040 0.02040 0.02050 0.02060
+    ]
+
+    [ "INRC2-4-030-1-6291", 4 threads, 32 solves, 21 distinct costs, 92.5 secs:
+      0.01875 0.01880 0.01880 0.01905 0.01915 0.01915 0.01920 0.01920
+      0.01940 0.01950 0.01955 0.01975 0.01980 0.01980 0.01980 0.01990
+      0.02010 0.02015 0.02030 0.02030 0.02035 0.02035 0.02035 0.02040
+      0.02040 0.02040 0.02040 0.02045 0.02050 0.02055 0.02090 0.02095
+    ]
+
+  So no improvement to the best solution, but the average is better
+  with the new NULL stuff.  Without reassignment:
+
+    [ "INRC2-4-030-1-6291", 4 threads, 8 solves, 8 distinct costs, 20.2 secs:
+      0.01890 0.01920 0.01945 0.02000 0.02020 0.02045 0.02050 0.02060
+    ]
+
+    [ "INRC2-4-030-1-6291", 4 threads, 32 solves, 23 distinct costs, 81.7 secs:
+      0.01885 0.01890 0.01895 0.01910 0.01915 0.01915 0.01920 0.01920
+      0.01920 0.01920 0.01945 0.01955 0.01980 0.01985 0.01990 0.01990
+      0.01995 0.02000 0.02000 0.02005 0.02015 0.02015 0.02020 0.02030
+      0.02045 0.02050 0.02050 0.02055 0.02055 0.02060 0.02090 0.02110
+    ]
+
+  And without grouping things are significantly worse:
+
+    [ "INRC2-4-030-1-6291", 4 threads, 8 solves, 7 distinct costs, 25.7 secs:
+      0.01965 0.02000 0.02000 0.02005 0.02020 0.02040 0.02075 0.02140
+    ]
+
+  Also did some debugging, it seems that there are unassignable groups
+  in the mix.
+
+  My current best solution (cost 1880) has MaxWorkingWeekends
+  cost 240, where the LOR17 solution (cost 1695) has cost 150.
+  The difference is 90 and explains about half of the total
+  difference, which is 1880 - 1695 = 185.
+
+3 October 2020.  Reviving es_full_widening.  Have clean compile,
+  now need to audit and test.
+
+5 October 2020.  With es_full_widening:
+
+    [ "INRC2-4-030-1-6291", 1 solution, in 7.8 secs: cost 0.01935 ]
+
+    [ "INRC2-4-030-1-6291", 4 threads, 8 solves, 8 distinct costs, 23.9 secs:
+      0.01930 0.01935 0.01940 0.01955 0.01960 0.01975 0.01995 0.02045
+    ]
+
+  Without es_full_widening:
+
+    [ "INRC2-4-030-1-6291", 4 threads, 8 solves, 8 distinct costs, 19.2 secs:
+      0.01890 0.01920 0.01945 0.02000 0.02020 0.02045 0.02050 0.02060
+    ]
+
+  So we seem to be better off without it.
+
+  A slow but quite good result from es_max_beam=2 es_full_widening_on=true:
+
+    [ "INRC2-4-030-1-6291", 4 threads, 8 solves, 8 distinct costs, 58.7 secs:
+      0.01875 0.01890 0.01940 0.01945 0.01985 0.01995 0.02005 0.02030
+    ]
+
+  Not so good with es_max_beam=3 es_full_widening_on=true:
+
+    [ "INRC2-4-030-1-6291", 4 threads, 8 solves, 7 distinct costs, 66.0 secs:
+      0.01915 0.01960 0.01960 0.01995 0.02035 0.02065 0.02075 0.02095
+    ]
+
+  Matching with parts=all:
+
+    [ "INRC2-4-030-1-6291", 4 threads, 8 solves, 8 distinct costs, 19.1 secs:
+      0.01890 0.01920 0.01945 0.02000 0.02020 0.02045 0.02050 0.02060
+    ]
+
+  Matching with parts=7:
+
+    [ "INRC2-4-030-1-6291", 4 threads, 8 solves, 8 distinct costs, 24.1 secs:
+      0.01890 0.01920 0.01945 0.02000 0.02020 0.02045 0.02050 0.02060
+    ]
+
+  Matching with parts=14 and increment=7:
+
+    [ "INRC2-4-030-1-6291", 4 threads, 8 solves, 8 distinct costs, 19.1 secs:
+      0.01890 0.01920 0.01945 0.02000 0.02020 0.02045 0.02050 0.02060
+    ]
+
+  Seems to be doing nothing at all.  Massive optimal reassignment:
+
+    [ "INRC2-4-030-1-6291", 4 threads, 8 solves, 8 distinct costs, 13.7 mins:
+      0.01890 0.01945 0.01975 0.02000 0.02010 0.02030 0.02045 0.02075
+    ]
+
+  Did nothing useful.  Going back to the standard setting:
+
+    [ "INRC2-4-030-1-6291", 4 threads, 64 solves, 33 distinct costs, 160.0 secs:
+      0.01885 0.01885 0.01890 0.01890 0.01895 0.01905 0.01910 0.01915
+      0.01915 0.01920 0.01920 0.01920 0.01920 0.01940 0.01945 0.01945
+      0.01950 0.01955 0.01965 0.01965 0.01970 0.01970 0.01970 0.01980
+      0.01980 0.01980 0.01985 0.01985 0.01985 0.01985 0.01990 0.01990
+      0.01990 0.01990 0.01995 0.01995 0.02000 0.02000 0.02005 0.02005
+      0.02015 0.02015 0.02020 0.02020 0.02030 0.02030 0.02030 0.02035
+      0.02040 0.02045 0.02045 0.02045 0.02050 0.02050 0.02055 0.02055
+      0.02060 0.02060 0.02060 0.02075 0.02080 0.02090 0.02105 0.02110
+    ]
+
+  which is another way of showing just how much we are up against it.
+
+6 October 2020.  Tried a run with repair off.  Virtually all of the
+  weekend overloads include the last weekend.  So there has been a
+  failure to look ahead and realize that there is a crunch coming in
+  the last week.
+
+7 October 2020.  Decided to try repairing with the weight of the
+  max working weekends constraints increased.  I've added multipliers
+  to cluster busy times monitors, modified KheSolnEnsureOfficialCost,
+  and documented these changes.
+
+10 October 2020.  Audited rs_multiplier, it's ready to test.  Weight 10:
+
+    [ "INRC2-4-030-1-6291", 1 solution, in 9.3 secs: cost 0.02140 ]
+
+    [ "INRC2-4-030-1-6291", 4 threads, 8 solves, 7 distinct costs, 25.0 secs:
+      0.02005 0.02025 0.02030 0.02055 0.02060 0.02060 0.02085 0.02140
+    ]
+
+  Not much good in total cost.  But it worked brilliantly at reducing
+  the number of MaxWorkingWeekends violations:  only three resources
+  have them in the 2005 solution, including two trainees.  Weight 5:
+
+  Weight 5:
+
+    [ "INRC2-4-030-1-6291", 4 threads, 8 solves, 7 distinct costs, 26.4 secs:
+      0.01965 0.01995 0.01995 0.02005 0.02010 0.02020 0.02075 0.02105
+    ]
+
+  And incredibly just two MaxWorkingWeekends violations, both trainees.
+  Weight 2:
+
+    [ "INRC2-4-030-1-6291", 4 threads, 8 solves, 8 distinct costs, 23.8 secs:
+      0.01930 0.02005 0.02010 0.02030 0.02055 0.02065 0.02075 0.02100
+    ]
+
+  but back to 3 MaxWorkingWeekends violators.  So we'll continue looking
+  into the Weight 5 solution, see if it can be improved.
+
+13 October 2020.  Why did this repair:
+
+    +WidenedTaskSetMove(@ {[4Sat:Early.4{}] 4Sun:Early.0{}} ---> NU_13 {[] -})
+
+  on line 29559 of op2 not work?  4Sun:Early.0 is a Head Nurse task
+  and should not have been grouped with 4Sat:Early.4, which is a
+  Nurse task.
+
+  I've worked out why:  because this repair comes after
+  KheTaskingEnlargeDomains, which removes all task bounds.
+  Perhaps removing these bounds is premature?
+
+  The next two experiments have rs_multiplier=5:MaxWorkingWeekends.
+  Calling KheTaskingEnlargeDomains (as I've traditionally done) gives
+
+    [ "INRC2-4-030-1-6291", 4 threads, 8 solves, 7 distinct costs, 26.8 secs:
+      0.01965 0.01995 0.01995 0.02005 0.02010 0.02020 0.02075 0.02105
+    ]
+
+  Not calling KheTaskingEnlargeDomains gives
+
+    [ "INRC2-4-030-1-6291", 4 threads, 8 solves, 7 distinct costs, 19.3 secs:
+      0.01945 0.01985 0.02000 0.02000 0.02020 0.02050 0.02075 0.02115
+    ]
+
+  and yes, it is a bit better.
+
+  Now for experiments without rs_multiplier=5:MaxWorkingWeekends.
+  Calling KheTaskingEnlargeDomains (as I've traditionally done) gives
+
+    [ "INRC2-4-030-1-6291", 4 threads, 8 solves, 8 distinct costs, 19.3 secs:
+      0.01890 0.01920 0.01945 0.02000 0.02020 0.02045 0.02050 0.02060
+    ]
+
+  Not calling KheTaskingEnlargeDomains gives
+
+    [ "INRC2-4-030-1-6291", 4 threads, 8 solves, 7 distinct costs, 19.2 secs:
+      0.01880 0.01905 0.01950 0.02000 0.02030 0.02045 0.02060 0.02060
+    ]
+
+  So we might as well stick with not calling KheTaskingEnlargeDomains, and
+  try to improve the solution that uses rs_multiplier=5:MaxWorkingWeekends.
+  Adding max_beam=2:
+
+    [ "INRC2-4-030-1-6291", 4 threads, 8 solves, 8 distinct costs, 49.2 secs:
+      0.01875 0.01920 0.01980 0.01990 0.02010 0.02040 0.02055 0.02105
+    ]
+
+  Why curr_visit_num does not work:  because the monitor's visit number
+  gets set below the main loop even on unsuccessful augments.  After
+  removing curr_successful_visit (still max_beam=2):
+
+    [ "INRC2-4-030-1-6291", 1 solution, in 95.5 secs: cost 0.01900 ]
+
+    [ "INRC2-4-030-1-6291", 4 threads, 8 solves, 8 distinct costs, 149.7 secs:
+      0.01890 0.01905 0.01920 0.01925 0.01935 0.01975 0.01985 0.02025
+    ]
+
+  Reverting to max_beam=1:
+
+    [ "INRC2-4-030-1-6291", 4 threads, 8 solves, 7 distinct costs, 56.4 secs:
+      0.01960 0.01965 0.01970 0.01985 0.01985 0.02065 0.02070 0.02080
+    ]
+
+  Quite a loss of quality.  But if the lower level says no and the
+  upper level has only searched to depth 1, that's not good.
+
+    [ +WidenedTaskSetMove(@ {4Sat:Early.4{} [4Sun:Early.4{}]} ---> NU_13 {- []})
+      new defect 0.00000 -> 0.00030: [ A1 04804 Constraint:9/NU_13            0.00030 CBTM max 1, history_after 100, active_count 2, open_count 100 ]
+      new defect 0.00000 -> 0.00040: [ A1 04834 Constraint:11/NU_13           0.00040 CBTM min 5, max 11, history_after 100, active_count 13, open_count 100 ]
+      new defect 0.00000 -> 0.00030: [ A1 06642 Constraint:19/NU_13           0.00030 LAIM (min 2, max 5)[3Thu-3Fri][28-4Sun|127][1Sat-1Sun][4Mon-4Tue][2Wed-2Sun][1Mon-1Wed][4Fri-4Fri dev 1] ]
+    ]
+
+  (line 16655).
+  The last of these is saying that NU_13 has 4Fri off, but I can't see
+  that in the timetable.  Is this a bug?  Or were there more changes
+  after this which added 4Fri to NU_13's timetable? - Yes.
+
+14 October 2020.  Did quite a few miscellaneous experiments.  One
+  with reassignment of MaxWorkingWeekends time groups:
+
+	rs_multiplier=5:MaxWorkingWeekends			\
+        rs_reassign_resources=all				\
+	rs_reassign_select=all					\
+	rs_reassign_null=true					\
+        rs_reassign_parts=constraint:MaxWorkingWeekends		\
+	rs_reassign_grouping=maximal				\
+	rs_reassign_method=matching
+
+  was not a great total cost but its unassigned tasks and MaxWorkingWeekends
+  costs were good.  Here is its best of 8:
+
+    [ "INRC2-4-030-1-6291", 4 threads, 8 solves, 7 distinct costs, 23.3 secs:
+      0.01945 0.02005 0.02010 0.02030 0.02060 0.02080 0.02080 0.02115
+    ]
+
+    Summary 						Inf. 	Obj.
+    ---------------------------------------------------------------
+    Assign Resource Constraint (14 points) 	   		420
+    Avoid Unavailable Times Constraint (9 points) 	   	 90
+    Cluster Busy Times Constraint (18 points) 	   		970
+    Limit Active Intervals Constraint (19 points) 	   	465
+    ---------------------------------------------------------------
+      Grand total (60 points) 	   			       1945
+
+  Here the Assign Resource Constraint and Cluster Busy Times Constraint
+  results are very competitive.  It's the Avoid Unavailable Times and
+  Limit Active Intervals results that are poor.  This is interesting.
+  Here is the LOR17 summary for comparison:
+
+    Summary 						Inf. 	Obj.
+    ---------------------------------------------------------------
+    Assign Resource Constraint (15 points) 	  	 	450
+    Avoid Unavailable Times Constraint (3 points) 	   	 30
+    Cluster Busy Times Constraint (19 points) 	   		960
+    Limit Active Intervals Constraint (11 points) 	   	255
+    ---------------------------------------------------------------
+      Grand total (48 points) 	   			       1695
+
+16 October 2020.  I thought I saw a repair that would help:  to
+  unassign TR_26 from its last two tasks, reducing its max working
+  weekends overload.  So I implemented unassigning any number of
+  adjacent tasks.  But there was no improvement, because one of
+  the tasks had a hard assign resource constraint:
+
+    <Resource Reference="TR_26"><Role>A=h1:P-Trainee=h1:1</Role></Resource>
+
+  So the problems now are:
+
+     Unavailable times         - 6 extra points, cost  60
+     Same shift days           - 4 extra points, cost  60
+     Min consecutive free days - 5 extra points, cost 150
+     ----------------------------------------------------
+                                                      270
+
+24 October 2020.  The last week has gone on family business.
+  Back at work today.  Implemented two-phase time sweep, it
+  is ready to test.
+
+25 October 2020.  Finishing off two-phase time sweep.  Got it
+  running, here are the first results:
+
+    [ "INRC2-4-030-1-6291", 4 threads, 8 solves, 7 distinct costs, 30.7 secs:
+      0.02015 0.02030 0.02040 0.02050 0.02050 0.02060 0.02085 0.02150
+    ]
+
+  Slightly worse, as could have been anticipated I guess.  Here are
+  the results without two-phase time sweep:
+
+    [ "INRC2-4-030-1-6291", 4 threads, 8 solves, 7 distinct costs, 24.1 secs:
+      0.01945 0.02005 0.02010 0.02030 0.02060 0.02080 0.02080 0.02115
+    ]
+
+  So nothing got broken.
+
+  I looked over the detailed timetables, the full-time resources do
+  seem to have pretty good timetables, probably somewhat better than
+  they do in the better solution.  But overall things are worse.
+  Here is the result with no flags at all, not even multiplier:
+
+    [ "INRC2-4-030-1-6291", 4 threads, 8 solves, 7 distinct costs, 21.4 secs:
+      0.01880 0.01905 0.01950 0.02000 0.02030 0.02045 0.02060 0.02060
+    ]
+
+  This is still the best I've been able to do on this instance.
+
+  Decided to look at the unrepaired solution to see whether it
+  could be better.  Here we are without repair:
+
+    [ "INRC2-4-030-1-6291", 4 threads, 8 solves, 8 distinct costs, 0.7 secs:
+      0.02700 0.02725 0.02730 0.02785 0.02810 0.02845 0.02885 0.02900
+    ]
+
+  It's certainly a pretty horrible initial solution.  Is there some
+  way to improve it?  It's a bit better without profile grouping:
+
+    [ "INRC2-4-030-1-6291", 4 threads, 8 solves, 8 distinct costs, 0.7 secs:
+      0.02545 0.02560 0.02620 0.02625 0.02645 0.02665 0.02680 0.02710
+    ]
+
+  Here's a full run without profile grouping:
+
+    [ "INRC2-4-030-1-6291", 4 threads, 8 solves, 6 distinct costs, 20.2 secs:
+      0.01940 0.01995 0.01995 0.02030 0.02035 0.02035 0.02080 0.02120
+    ]
+
+  It's worse than with profile grouping.
+
+  In the unrepaired solution, why didn't NU_11 get a late shift on
+  1Mon?  History demanded at least 1, NU_9 got one that it did not
+  actually need, so what went wrong?  What went wrong is that NU_11
+  has already worked 5 consecutive days before 1Mon, so working even
+  one late shift would be no good.  NU_11 is free then in LOR as well.
+
+26 October 2020.  Why did HN_2 not get a night shift on 2Mon?  There
+  are several starting up.  Probably because HN_2 is not a caretaker.
+
+  Using rs_time_sweep_lookahead=0 (the default value):
+
+    [ "INRC2-4-030-1-6291", 4 threads, 8 solves, 7 distinct costs, 23.2 secs:
+      0.01880 0.01905 0.01950 0.02000 0.02030 0.02045 0.02060 0.02060
+    ]
+
+  Using rs_time_sweep_lookahead=1:
+
+    [ "INRC2-4-030-1-6291", 4 threads, 8 solves, 7 distinct costs, 21.5 secs:
+      0.01995 0.02015 0.02055 0.02060 0.02115 0.02125 0.02140 0.02140
+    ]
+
+  Using rs_time_sweep_lookahead=2:
+
+    [ "INRC2-4-030-1-6291", 4 threads, 8 solves, 8 distinct costs, 21.8 secs:
+      0.01980 0.02005 0.02010 0.02050 0.02070 0.02090 0.02105 0.02110
+    ]
+
+  Using rs_time_sweep_lookahead=3:
+
+    [ "INRC2-4-030-1-6291", 4 threads, 8 solves, 8 distinct costs, 23.7 secs:
+      0.01930 0.01935 0.01980 0.02000 0.02010 0.02040 0.02050 0.02060
+    ]
+
+  Using rs_time_sweep_lookahead=4:
+
+    [ "INRC2-4-030-1-6291", 4 threads, 8 solves, 8 distinct costs, 23.7 secs:
+      0.01915 0.02005 0.02015 0.02025 0.02030 0.02045 0.02060 0.02065
+    ]
+
+  Using rs_time_sweep_lookahead=5:
+
+    [ "INRC2-4-030-1-6291", 4 threads, 8 solves, 7 distinct costs, 17.7 secs:
+      0.01955 0.02025 0.02025 0.02030 0.02060 0.02080 0.02115 0.02120
+    ]
+
+  Lookahead does not seem to do much.  Presumably the problems are
+  beyond its ken.
+
+28 October 2020.  Wasted yesterday looking over XUTT.  There are some
+  loose ends.  Implementing extended profile grouping today.
+
+  Reading back over grouping by resource constraints.  It uses taskers,
+  which contain groups of equivalent tasks.  These have the same
+  domains and cover the same days, but need not run at the same
+  times on the days.  So not exactly what we want now.
+
+29 October 2020.  Working on extended profile grouping.  For run
+  length, use maximal length runs at first, but when assigning a
+  particular resource, break them as required into smaller lengths.
+  A run is defined by (shift type, domain, length), and we would
+  only try one run for each of these combinations.
+
+  I've checked combinatorial grouping and it is doing the right
+  thing now, although it might need tightening up a bit to ensure
+  that it always groups the same shift type.
+
+  Need to do profile grouping for all runs with a given shift type
+  and domain.  That's the next step.  No limit on run length.
+
+  Defined KHE_CONSEC_SOLVER and operations, now need to implement,
+  in khe_sr_consec_solver.c.  All the boilerplate is done and
+  compiling without error, now I need to do the actual calculations.
+
+30 October 2020.  Working on extended profile grouping.  Just one
+  function, KheConstraintCoversOffset, still to do.
+
+31 October 2020.  Working on khe_sr_consec_solver.c, all done and
+  tested.  Started new source file khe_sr_consec_resource.c.
+
+1 November 2020.  Working on khe_sr_consec_resource.c, done quite
+  a lot of boilerplate.  At present I've divided up the tasks into
+  groups based on domain and shift type.  Now I need to divide
+  them according to the frame.
+
+3 November 2020.  Struggling to find time to work at the moment,
+  not sure why.  Carrying on with khe_sr_consec_resource.c today.
+  Now dividing up the tasks by frame position.
+
+  Done some documenting of the solver algorithm but it's vague
+  about how the individual runs are chosen.
+
+  Need a run of a given length starting at a given position.
+  Min length x, max length y, must fit with total length,
+  set of legal shift types (at start might need to be the
+  same as history, later might need to be different from prev).
+  Monotone constraints:  all but minimum workload limits.
+  Find one which is already as long as possible.  But min
+  domain comes first.
+
+4 November 2020.  It has occurred to me that a single nurse
+  can be assigned optimally in polynomial time using dynamic
+  programming.  One node consists of the time we are up to
+  plus the determinant of every constraint that is still in
+  play.  We can store all this as a string and use it to
+  look up the table.  The cost is the total cost of every
+  constraint that is no longer in play because all the time
+  groups that it depends on are finished with.
+
+5 November 2020.  Continuing to work on the new single resource
+  assignment section.
+
+6 November 2020.  Continuing to work on the new single resource
+  assignment section.
+
+7 November 2020.  Continuing to work on the new single resource
+  assignment section.  Design and documentation all done, except
+  that I have not quite worked out what summary to use for limit
+  active intervals monitors.
+
+8 November 2020.  Continuing to work on the new single resource
+  assignment section.  I've basically finished it, it needs an
+  audit and then it will be time to implement.
+
+9 November 2020.  Auditing the new single resource assignment
+  section, and hopefully starting to implement it.
+
+10 November 2020.  Audited the new single resource assignment
+  section.  I really am ready to implement now.
+
+11 November 2020.  Implementing the new single resource assignment
+  algorithm, in khe_sr_single_resource.c.  Done some boilerplate
+  so far.
+
+  To handle cluster busy times constraints:  for each time group,
+  work out which days it spans, and then in a single forward pass,
+  work out whether it spans d1 ... dm for all m, and then in a single
+  backward pass, work out whether it spans dm+1 ... dn for all m.
+  Then for each day that it spans both, add that time group to the
+  signature for dm.
+
+  But we should be able to do even better when the time groups
+  are chronologically increasing.  Example:
+
+         d1  d2  d3  d4  d5  d6  d7  d8  d9
+    ---------------------------------------
+    Ti    0   0   0   1   1   0   0   0   0
+    Ti+1  0   0   0   ?   ?   ?   ?   ?   ?
+    ---------------------------------------
+
+  Whenever Ti spans dm, we can check whether its last time is in
+  dm; if so, all subsequent days are out.  Then we are only
+  interested in the first 1 and the last 1.  It goes into the
+  signature of each dm from the first inclusive to the last
+  exclusive.
+
+  Run along to the first day that includes the first time of
+  Ti, then carry on to the first day that includes the last
+  time of Ti.  These, except the last one, are the days for
+  which the signature should include a Boolean for Ti.
+
+  When working on Ti+1, if its first time exceeds Ti's last
+  time, we can we can start from where Ti ended; if not
+  (which will never happen), we have to start from the
+  beginning again.
+
+  The monitor itself should be present in all days
+  from its first (inclusive) to its last (exclusive).
+
+12 November 2020.  Two days lost to family business.
+
+13 November 2020.  Implementing monitor stuff today.  It seems to
+  be working now for cluster busy times constraints, in that it
+  is adding each monitor to the right day indexes, and adding an
+  index in the one case it needs to (Sat for MaxWorkingWeekends).
+  Also there are no constraints at all on the last day, which is
+  correct:  dm+1 ... dn is empty there so can't be spanned over.
+
+  Realized that the same system would work for limit busy times,
+  limit workload, and limit active intervals constraints, so those
+  are done.  Debug output seems to suggest that all is well.
+
+  Done the resource group monitor.
+
+14 November 2020.  Giving monitor stuff a rest today.  I've just
+  defined and initialized a hash table of partial solutions for
+  each day, indexed by signature, using the wonderful HP_TABLE.
+  Added a lot of free lists.  Wrote some code that finds tasks,
+  but it is not wonderful.  Let's see how it goes.
+
+  I've more or less written the entire algorithm now, but
+  there are some bits that need careful revision.
+
+15 November 2020.  Made some good progress on the single resource
+  assignment algorithm.  Just signature stuff and choosing the
+  best possible tasks still to do.
+
+16 November 2020.  Still working on the single resource assignment.
+
+17 November 2020.  Lots of family business at the moment.  But I
+  have decided to take a break by starting work on a paper about
+  the dynamic programming algorithm.  It will give me a chance to
+  clarify my thoughts about how dynamic programming works.
+
+19 November 2020.  I'm not so sure now about the dynamic programming
+  paper.  I searched the literature and found that several branch
+  and price algorithms use it already, to generate one column.  So
+  the originality may not be there, or only marginally, in the
+  application to an arbitrary nurse rostering model and in some
+  improvements in efficiency.  But I can still implement it and
+  use it.
+
+  Read carefully through legrain.pdf.  It's a very impressive
+  paper, but still the basic algorithm came in at 16% above
+  best known.  It was the VLSN search that got this down to 2%.
+
+21 November 2020.  I'm being flooded with distractions at the
+  moment.  I've decided to carry on with the dynamic programming
+  paper at the moment, casting it as part tutorial, part new.
+
+23 November 2020.  Struggling to find time to work at the moment
+  owing to family commitments.  I've more or less committed to
+  writing a partly tutorial, partly original paper about single
+  nurse rostering using dynamic programming.
+
+24 November 2020.  Working on the dynamic programming paper.  I
+  may soon reach a point where it would be expedient to go back
+  to the implementation.
+
+26 November 2020.  Trying to finish the implementation now.
+  I've decided to go searching for the best tasks today, as
+  something simple.
+
+  Documented and implemented KheTaskAssignmentCostReduction.
+
+27 November 2020.  Trying to finish the implementation now.
+  Documented how to select tasks, not implemented yet.  Not
+  sure why I achieved so little today.
+
+28 November 2020.  Trying to finish the implementation now.
+  Finished the code for selecting the right tasks.  It needs
+  a careful audit, but it's done.
+
+29 November 2020.  Audited code for selecting the right tasks.
+  Made quite a few changes, so now it needs another audit.
+  Worked over the dynamic programming paper again, got the
+  bibliography in shape this time.
+
+  Adjusted the paper, including the analysis, to take account
+  of the straightforward solution to the retraversal problem,
+  which is to traverse the whole tree, and I've adjusted the
+  analysis to include it.
+
+2 December 2020.  Still thinking about it all.  What a mess!
+  A fix is a simple kind of monitor, a node is a simple kind
+  of solution.  Should we make a special, tiny instance and
+  solve that?  We still wouldn't be copying monitors.
+
+  Perhaps the best thing to do is just hack through it,
+  aiming to keep the size of a fix as small as possible.
+  Be aware that we are introducing types that project
+  KHE_SOLN, KHE_RESOURCE_TIMETABLE_MONITOR, KHE_MONITOR,
+  and so on, but just do it.
+
+  "In a sense, a node is a solution and each element of a
+  signature is a monitor.  But we can't follow this idea
+  through literally, because there are too many nodes and
+  too much data in each monitor, more than we need in this
+  application.  Even if we made a new instance containing
+  just the one resource and just the tasks we have chosen,
+  still it would not be feasible to copy the solution each
+  time we need a new node, because there is too much data."
+
+3 December 2020.  Virtually nothing done today.
+
+4 December 2020.  Or today.
+
+5 December 2020.  Slogging through the documentation of
+  monitor epitomes and how to extend them.
+
+6 December 2020.  Still slogging.  Some progress happening.
+
+7 December 2020.  Ready to try some implementing now.
+
+9 December 2020.  Struggling to get time to do anything, but I
+  did a fair bit today, including a great whack of boilerplate
+  code, plus KheSingleResourceSolverAddClusterBusyTimesMonitor,
+  which breaks open the whole thing if I've done it right.
+
+12 December 2020.  Still struggling to get time to do anything.
+  Today I've audited what I did a few days ago, it seems good.
+  The main missing thing is to calculate the signature of each
+  partial solution.
+
+13 December 2020.  I realized yesterday that I was missing a
+  map from times to time group on day objects.  Now done that.
+  Also made sure now that best tasks contain an array of times
+  (or NULL), one for each day they occupy.  Have reasonably
+  clean compile.
+
+14 December 2020.  Audited yesterday's code, and was able to
+  tidy up KheSrsDayAddTasks quite a bit, and other things too.
+  In fact all done now except calculating signatures.
+
+15 December 2020.  Have to get serious about calculating
+  signatures today.  I've done visit numbers, now each
+  time group update knows whether the assignment has made
+  it busy or not.  But what to actually do?
+
+16 December 2020.  I've been reflecting on signatures at the
+  monitor level, and on how similarly they work to at the
+  time group level.  I've realized that this is because they
+  are both basically just nodes in an expression tree that
+  is gradually being evaluated as the days pass.  So I want
+  to document that generalization (it will be useful if I
+  ever try to do this in XUTT) and then specialize it for
+  time groups and monitors.
+
+17 December 2020.  Continuing with the general theory of
+  expression tree nodes.
+
+19 December 2020.  Continuing with the general theory of
+  expression tree nodes.
+
+20 December 2020.  Continuing with the general theory of
+  expression tree nodes.  Actually I seem to have reached
+  the end of it.  What's more, it seems to have grown into
+  a complete specification of the whole thing.  It's great.
+
+22 December 2020.  Starting to implement expression trees
+  today.  Done a pretty solid amount of work.  Just finished
+  KheSingleResourceSolverAddClusterBusyTimesMonitor.
+
+23 December 2020.  KheSingleResourceSolverAddLimitWorkloadMonitor
+  is done.
+
+24 December 2020.  Did some tidying up.  Added code to calculate
+  the day info.  Ready now to calculate sig indexes on each day.
+
+25 December 2020.  Done sig indexes on each day.  Ready for
+  some debugging now.  Also removed the old type declarations.
+
+27 December 2020.  Did a careful audit of the whole thing today,
+  Added code to ensure that Preassigned tasks kill off all tasks
+  at all levels they cover, not just tasks at the level they
+  begin at.  Did some testing; it all seems to be working.  I
+  need to think some more about limit active intervals monitors
+  and solution generation.
+
+    KheSrsExprNotifyDayBegin(e, day_index, srs)
+    KheSrsExprNotifyChildValue(e, srs, child_value)
+    KheSrsExprNotifyDayEnd(e, day_index, srs)
+
+  Have a tmp_value field holding a temporary value, which is
+  initialized by KheSrsExprNotifyDayBegin and finished off
+  (either moved into a signature or notified upwards) by
+  KheSrsExprNotifyDayEnd.
+
+  Need to keep a count of the number of children, and report
+  upwards - no, need to report upwards at the end of the last
+  day and not before.  So KheSrsExprNotifyDayEnd must visit
+  the nodes in postorder.
+
+28 December 2020.  Not much time for work today.  Built the
+  list of active expressions for each day, in postorder, and
+  done the boilerplate for the DayBegin, DayEnd, and Update
+  functions.
+
+29 December 2020.  Replaced yesterday's Update function by a
+  set of functions:  ReceiveValueLeaf, ReceiveValueInt,
+  ReceiveValueFloat, ReceiveValueCost.  Also done some
+  rearranging of the type structure to remove one of the
+  types () which was redundant really.  Back to clean compile.
+
+30 December 2020.  Working on the BeginDay, ReceiveValue, and EndDay
+  functions.  Done for all expressions except CostSum.  All good.
+
+31 December 2020.  Kept on it.
+
+
+To Do
+=====
+
+  KheSrsExprIntSumCombEndDay is next.  It has to include the
+  special handling for the various limits.
+
+  Working on the BeginDay and EndDay functions.  Done for all
+  expressions except CostSum.  After that, audit and test.
+
+  I need to think some more about limit active intervals monitors
+  and solution generation.
+
+  Implementing expression trees.  Tree building ready for
+  some debugging now.  Then it will be time to reinstate
+  the code for building partial solutions.
+
+  Generating signatures from one day to the next, as part of
+  making a partial solution, is the main thing still to do.
+  This is KheSrsMonitorOnDayAddToSignature.  I've generated
+  a time group value and added it to the signature if that's
+  where it has to go, but I have not yet reported it up if
+  that's where it has to go, or thought carefully about a
+  monitor-level value.
+
+  Probably best to work top-down, following this outline
+  of what we want to do:
+
+    for each monitor m
+      make a fix maker fm for m
+      distribute fm across its days
+    for each day (including day 0)
+      for each node on day (initial node only on day 0)
+        store the node's fixes in their fix makers
+        for each available task on the following day
+          make a new node
+	  for each fm on the last day of the new task
+	    make a fix for fm, including task and any
+	      previous fix as stored in the fix maker
+	  retrieve new node's signature and update table
+
+  Need to basically copy the solution data structures:  we
+  need a timetable monitor for the resource, with a list of
+  pointers to fix makers (with accompanying indexes) out of
+  each time.  Each fix maker is the equivalent of one monitor.
+
+  I've been thinking about signatures for XESTT constraints.
+  It's not a simple business; it would be good to develop
+  a general theory which can be applied to any cost formula.
+  Something about which bits of the cost formula can still
+  change and how that can affect cost.
+
+  Also, the code I'm actually using bears no resemblance to
+  what I've documented.  Basically the code finds all time
+  groups that span d_m, and adds their indexes to the monitor
+  entry in the signature format.  Needs thinking about.
+
+  Implementing the new single resource assignment algorithm, in
+  file khe_sr_single_resource.c.
+
+  Add debug print of the number of distinct values.
+
+  Working on khe_sr_consec_resource.c, done quite a lot of boilerplate.
+  At present I've divided up the tasks into groups based on domain and
+  shift type.  Now I need to divide them according to the frame, and
+  then do a debug print to see what I've got so far.  What should I
+  do about tasks that span several days, as produced by profile
+  grouping?  Put them under their first day?
+
+  Now we need to get back to combinatorial grouping and the revised
+  profile grouping.  Started new source file khe_sr_consec_resource.c.
+
+  OK, what about this?  Use "extended profile grouping" to group all
+  tasks into runs of tasks of the same shift type and domain.  Then
+  use resource packing (largest workload resources first) to pack
+  the runs into the resources.  Finish off with ejection chains.
+  This to replace the current first stage.  Precede profile grouping
+  by combinatorial grouping, to get weekend tasks grouped together.
+  Keep a matching at each time, so that unavailable times of other
+  resources are taken into account, we want the unassigned tasks at
+  every time to be assignable to the unpacked resources at that time.
+  At least it's different!
+
+  After INRC2-4-030-1-6291 is done, INRC2-4-035-0-1718 would be good to
+  work on.  The current results are 21% worse, giving plenty to get into.
+
+  Event timetables still to do.  Just another kind of dimension?
+  But it shows meets, not tasks.
+
+  Ideas:
+
+    * Some kind of lookahead during time sweep that ensures resources
+      get the weekends they need?  Perhaps deduce that the max limit
+      implies a min limit, and go from there?
+
+    * Swapping runs between three or more resources.  I tried this
+      but it seems to take more time than it is worth; it's better
+      to give the extra time to ejection chains
+
+    * Ejection beams - K ejection chains being lengthened in
+      parallel, if the number of unrepaired defects exceeds K
+      we abandon the repair, but while it is less we keep going
+      Tried this, it has some interest but does not improve things.
+
+    * Hybridization with simulated annealing:  accept some chains
+      that produce worse solutions; gradually reduce the temperature.
+
+  Decided to just pick up where I left off, more or less, and go to
+  work on INRC2-4-030-1-6291.  I'm currently solving in just 5.6
+  seconds, so it makes a good test.
+
+  Fun facts about INRC2-4-030-1-6291
+  ----------------------------------
+
+  * 4 weeks
+
+  * 4 shifts per day:  Early (1), Day (2), Late (3), and Night (4)
+    The number of required ones varies more or less randomly; not
+    assigning one has soft cost 30.
+
+  * 30 Nurses:
+
+       4 HeadNurse:  HN_0,  ... , HN_3
+      13 Nurse:      NU_4,  ... , NU_16
+       8 Caretaker:  CT_17, ... , CT_24
+       5 Trainee:    TR_25, ... , TR_29
+
+    A HeadNurse can also work as a Nurse, and a Nurse can also work
+    as a Caretaker; but a Caretaker can only work as a Caretaker, and
+    a Trainee can only work as a Trainee.  Given that there are no
+    limit resources constraints and every task has a hard constraint
+    preferring either a HeadNurse, a Nurse, a Caretaker, or a Trainee,
+    this makes Trainee assignment an independent problem.
+
+  * 3 contracts: Contract-FullTime (12 nurses), Contract-HalfTime
+    (10 nurses), Contract-PartTime (8 nurses).  These determine
+    workload limits of various kinds (see below).  There seems
+    to be no relationship between them and nurse type.
+
+  * There are unavailable times (soft 10) but they are not onerous
+
+  * Unwanted patterns: [L][ED], [N][EDL], [D][E] (hard), so these
+    prohibit all backward rotations.
+
+  * Complete weekends (soft 30)
+
+  * Contract constraints:                   Half   Part   Full    Wt
+    ----------------------------------------------------------------
+    Number of assignments                   5-11   7-15  15-20*   20
+    Max busy weekends                          1      2      2    30
+    Consecutive same shift days (Early)      2-5    2-5    2-5    15
+    Consecutive same shift days (Day)       2-28   2-28   2-28    15
+    Consecutive same shift days (Late)       2-5    2-5    2-5    15
+    Consecutive same shift days (Night)      3-5    3-5    3-5    15
+    Consecutive free days                    2-5    2-4    2-3    30
+    Consecutive busy days                    2-4    3-5    3-5    30
+    ----------------------------------------------------------------
+    *15-20 is notated 15-22 but more than 20 is impossible.
+
+  Currently giving XUTT a rest for a while.  Here is its to do
+  list, prefixed by + characters:
+
+  +Can distinct() be used for distinct times?  Why not?  And also
+  +using it for "same location" might work.
+
+  +I've finished university course timetabling, except for MaxBreaks
+  +and MaxBlock, which I intend to leave for a while and ponder over
+  +(see below).  I've also finished sports scheduling except for SE1
+  +"games", which I am waiting on Bulck for but which will not be a
+  +problem.
+
+  +MaxBreaks and MaxBlock
+  +----------------------
+
+    +These are challenging because they do the sorts of things that
+    +pattern matching does (e.g. idle times), but the criterion
+    +which determines whether two things are adjacent is different:
+
+      +High school timetabling - adjacent time periods
+      +Nurse rostering - adjacent days
+      +MaxBreaks and MaxBlock - intervals have gap of at most S.
+
+    +It would be good to have a sequence of blocks to iterate over,
+    +just like we have some subsequences to iterate over in high
+    +school timetabling and nurse rostering.  Then MaxBreaks would
+    +utilize the number of elements in the sequence, and MaxBlock
+    +would utilize the duration of each block.
+
+    +We also need to allow for future incorporation of travel time
+    +into MaxBreaks and MaxBlock.  Two events would be adjacent if
+    +the amount of time left over after travelling from the first
+    +to the second was at most S.
+
+    +Assuming a 15-week semester and penalty 2:
+
+    +MaxBreaks(R, S):
+
+	+<Tree val="sum|15d">
+	    +<ForEach v="$day" from="Days">
+		+<Tree val="sum:0-(R+1)|2">
+		    +<ForEachBlock v="$ms" gap="S" travel="travel()">
+			+<AtomicMeetSet e="E" t="$day">
+			+<Tree val="1">
+		    +</ForEachBlock>
+		+</Tree>
+	    +</ForEach>
+	+</Tree>
+
+    +MaxBlock(M, S):
+
+	+<Tree val="sum|15d">
+	    +<ForEach v="$day" from="Days">
+		+<Tree val="sum:0-M|2">
+		    +<ForEachBlock v="$ms" gap="S" singles="no" travel="travel">
+			+<AtomicMeetSet e="E" t="$day">
+			+<Tree val="$ms.span:0-M|1s">
+		    +</ForEachBlock>
+		+</Tree>
+	    +</ForEach>
+        +</Tree>
+
+    +Actually it might be better if each iteration produced a meet set.
+    +We could then ask for span and so forth as usual.  There is also
+    +a connection with spacing(a, b).  In fact it would be good to
+    +give a general expression which determines whether two
+    +chronologically adjacent meets are in the same block.
+    +Then we could use "false" to get every meet into a separate
+    +block, and then spacing(a, b) would apply to each pair of
+    +adjacent blocks in the ordering.  If "block" has the same
+    +type as "meet set", we're laughing.
+
+    +I'll let this lie fallow for a while and come back to it.
+
+  +Rather than sorting meets and defining cost functions which
+  +are sums, can we iterate over the sorted meets?
+
+  +The ref and expr attributes of time sequences and event sequences
+  +do the same thing.
+
+  +There is an example of times with attributes in the section on
+  +weighted domain constraints.  Do we want them?  How do they fit
+  +with time pattern trees?  Are there weights for compound times?
+
+  +Moved history from Tree to ForEachTimeGroup.  This will be
+  +consistent with pattern matching, and more principled, since
+  +history in effect extends the range of the iterator.  But
+  +what to do about general patterns?  We need to know how each
+  +element of the pattern matches through history.
+
+  +Could use tags to identify specific task sets within patterns.
+
+  Install the new version of HSEval on web site, but not until after
+  the final PATAT 2020 deadline.
+
+  In the CQ14-13 table, I need to see available workload in minutes.
+
+  Fun facts about instance CQ14-13
+  --------------------------------
+
+  * A four-week instance (1Mon to 4Sun) with 18 times per day:
+
+      a1 (1),  a2 (2),  a3 (3),  a4 (4),  a5 (5),
+      d1 (6),  d2 (7),  d3 (8),  d4 (9),  d5 (10),
+      p1 (11), p2 (12), p3 (13), p4 (14), p5 (15),
+      n1 (16), n2 (17), n3 (18)
+
+    There are workloads, presumably in minutes, that vary quite a bit:
+
+      a1 (480),  a2 (480),  a3 (480),  a4 (600),  a5 (720),
+      d1 (480),  d2 (480),  d3 (480),  d4 (600),  d5 (720),
+      p1 (480),  p2 (480),  p3 (480),  p4 (600),  p5 (720),
+      n1 (480),                        n2 (600),  n3 (720)
+
+    480 minutes is an 8-hour shift, 720 minutes is 12 hours.
+
+  * 120 resources, with many hard preferences for certain shifts:
+
+      Preferred-a1 Preferred-a2 Preferred-a3 Preferred-a4 Preferred-a5
+      Preferred-d1 Preferred-d2 Preferred-d3 Preferred-d4 Preferred-d5
+      Preferred-p1 Preferred-p2 Preferred-p3 Preferred-p4 Preferred-p5
+      Preferred-n1 Preferred-n2 Preferred-n3
+
+    although most resources have plenty of choices from this list.
+    Anyway this leads to a huge number of prefer resources constraints.
+
+  * There are also many avoid unavailable times constraints, some for
+    whole days, many others for individual times; hard and soft.
+
+  * Unwanted patterns (hard).  In these patterns, a stands for
+    [a1a2a3a4a5] and so on.
+
+      [d4][a]
+      [p5][adp4-5]
+      [n1][adp]
+      [n2-3][adpn3]
+      [d1-3][a1-4]
+      [a5d5p1-4][ad]
+
+    This is basically "day off after a sequence of night shifts",
+    with some other stuff that probably matters less; a lot of it
+    is about the 480 and 720 minute shifts.
+
+  * MaxWeekends (hard) for most resources is 2, for some it is 1 or 3.
+
+  * MaxSameShiftDays (hard) varies a lot, with fewer of the long
+    workload shifts allowed.  NB this is not consecutive, this is
+    total.  About at most 10 of the shorter, 3 of the longer.
+    Doesn't seem very constraining, given that typical workloads
+    are 15 or 16 shifts.
+
+  * Many day or shift on requests, soft with varying weights (1-3).
+
+  * Minimum and maximum workload limits in minutes (hard), e.g.
+
+      Minutes           480-minute shifts
+      -----------------------------------------------------------
+      3120 - 3840
+      4440 - 5160
+      7440 - 8160        15.5 - 17.0
+      7920 - 8640        16.5 - 18.0
+
+    The last two ranges cover the great majority of resources.
+    These ranges are quite tight, especially for hard constraints.
+
+  * MinConsecutiveFreeDays 2 (hard) for most resources, 3 (hard)
+    for a few.
+
+  * MaxConsecutiveBusyDays 5 (hard) for most resources, 6 (hard)
+    for a few.
+
+  * MinConsecutiveBusyDays 2 (hard), for all or most resources.
+
+  Decided to work on CQ14-13 for a while, then tidy up, rerun,
+  and submit.
+
+  What does profile grouping do when the minimum limits are
+  somewhat different for different resources, and thus spread
+  over several constraints?
+
+  INRC1-ML02 would be a good test.  It runs fast and the gap is
+  pretty wide at the moment.  Actually I worked on it before (from
+  8 November 2019).  It inspired KhePropagateUnavailableTimes.
+
+  Fun facts about INRC1-ML02
+  --------------------------
+
+    * 4 weeks 1Fri to 4Thu
+
+    * 4 shifts per day: E (1), L (2), D (3), and N (4).  But there are
+      only two D shifts each day, so this is basically a three-shift
+      system of Early, Late, and Night shifts.
+
+    * 30 Nurses:
+
+        Contract-0  Nurse0  - Nurse7
+        Contract-1  Nurse8  - Nurse26
+        Contract-2  Nurse27 - Nurse29
+
+    * Many day and shift off requests, all soft 1 but challenging.
+      I bet this is where the cost is incurred.
+
+    * Complete weekends (soft 2), no night shift before free
+      weekend (soft 1), identical shift types during weekend (soft 1),
+      unwanted patterns [L][E], [L][D], [D][N], [N][E], [N][D],
+      [D][E][D], all soft 1
+
+    * Contract constraints         Contract-0    Contract-1   Contract-2
+      ----------------------------------------------------------------
+      Assignments                    10-18        6-14          4-8
+      Consecutive busy weekends       2-3     unconstrained     2-3
+      Consecutive free days           2-4         3-5           4-6
+      Consecutive busy days           3-5         2-4           3-4
+      ----------------------------------------------------------------
+
+      Workloads are tight, there are only 6 shifts to spare, or 8 if
+      you ignore the overloads in Nurse28 and Nurse29, which both
+      GOAL and KHE18x8 have, so presumably they are inevitable.
+
+
+  Do something about constraints with step cost functions, if only
+  so that I can say in the paper that it's done.
+
+  In INRC2-4-030-1-6291, the difference between my 1880 result and
+  the LOR17 1695 result is about 200.  About 100 of that is in
+  minimum consecutive same shift days defects.  Max working weekends
+  defects are another problem, my solution has 3 more of those
+  than the LOR17 solution has; at 30 points each that's 90 points.
+  If we can improve our results on these defects we will go a long
+  way towards closing the gap.
+
+  Grinding down INRC2-4-030-1-6291 from where it is now.  It would
+  be good to get a better initial solution from time sweep than I am
+  getting now.  Also, there are no same shift days defects in the
+  LOR17 solution, whereas there are
+
+  Perhaps profile grouping could do something unconventional if it
+  finds a narrow peak in the profile that really needs to be grouped.
+
+  What about an ejection chain repair, taking the current runs
+  as indivisible?
+
+  My chances of being able to do better on INRC2-4-030-1-6291
+  seem to be pretty slim.  But I really should pause and make
+  a serious attack on it.  After that there is only CQ to go,
+  and I have until 30 January.  There's time now and if I don't
+  do it now I never will.
+
+  Better to not generate contract (and skill?) resource groups if
+  not used.
+
+  Change KHE's general policy so that operations that change
+  nothing succeed.  Having them fail composes badly.  The user
+  will need to avoid cases that change nothing.
+
+  Are there other modules that could use the task finder?
+  Combinatorial grouping for example?  There are no functions
+  in khe_task.c that look like task finding, but there are some
+  in khe_resource_timetable_monitor.c:
+
+    KheResourceTimetableMonitorTimeAvailable
+    KheResourceTimetableMonitorTimeGroupAvailable
+    KheResourceTimetableMonitorTaskAvailableInFrame
+    KheResourceTimetableMonitorAddProperRootTasks
+
+  KheTaskSetMoveMultiRepair phase variable may be slow, try
+  removing it and just doing everything all together.
+
+  Fun facts about COI-Musa
+  ------------------------
+
+  * 2 weeks, one shift per day, 11 nurses (skills RN, LPN, NA)
+
+  * RN nurses:  Nurse1, Nurse2, Nurse3,
+    LPN nurses: Nurse4, Nurse5,
+    NA nurses:  Nurse6, Nurse7, Nurse8, Nurse9, Nurse10, Nurse11
+
+  Grinding down COI-HED01.  See above, 10 October, for what I've
+  done so far.
+
+  It should actually be possible to group four M's together in
+  Week 1, and so on, although combinatorial grouping only tries
+  up to 3 days so it probably does not realize this.
+
+  Fun facts about COI-HED01
+  -------------------------
+
+    * 31 days, 5 shifts per day: 1=M, 2=D, 3=H, 4=A, 5=N
+
+    * Weekend days are different, they use the H shift.  There
+      is also something peculiar about 3Tue, it also uses the
+      H shift.  It seems to be being treated like a weekend day.
+      This point is reflected in other constraints, which treat
+      Week 3 as though it had only four days.
+
+    * All demand expressed by limit resources constraints,
+      except for the D shift, which has two tasks subject
+      to assign resource and prefer resources constraints.
+      The other shifts vary between about 7 and 9 tasks.  But
+      my new converter avoids all limit resources constraints.
+
+    * There are 16 "OP" nurses and 4 "Temp" nurses.
+      Three nurses have extensive sequences of days off.
+      There is one skill, "Skill-0", but it contains the
+      same nurses as the OP nurses.
+
+    * The constraints are somewhat peculiar, and need attention
+      (e.g. how do they affect combinatorial grouping?)
+
+        [D][0][not N]  (Constraint:1)
+          After a D, we want a day off and then a night shift (OP only).
+	  Only one nurse has a D at any one time, so making this should
+	  not be very troublesome.
+
+	[not M][D]  (Constraint:2)
+	  Prefer M before D (OP only), always seems to get ignored,
+	  even in the best solutions.  This is because during the
+	  week that D occurs, we can't have a week full of M's.
+	  So really this constraint contradicts the others.
+
+	[DHN][MDHAN]  (Constraint:3)
+	  Prefer day off after D, H, or N.  Always seems to be
+	  satisfied.  Since H occurs only on weekends, plus 3Tue,
+	  each resource can work at most one day of the weekend,
+	  and if that day is Sunday, the resource cannot work
+	  M or A shifts the following week (since that would
+	  require working every day).  Sure enough, in the
+	  best solution, when an OP nurse works an H shift on
+	  a Sunday, the following week contains N shifts and
+	  usually a D shift.  And all of the H shifts assigned
+	  to Temp nurses are Sunday or 3Tue ones.
+
+	Constraint:4 says that Temp nurses should take H and
+	D shifts only.  It would be better expressed by a
+	prefer resources constraint but KHE seems happy
+	enough with it.
+
+	Constraint:5 says that assigning any shift at all to
+	a Temp nurse is to be penalized.  Again, a prefer
+	resources constraint would have been better, but at
+	present both KHE and the best solution assign 15 shifts
+	to Temp nurses, so that's fine.
+
+	The wanted pattern is {M}{A}{ND}{M}{A}{ND}..., where
+	{X} means that X only should occur during a week.
+	This is for OP nurses only.  It is expressed rather
+	crudely:  if 1 M in Week X, then 4 M in Week X.
+	This part of it does not apply to N, however; it says
+	"if any A in Week X, then at least one N in Week X+1".
+	So during N weeks the resource usually has less than
+	4 N shifts, and this is its big chance to take a D.
+
+	OP nurses should take at least one M, exactly one D,
+	at least one H, at most 2 H, at least one A, at least
+	one N.  These constraints are not onerous.
+
+    * Assign resource and prefer resources constraints specify:
+
+        - There is one D shift per day
+
+    * Limit resources constraints specify
+
+        Weekdays excluding 3Tue
+
+        - Each N shift must have exactly 2 Skill-0 nurses.
+
+	- Each M shift and each A shift must have exactly 4
+	  Skill-0 nurses
+
+	- There are no H shifts
+
+	Weekend days, including 3Tue
+
+	- Each H shift must have at least 2 Skill-0 nurses
+
+	- Each H shift must have exactly 4 nurses altogether
+
+	- There are no M, A, or N shifts on 3Tue
+
+	- There are no M, A, or N shifts on weekend days
+
+    * The new converter is expressing all demands with assign
+      resource and prefer resources constraints, as follows:
+
+      D shifts:
+
+        <R>NA=s1000:1</R>
+	<R>A=s1000:1</R>
+
+	So one resource, any skill.
+
+      H shifts (weekends and 3Tue):
+
+        <R>NA=s1000+NW0=s1000:1</R>
+	<R>NA=s1000+NW0=s1000:2</R>
+	<R>NA=s1000:1</R>
+	<R>NA=s1000:2</R>
+	<R>A=s1000:1</R>
+
+	So 2 Skill-0 and 2 arbitrary, as above
+
+      M and A shifts (weekdays not 3Tue):
+
+        <R>NA=s1000+NW0=s1000:1</R>
+	<R>NA=s1000+NW0=s1000:2</R>
+	<R>NA=s1000+NW0=s1000:3</R>
+	<R>NA=s1000+NW0=s1000:4</R>
+	<R>W0=s1000:1</R>
+	<R>W0=s1000:2</R>
+	<R>W0=s1000:3</R>
+	<R>W0=s1000:4</R>
+	<R>W0=s1000:5</R>
+
+	So exactly 4 Skill-0, no limits on Temp nurses
+
+      N shifts (weekday example)
+
+        <R>NA=s1000+NW0=s1000:1</R>
+	<R>NA=s1000+NW0=s1000:2</R>
+	<R>W0=s1000:1</R>
+	<R>W0=s1000:2</R>
+	<R>W0=s1000:3</R>
+	<R>W0=s1000:4</R>
+	<R>W0=s1000:5</R>
+
+      Exactly 2 Skill-0, no limits on Temp nurses.
+
+  It would be good to have a look at COI-HED01.  It has
+  deteriorated and it is fast enough to be a good test.
+  Curtois' best is 136 and KHE18x8 is currently at 183.
+  A quick look suggests that the main problems are the
+  rotations from week to week.
+
+  Back to grinding down CQ14-05.  I've fixed the construction
+  problem but with no noticeable effect on solution cost.
+
+  KheClusterBusyTimesConstraintResourceOfTypeCount returns the
+  number of resources, not the number of distinct resources.
+  This may be a problem in some applications of this function.
+
+  Fun facts about CQ14-05
+  -----------------------
+
+    * 28 days, 2 shifts per day (E and L), whose demand is:
+
+           1Mon 1Tue 1Wed 1Thu 1Fri 1Sat 1Sun 2Mon 2Tue 2Wed 2Thu
+        ---------------------------------------------------------
+        E   5    7    5    6    7    6    6    6    6    6    5
+        L   4    4    5    4    3    3    4    4    4    6    4
+        ---------------------------------------------------------
+        Tot 9   11   10   10   10    9   10   10   10   12    9
+
+      Uncovered demands (assign resources defects) make up the
+      bulk of the cost (1500 out of 1543).  Most of this (14 out
+      of 15) occurs on the weekends.
+
+    * 16 resources named A, B, ... P.  There is a Preferred-L
+      resource group containing {C, D, F, G, H, I, J, M, O, P}.
+      The resources in its complement, {A, B, E, K, L, N}, are
+      not allowed to take late shifts.
+
+    * Max 2 busy weekends (max 3 for for resources K to P)
+
+    * Unwanted pattern [L][E]
+
+    * Max 14 same-shift days (not consecutive).  Not hard to
+      ensure given that resource workload limits are 16 - 18.
+
+    * Many day or shift on requests.  These basically don't
+      matter because they have low weight and my current best
+      solution has about the same number of them as Curtois'
+
+    * Workload limits (all resources) min 7560, max 8640
+      All events (both E and L) have workload 480;
+      7560 / 480 = 15.7, 8640 / 480 = 18.0, so every resurce
+      needs between 16 and 18 shifts.  The Avail column agrees.
+
+    * Min 2 consecutive free days (min 3 for resources K to P)
+
+    * Max 5 consecutive busy days (max 6 for resources K to P)
+
+    * Curtois' best is 1143.  This represents 2 fewer unassigned
+      shifts (costing 100 each) and virtually the same other stuff.
+
+  Try to get CQ14-24 to use less memory and produce better results.
+  But start with a smaller, faster CQ14 instance:  CQ14-05, say.
+
+  In Ozk*, there are two skill types (RN and Aid), and each
+  nurse has exactly one of those skills.  Can this be used to
+  convert the limit resources constraints into assign resource
+  and prefer resources constraints?
+
+  Grinding down COI-BCDT-Sep in general.  I more or less lost
+  interest when I got cost 184 on the artificial instance, but
+  this does include half-cycle repairs.  So more thought needed.
+  Could we add half-cycle repairs to the second repair phase
+  if the first ended quickly?
+
+  KheCombSolverAddProfileGroupRequirement could be merged with
+  KheCombSolverAddTimeGroupRequirement if we add an optional
+  domain parameter to KheCombSolverAddTimeGroupRequirement.
+
+  Fun facts about COI-BCDT-Sep
+  ----------------------------
+
+    * 4 weeks and 2 days, starting on a Wednesday
+
+    * Shifts: 1 V (vacation), 2 M (morning), 3 A (afternoon), 4 N (night).
+
+    * All cover constraints are limit resources constraints.  But they
+      are quite strict and hard.  Could they be replaced by assign
+      resource constraints?  (Yes, they have been.)
+
+	  Constraint            Shifts               Limit    Cost
+	  --------------------------------------------------------
+          DemandConstraint:1A   N                    max 4      10
+	  DemandConstraint:2A   all A; weekend M     max 4     100
+	  DemandConstraint:3A   weekdays M           max 5     100
+	  DemandConstraint:4A   all A, N; weekend M  max 5    hard
+	  DemandConstraint:5A   weekdays M           max 6    hard
+	  DemandConstraint:6A   all A, N; weekend M  min 3    hard
+	  DemandConstraint:7A   all N                min 4      10
+	  DemandConstraint:8A   all A; weekend M     min 4     100
+	  DemandConstraint:9A   weekday M            min 4    hard
+	  DemandConstraint:10A  weekday M            min 5     100
+	  --------------------------------------------------------
+
+      Weekday M:   min 4 (hard), min 5 (100), max 5 (100), max 6 (hard),
+      Weekend M:   min 3 (hard), min 4 (100), max 4 (100), max 5 (hard)
+      All A:       min 3 (hard), min 4 (100), max 4 (100), max 5 (hard)
+      All N:       min 3 (hard), min 4 (10),  max 4 (10),  max 5 (hard)
+
+    * There are day and shift off constraints, not onerous
+
+    * Avoid A followed by M
+
+    * Night shifts are to be assigned in blocks of 3, although
+      a four block is allowed to avoid fri N and sat free.  There
+      are hard constraints requiring at least 2 and at most 4
+      night shifts in a row.
+
+    * At least six days between sequences of N shifts; the
+      implementation here could be better, possibly.
+
+    * At least two days off after five consecutive shifts
+
+    * At least two days off after night shift
+
+    * Prefer at least two morning shifts before a vacation period and
+      at least one night shift afterwards
+
+    * Between 4 and 8 weekend days
+
+    * At least 10 days off
+
+    * 5-7 A (afternoon) shifts, 5-7 N (night) shifts
+
+    * Days shifts (M and A, taken together) in blocks of exactly 3
+
+    * At most 5 working days in a row.
+
+  Work on COI-BCDT-Sep, try to reduce the running time.  There are
+  a lot of constraints, which probably explains the poor result.
+
+  Should we limit domain reduction at the start to hard constraints?
+  A long test would be good.
+
+  In khe_se_solvers.c, KheAddInitialTasks and KheAddFinalTasks could
+  be extended to return an unassign_r1_ts task set which could then be
+  passed on to the double repair.  No great urgency, but it does make
+  sense to do this.  But first, let's see whether any instances need it.
+
+  Also thought of a possibility of avoiding repairs during time sweep,
+  when the cost blows out too much.  Have to think about it and see if
+  it is feasible.
+
+  Take a close look at resource matching.  How good are the
+  assignments it is currently producing?  Could it do better?
+
+  Now it is basically the big instances, ERRVH, ERMGH, and MER
+  that need attention.  Previously I was working on ERRVH, I
+  should go back to that.
+
+  Is lookahead actually working in the way I expect it to?
+  Or is there something unexpected going on that is preventing
+  it from doing what it has the potential to do?
+
+  UniTime requirements not covered yet:
+
+    Need an efficient way to list available rooms and their
+    penalties.  Nominally this is done by task constraints but
+    something more concise, which indicates that the domain
+    is partitioned, would be better.
+
+    Ditto for the time domain of a meet.
+
+    SameStart distribution constraint.  Place all times
+    with the same start time in one time group, have one
+    time group for each distinct starting time, and use
+    a meet constraint with type count and eval="0-1|...".
+
+    SameTime is a problem because there is not a simple
+    partition into disjoint sets of times.  Need some
+    kind of builtin function between pairs of times, but
+    then it's not clear how this fits in a meet set tree.
+
+    DifferentTime is basically no overlap, again we seem
+    to need a binary attribute.
+
+    SameDays and SameWeeks are cluster constraints, the limit
+    would have to be extracted from the event with the largest
+    number of meets, which is a bit dodgy.
+
+    DifferentDays and DifferentWeeks just a max 1 on each day
+    or week.
+
+    Overlap and NotOverlap: need a binary for the amount of
+    overlap between two times, and then we can constrain it
+    to be at least 1 or at most 0.  NB the distributive law
+
+       overlap(a+b, c+d) = overlap(a, c) + overlap(a, d)
+         + overlap(b, c) + overlap(b, d)
+
+    but this nice property is not going to hold for all
+    binary attributes.
+
+    Precedence: this is the order events constraint, with
+    "For classes that have multiple meetings in a week or
+    that are on different weeks, the constraint only cares
+    about the first meeting of the class."  No design for
+    this yet.
+
+    WorkDay(S): "There should not be more than S time slots
+    between the start of the first class and the end of the
+    last class on any given day."  This is a kind of avoid
+    idle times constraint, applied to events rather than to
+    resources (which for us is a detail).
+      One task or meet set per day, and then a special function
+    (span or something) to give the appropriate measure.  But
+    how do you define one day?  By a time group.
+
+    MinGap(G): Any two classes that are taught on the same day
+    (they are placed on overlapping days and weeks) must be at
+    least G slots apart.  Not sure what to make of this.
+    I guess it's overlap(a, b, extension) where extension
+    applies to both a and b.
+
+    MaxDays(D): "Given classes cannot spread over more than D days
+    of the week".  Just a straight cluster constraint.
+
+    MaxDayLoad(S): "Given classes must be spread over the days
+      of the week (and weeks) in a way that there is no more
+      than a given number of S time slots on every day."  Just
+      a straight limit busy times constraint, measuring durations.
+      But not the full duration, rather the duration on one day.
+
+      This is one of several indications that we cannot treat
+      a non-atomic time as a unit in all cases.
+
+    MaxBreaks(R,S): "MaxBreaks(R,S) This constraint limits the
+      number of breaks during a day between a given set of classes
+      (not more than R breaks during a day). For each day of week
+      and week, there is a break between classes if there is more
+      than S empty time slots in between."  A very interesting
+      definition of what it means for two times to be consecutive.
+
+    MaxBlock(M,S): "This constraint limits the length of a block
+      of consecutive classes during a day (not more than M slots
+      in a block). For each day of week and week, two consecutive
+      classes are considered to be in the same block if the gap
+      between them is not more than S time slots."  Limit active
+      intervals, interpreted using durations rather than times.
+
+  A resource r is busy at some time t if that time overlaps with
+  any interval in any meet that r is attending.
+
+  Need a way to define time *groups* to take advantage of symmetries.
+  e.g. 1-15{MWF}3 = {1-15M3, 1-15W3, 1-15F3}.  All doubles:
+  [Mon-Fr][12 & 23 & 45 & 67 & 78] or something.
+  {MWF:<time>} or something.  But what is the whole day anyway?
+  All intervals, presumably. {1-15:{MTWRF:1-8}
+
+  See 16 April 2019 for things to do with the XUTT paper.
+
+  It's not clear at the moment how time sweep should handle
+  rematching.  If left as is, without lookahead, it might
+  well undo all the good work done by lookahead.  But to
+  add lookahead might be slow.  Start by turning it off:
+  rs_time_sweep_rematch_off=true.  The same problem afflicts
+  ejection chain repair during time sweep.  Needs thought.
+  Can the lookahead stuff be made part of the solution cost?
+  "If r is assigned t, add C to solution cost".  Not easily.
+  It is like a temporary prefer resources monitor.
+
+  Here's an idea for a repair:  if a sequence is too short, try
+  moving it all to another resource where there is room to make
+  it longer.  KheResourceUnderloadAugment will in fact do nothing
+  at all in these cases, so we really do need to do something,
+  even an ejecting move on that day.
+
+  Working over INRC2-4-030-1-6753 generally, trying to improve
+  the ejection chain repairs.  No luck so far.
+
+  Resource swapping is really just resource rematching, only not
+  as good.  That is, unless there are limit resources constraints.
+
+  The last few ideas have been too small beer.  Must do better!
+  Currently trying to improve KHE18's solutions to INRC2-4-035-2-8875.xml:
+
+    1 = Early, 2 = Day, 3 = Late, 4 = Night
+    FullTime: max 2 weekends, 15-22 shifts, consec 2-3 free 3-5 busy
+    PartTime: max 2 weekends,  7-15 shifts, consec 2-5 free 3-5 busy
+    HalfTime: max 1 weekends,  5-11 shifts, consec 3-5 free 3-5 busy
+    All: unwanted [4][123], [3][12], complete weekends, single asst per day
+    All: consec same shift days: Early 2-5, Day 2-28, Late 2-5, Night 4-5
+
+    FullTime resources and the number of weekends they work in LOR are:
+
+      NU_8 2, NU_9 1, CT_17 1, CT_18 0, CT_20 1, CT_25 1, TR_30 2, TR_32 3
+
+    NB full-time can only work 20 shifts because of max 5 busy then
+    min 2 free, e.g. 5-2-5-2-5-2-5-2 with 4*5 = 20 busy shifts.  But
+    this as it stands is not viable because you work no weekends.  The
+    opposite, 2-5-2-5-2-5-2-5 works 4 weekends which is no good either.
+    Ideally you would want 5-2-5-4-5-2-5, which works 2 weekends, but
+    the 4 free days are a defect.  More breaks is the only way to
+    work 2 weekends, but that means a lower workload again.  This is
+    why several of LOR's full-timers are working only 18 hours.  The
+    conclusion is that trying to redistribute workload overloads is
+    not going to help much.
+
+    Resource types
+
+    HeadNurse (HN_*) can also work as Nurse or Caretaker
+    Nurse     (NU_*) can also work as Caretaker
+    Caretaker (CT_*) works only as Caretaker
+    Trainee   (TR_*) works only as Trainee
+
+  "At least two days off after night shift" - if we recode this,
+  we might do better on COI-BCDT-Sep.  But it's surprisingly hard.
+
+  Option es_fresh_visits seems to be inconsistent, it causes
+  things to become unvisited when there is an assumption that
+  they are visited.  Needs looking into.  Currently commented
+  out in khe_sr_combined.c.
+
+  For the future:  time limit storing.  khe_sm_timer.c already
+  has code for writing time limits, but not yet for reading.
+
+  Work on time modelling paper for PATAT 2020.  The time model
+  is an enabler for any projects I might do around ITC 2019,
+  for example modelling student sectioning and implementing
+  single student timetabling, so it is important for the future
+  and needs to be got right.
+
+  Time sets, time groups, resource sets, and resource groups
+  ----------------------------------------------------------
+
+    Thinking about whether I can remove construction of time
+    neighbourhoods, by instead offering offset parameters on
+    the time set operations (subset, etc.) which do the same.
+
+    Need to use resource sets and time sets a lot more in the
+    instance, for the constructed resource and time sets which
+    in general have no name.  Maybe replace solution time groups
+    and solution resource groups altogether.  But it's not
+    trivial, because solution time groups are used by meets,
+    and solution resource groups are used by tasks, both for
+    handling domains (meet and task bounds).  What about
+
+      typedef struct khe_time_set_rec {
+          SSET elems;
+      } KHE_TIME_SET;
+
+    with SSET optimized by setting length to -1 to finalize.
+    Most of the operations would have to be macros which
+    add address-of operators in the style of SSET itself.
+
+       KHE_TIME_SET KheTimeSetNeighbour(KHE_TIME_SET ts, int offset);
+
+    would be doable with no memory allocation and one binary
+    search (which could be optional for an internal version).
+
+    I'm leaving this lie for now, something has to be done
+    here but I'm not sure what, and there is no great hurry.
+
+  There is a problem with preparing once and solving many times:
+  adjustments for limit resources monitors depend on assignments
+  in the vicinity, which may vary from one call to another.  The
+  solution may well be simply to document the issue.
+
+  At present resource matching is grouping then ungrouping during
+  preparation, then grouping again when we start solving.  Can this
+  be simplified?  There is a mark in the way.
+
+  Document sset (which should really be khe_sset) and khe_set.
+
+  I'm slightly worried that the comparison function for NRC
+  worker constraints might have lost its transitivity now that
+  history_after is being compared in some cases but not others.
+
+  Look at the remaining special cases in all.map and see if some
+  form of condensing can be applied to them.
+
+  Might be a good idea to review the preserve_existing option in
+  resource matching.  I don't exactly understand it at the moment.
+
+  There seem to be several silly things in the current code that are
+  about statistics.  I should think about collecting statistics in
+  general, and implement something.  But not this time around.
+
+  KheTaskFirstUnFixed is quite widely used, but I am beginning to
+  suspect that KheTaskProperRoot is what is really wanted.  I need
+  to analyse this and perhaps make some conceptual changes.
+
+  Read the full GOAL paper.  Are there other papers whose aims
+  are the same as mine (which GOAL's are not)?  If so I need
+  to compare my results with theirs.  The paper is in the 2012
+  PATAT proceedings, page 254.  Also it gives this site:
+
+    https://www.kuleuven-kulak.be/nrpcompetition/competitor-ranking
+
+  Can I find the results from the competition winner?  According to
+  Santos et al. this was Valouxis et al, but their paper is in EJOR.
+
+  Add code for limit resources monitors to khe_se_secondary.c.
+
+  In KheClusterBusyTimesAugment, no use is being made of the
+  allow_zero option at the moment.  Need to do this some time.
+
+  Generalize the handling of the require_zero parameter of
+  KheOverloadAugment, by allowing an ejection tree repair
+  when the ejector depth is 1.  There is something like
+  this already in KheClusterOverloadAugment, so look at
+  that before doing anything else.
+
+  There is an "Augment functions" section of the ejection chains
+  chapter of the KHE guide that will need an update - do it last.
+
+  (KHE) What about a general audit of how monitors report what
+  is defective, with a view to finding a general rule for how
+  to do this, and unifying all the monitors under that rule?
+  The rule could be to store reported_deviation, renaming it
+  to deviation, and to calculate a delta on that and have a
+  function which applies the delta.  Have to look through all
+  the monitors to see how that is likely to pan out.  But the
+  general idea of a delta on the deviation does seem to be
+  right, given that we want evaluation to be incremental.
+
+  (KHE) For all monitors, should I include attached and unattached
+  in the deviation function, so that attachment and unattachment
+  are just like any other update functions?
+
+  Ejection chains idea:  include main loop defect ejection trees
+  in the major schedule, so that, at the end when main loop defects
+  have resisted all previous attempts to repair them, we can try
+  ejection trees on each in turn.  Make one change, produce several
+  defects, and try to repair them all.  A good last resort?
+
+  Ejection chains idea:  instead of requiring an ejection chain
+  to improve the solution by at least (0, 1), require it to
+  improve it by a larger amount, at first.  This will run much
+  faster and will avoid trying to fix tiny problems until there
+  is nothing better to do.  But have I already tried it?  It
+  sounds a lot like es_limit_defects.
