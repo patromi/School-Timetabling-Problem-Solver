@@ -16,6 +16,7 @@ from src.construct import build_initial
 from src.evaluator_ref import evaluate_cost_components, resolve_occurrences
 from src.html_report import render_timetable_page
 from src.lahc import run_lahc
+from src.selectors import EpsilonGreedySelector, RandomSelector, UCBSelector
 from src.model import Instance, SolutionGroup
 from src.parser import parse_archive
 from src.xml_writer import (
@@ -63,6 +64,7 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         help="Id instancji (np. AU-BG-98). Pomin, by wypisac liste.",
     )
     parser.add_argument("--archive", type=Path, default=DEFAULT_ARCHIVE)
+    parser.add_argument("--selector", type=str, choices=["random", "epsilon-greedy", "ucb"], default="random", help="Heuristic selector type")
     parser.add_argument("--iterations", type=int, default=30_000)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--history", type=int, default=30)
@@ -149,12 +151,19 @@ def main(argv: list[str] | None = None) -> None:
     # instance size -- large/slow instances (hundreds of events, dozens of
     # constraints) can drop to a few iterations/s, where a purely
     # iteration-count-based trigger could mean minutes of silence.
+    if args.selector == "epsilon-greedy":
+        selector_obj = EpsilonGreedySelector()
+    elif args.selector == "ucb":
+        selector_obj = UCBSelector()
+    else:
+        selector_obj = RandomSelector()
     best, _ = run_lahc(
         instance,
         initial,
         rng,
         history_length=args.history,
         max_iterations=args.iterations,
+        selector=selector_obj,
         on_progress=on_progress,
         progress_every=max(1, args.iterations // 20),
         progress_seconds=2.0,
