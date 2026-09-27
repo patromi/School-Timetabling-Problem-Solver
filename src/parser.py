@@ -18,7 +18,7 @@ from src.model import (
 )
 
 _CONSTRAINT_META_TAGS = {"Name", "Required", "Weight", "CostFunction", "AppliesTo"}
-
+ 
 
 def _text(node: ET.Element, tag: str, default: str | None = None) -> str | None:
     child = node.find(tag)
@@ -259,8 +259,20 @@ def _parse_solution(solution_node: ET.Element) -> Solution:
     return Solution(instance_ref=solution_node.attrib["Reference"], events=events)
 
 
+def _parse_xml(xml_text: str) -> ET.Element:
+    try:
+        return ET.fromstring(xml_text)
+    except ET.ParseError as e:
+        if xml_text.strip().startswith("version https://git-lfs.github.com/spec/v1"):
+            raise ValueError(
+                "XML parsing failed: The file is a Git LFS pointer, not a real XML file. "
+                "Run `git lfs pull` to download the actual data."
+            ) from e
+        raise ValueError(f"XML parsing failed: {e}") from e
+
+
 def parse_solution_groups(xml_text: str) -> list[SolutionGroup]:
-    root = ET.fromstring(xml_text)
+    root = _parse_xml(xml_text)
     container = root.find("SolutionGroups")
     if container is None:
         return []
@@ -274,7 +286,7 @@ def parse_solution_groups(xml_text: str) -> list[SolutionGroup]:
 
 
 def parse_archive(xml_text: str) -> list[Instance]:
-    root = ET.fromstring(xml_text)
+    root = _parse_xml(xml_text)
     instances = []
     for instance_node in root.find("Instances").findall("Instance"):
         times_node = instance_node.find("Times")

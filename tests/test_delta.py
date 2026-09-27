@@ -4,8 +4,8 @@ from pathlib import Path
 import pytest
 from src.construct import build_initial
 from src.cost import Cost, evaluate_cost
-from src.delta import delta_cost
 from src.heuristics import MANUAL_HEURISTICS
+from src.incremental import IncrementalEvaluator, StructuralChangeError
 from src.model import (
     AppliesTo,
     Constraint,
@@ -62,42 +62,31 @@ def _all_at_p1(n: int) -> Solution:
     )
 
 
-def test_delta_cost_returns_the_same_cost_when_nothing_changed() -> None:
+def test_incremental_evaluator_returns_the_same_cost_when_nothing_changed() -> None:
     instance = _independent_prefer_times_instance(3)
     solution = _all_at_p1(3)
     cost = evaluate_cost(instance, solution)
 
-    assert delta_cost(instance, solution, cost, solution) == cost
+    evaluator = IncrementalEvaluator(instance, solution)
+    assert evaluator.evaluate(solution).cost == cost
 
 
-def test_delta_cost_matches_full_evaluation_after_a_single_move() -> None:
+def test_incremental_evaluator_matches_full_evaluation_after_a_single_move() -> None:
     n = 5
     instance = _independent_prefer_times_instance(n)
     old_solution = _all_at_p1(n)
-    old_cost = evaluate_cost(instance, old_solution)
     new_events = list(old_solution.events)
     new_events[0] = SolutionEvent(event_ref="E0", time_ref="P2")
     new_solution = Solution(instance_ref="I1", events=new_events)
 
-    result = delta_cost(instance, old_solution, old_cost, new_solution)
+    evaluator = IncrementalEvaluator(instance, old_solution)
+    result = evaluator.evaluate(new_solution).cost
 
     assert result == evaluate_cost(instance, new_solution)
     assert result == Cost(infeasibility=0, objective=10)
 
 
-def test_delta_cost_ignores_a_stale_old_cost_rather_than_trusting_it() -> None:
-    # The old implementation added its per-constraint changes onto whatever
-    # the caller passed in, so a stale old_cost silently produced a wrong
-    # answer. The engine derives it instead.
-    instance = _independent_prefer_times_instance(3)
-    solution = _all_at_p1(3)
-
-    result = delta_cost(instance, solution, Cost(999, 999), solution)
-
-    assert result == evaluate_cost(instance, solution)
-
-
-def test_delta_cost_raises_when_solutions_have_a_different_occurrence_count() -> None:
+def test_incremental_evaluator_raises_when_solutions_have_a_different_occurrence_count() -> None:
     instance = Instance(
         id="I1",
         name="Test",
@@ -115,22 +104,23 @@ def test_delta_cost_raises_when_solutions_have_a_different_occurrence_count() ->
             SolutionEvent(event_ref="E1", time_ref="P1", duration=1),
         ],
     )
-    old_cost = evaluate_cost(instance, old_solution)
 
-    with pytest.raises(ValueError, match="different number of occurrences"):
-        delta_cost(instance, old_solution, old_cost, new_solution)
+    evaluator = IncrementalEvaluator(instance, old_solution)
+    with pytest.raises(StructuralChangeError):
+        evaluator.evaluate(new_solution)
 
 
-def test_delta_cost_matches_full_evaluation_on_a_real_instance() -> None:
+def test_incremental_evaluator_matches_full_evaluation_on_a_real_instance() -> None:
     instance = parse_archive(_load("BrazilInstance1.xml"))[0]
     rng = random.Random(0)
     old_solution = build_initial(instance, rng)
-    old_cost = evaluate_cost(instance, old_solution)
+
+    evaluator = IncrementalEvaluator(instance, old_solution)
 
     for heuristic in MANUAL_HEURISTICS:
         try:
             new_solution = heuristic.apply(old_solution, instance, rng)
         except ValueError:
             continue
-        result = delta_cost(instance, old_solution, old_cost, new_solution)
+        result = evaluator.evaluate(new_solution).cost
         assert result == evaluate_cost(instance, new_solution)

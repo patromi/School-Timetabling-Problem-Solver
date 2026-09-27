@@ -113,13 +113,17 @@ src/                       — pakiet domenowy (flat layout; import src.model it
     constraints.py         — _evaluate_*_constraint dla typów XHSTT + dispatch
     __init__.py            — fasada: evaluate_cost_components, total_cost, re-eksporty
   cost.py                  — Cost(infeasibility, objective) z porównaniem leksykograficznym
-  delta.py                 — delta_cost: przyrostowe przeliczanie kosztu (gotowe, niezapodłączone do LAHC)
+  delta.py                 — [usunięte, logika przyrostowa połączona z lahc.py poprzez incremental.py]
+  incremental.py           — mechanizm ewaluacji przyrostowej z wykorzystaniem transakcji (IncrementalEvaluator)
   moves.py                 — ruchy lokalnego przeszukiwania używane przez LAHC
   heuristics.py            — MANUAL_HEURISTICS: 8 operatorów, kontrakt apply(solution, instance, rng)
   lahc.py                  — pętla LAHC (Late Acceptance Hill Climbing, Burke & Bykov)
   xml_writer.py            — eksport Solution → XML XHSTT (format dla HSEval)
-  html_report.py           — raport HTML: siatka timetable + breakdown kosztów per ograniczenie
-  assets/                  — zasoby statyczne html_report (fonts.css)
+  html_report/             — pakiet odpowiedzialny za raport HTML
+    grid.py                — logika budowania siatki planu i komórek zasobów
+    evaluation.py          — logika renderowania szczegółów oceny naruszeń ograniczeń
+    __init__.py            — fasada: render_timetable_page (otoczka dokumentu) i eksporty
+  assets/                  — zasoby statyczne html_report (fonts.css, timetable.css)
 
 data/
   xhstt2014/               — archiwum XHSTT-2014 (25 instancji, Git LFS)
@@ -130,10 +134,11 @@ tests/
   fixtures/                — małe instancje XML: BrazilInstance1, ArtificialSudoku4x4
   test_construct.py        — testy konstruktora rozwiązania początkowego
   test_cost.py             — testy modelu kosztu (Cost, porównanie leksykograficzne)
-  test_delta.py            — test delta: 10 000 ruchów, asercja delta == pełna ewaluacja (@slow)
+  test_delta.py            — testy logiki obliczania zmian kosztu po wdrożeniu poprawek (używa IncrementalEvaluator)
   test_evaluator_ref.py    — testy ewaluatora kosztu (zgodność z HSEval)
   test_heuristics.py       — testy heurystyk (strukturalna poprawność, brak mutacji wejścia)
   test_html_report.py      — testy generowania raportu HTML
+  test_incremental.py      — testy systemu IncrementalEvaluator (w tym niezmiennik 10 000 ruchów na LAHC @slow)
   test_lahc.py             — testy pętli LAHC (powtarzalność z seeda)
   test_moves.py            — testy ruchów lokalnego przeszukiwania
   test_parser.py           — testy parsera XHSTT
@@ -141,7 +146,6 @@ tests/
 
 scripts/
   generate_summary.py      — generuje summary.csv/md z wynikami solvera (wywoływany przez Snakefile)
-  benchmark_delta_evaluation.py — benchmark delta vs. pełna ewaluacja
   check_branch_name.py     — hook pre-commit: walidacja nazwy brancha (issue#N-opis)
   check_commit_msg.py      — hook commit-msg: walidacja Conventional Commits
 

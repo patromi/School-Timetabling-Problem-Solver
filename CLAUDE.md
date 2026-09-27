@@ -97,8 +97,11 @@ przejściowy sprzed powyższej specyfikacji** — nie ma jeszcze selektora RL (E
 (Etap 7); akceptacja kandydatów działa wg reguły LAHC (Burke & Bykov), nie symulowanego wyżarzania z
 Etapu 5 powyżej. Kontrakt heurystyk `apply(solution, instance, rng)` z Etapu 4 **jest już
 zaimplementowany** (`src/heuristics.py`, `MANUAL_HEURISTICS`, 8 operatorów) i podłączony do pętli LAHC.
-Delta evaluation (Etap 3) istnieje w `src/delta.py` i jest przetestowana (invariant 10 000 ruchów), ale
-`lahc.py` nadal używa pełnej ewaluacji — podłączenie `delta_cost` to osobna decyzja projektowa.
+Delta evaluation (Etap 3) zastała w pełni zaimplementowana w module `src/incremental.py` (jako 
+stanowy silnik transakcyjny `IncrementalEvaluator`) i **jest podłączona jako domyślny tryb pracy**
+solvera w pętli `lahc.py`.
+Struktura kodu (w tym rozbicie `evaluator_ref` i `html_report` na odpowiednie pakiety) 
+odzwierciedla wykonany w całości plan refaktoryzacji z 6 września.
 Sekcje poniżej opisują *ten* istniejący kod, żeby móc się w nim poruszać — traktuj powyższą specyfikację
 etapów jako docelową mapę drogową do realizacji, nie jako opis obecnego stanu.
 
