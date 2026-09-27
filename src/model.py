@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from typing import Any
 
 
 @dataclass
@@ -92,7 +93,7 @@ class Constraint:
     weight: int
     cost_function: str
     applies_to: AppliesTo = field(default_factory=AppliesTo)
-    params: dict = field(default_factory=dict)
+    params: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass

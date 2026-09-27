@@ -76,3 +76,12 @@ output/
 # Git worktrees (superpowers subagent-driven-development workspaces)
 .worktrees/
 .superpowers/
+
+# KHE / C build artifacts & on-demand downloads
+*.o
+*.a
+*.cgi
+*.tar.gz
+tools/khe/bin/
+tools/khe/khe-*/
+.tmp_val/
