@@ -7,16 +7,19 @@ Przyklady:
 """
 
 import argparse
+import functools
+import io
 import random
 import sys
 import time
+from dataclasses import dataclass
 from pathlib import Path
 
 from src.construct import build_initial
 from src.evaluator_ref import evaluate_cost_components, resolve_occurrences
 from src.html_report import render_timetable_page
 from src.lahc import run_lahc
-from src.model import Instance, SolutionGroup
+from src.model import Instance, Solution, SolutionGroup
 from src.parser import parse_archive
 from src.xml_writer import (
     extract_instance_archive,
@@ -26,8 +29,21 @@ from src.xml_writer import (
 DEFAULT_ARCHIVE = Path(__file__).parent / "data" / "xhstt2014" / "XHSTT-2014.xml"
 
 
-def load_instances(archive_path: Path) -> list[Instance]:
-    return parse_archive(archive_path.read_text(encoding="utf-8-sig"))
+@dataclass
+class SolveResult:
+    best: Solution
+    infeasibility_before: int
+    objective_before: int
+    infeasibility_after: int
+    objective_after: int
+    elapsed_seconds: float
+    iterations: int
+
+
+def load_archive(path: Path) -> tuple[str, list[Instance]]:
+    """Zwraca (surowy XML, sparsowane instancje) — oba potrzebne dalej."""
+    text = path.read_text(encoding="utf-8-sig")
+    return text, parse_archive(text)
 
 
 def find_instance(instances: list[Instance], instance_id: str) -> Instance:
@@ -51,6 +67,89 @@ def format_instance_table(instances: list[Instance]) -> str:
         )
     return "\n".join(lines)
 
+
+def _report_progress(
+    iteration: int, best_cost: int, *, total: int, t_start: float
+) -> None:
+    elapsed = time.time() - t_start
+    rate = iteration / elapsed if elapsed > 0 else 0.0
+    remaining = (total - iteration) / rate if rate > 0 else float("inf")
+    pct = 100 * iteration / total
+    print(
+        f"  [{iteration:>7}/{total} {pct:5.1f}%] koszt={best_cost:>14,}  "
+        f"{rate:6.1f} it/s  pozostalo ~{remaining:.0f}s"
+    )
+
+
+def solve(
+    instance: Instance,
+    rng: random.Random,
+    iterations: int,
+    history_length: int,
+    evaluation: str,
+) -> SolveResult:
+    """Buduje rozwiazanie poczatkowe i uruchamia LAHC; zwraca spakowany wynik."""
+    initial = build_initial(instance, rng)
+    infeasibility_0, objective_0 = evaluate_cost_components(instance, initial)
+    print(f"  Rozwiazanie poczatkowe -> infeasibility={infeasibility_0}  objective={objective_0}\n")
+
+    t_start = time.time()
+    on_progress = functools.partial(_report_progress, total=iterations, t_start=t_start)
+
+    # progress_seconds gives a live heartbeat every ~2s regardless of
+    # instance size -- large/slow instances can drop to a few it/s, making
+    # a purely iteration-count trigger mean minutes of silence.
+    best, _ = run_lahc(
+        instance,
+        initial,
+        rng,
+        history_length=history_length,
+        max_iterations=iterations,
+        on_progress=on_progress,
+        progress_every=max(1, iterations // 20),
+        progress_seconds=2.0,
+        evaluation=evaluation,
+    )
+    elapsed = time.time() - t_start
+    infeasibility_1, objective_1 = evaluate_cost_components(instance, best)
+
+    return SolveResult(
+        best=best,
+        infeasibility_before=infeasibility_0,
+        objective_before=objective_0,
+        infeasibility_after=infeasibility_1,
+        objective_after=objective_1,
+        elapsed_seconds=elapsed,
+        iterations=iterations,
+    )
+
+
+def write_outputs(
+    instance: Instance,
+    archive_text: str,
+    result: SolveResult,
+    output_path: Path,
+    seed: int,
+) -> tuple[Path, Path]:
+    """Zapisuje XML rozwiazania i HTML planu; zwraca obie sciezki."""
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    single_instance_xml = extract_instance_archive(archive_text, instance.id)
+    group = SolutionGroup(id=f"LAHC_{instance.id}_seed{seed}", solutions=[result.best])
+    output_path.write_text(
+        render_archive_with_solution_groups(single_instance_xml, [group]),
+        encoding="utf-8",
+    )
+
+    html_path = output_path.with_suffix(".html").with_stem(
+        f"{output_path.stem.removesuffix('_solution')}_timetable"
+    )
+    occurrences = resolve_occurrences(instance, result.best)
+    html_path.write_text(
+        render_timetable_page(instance, occurrences, result.infeasibility_after, result.objective_after),
+        encoding="utf-8",
+    )
+    return output_path, html_path
 
 
 def _parse_args(argv: list[str] | None) -> argparse.Namespace:
@@ -88,27 +187,21 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
 
 
 def main(argv: list[str] | None = None) -> None:
-    # Line-buffer stdout so progress lines show up immediately instead of
-    # sitting in a full buffer (matters when output is redirected/piped,
-    # or just for a responsive-feeling long run).
-    sys.stdout.reconfigure(line_buffering=True)
+    if isinstance(sys.stdout, io.TextIOWrapper):
+        sys.stdout.reconfigure(line_buffering=True)
     args = _parse_args(argv)
 
     if not args.archive.exists():
         raise SystemExit(f"Nie znaleziono archiwum: {args.archive}")
 
     print(f"Wczytywanie {args.archive.name}...")
-    t0 = time.time()
-    archive_text = args.archive.read_text(encoding="utf-8-sig")
-    instances = parse_archive(archive_text)
-    print(f"  {len(instances)} instancji wczytanych w {time.time() - t0:.2f}s\n")
+    archive_text, instances = load_archive(args.archive)
+    print(f"  {len(instances)} instancji wczytanych\n")
 
     if args.list or (not args.instance_id and len(instances) != 1):
         print(format_instance_table(instances))
         if not args.instance_id:
-            print(
-                "\nUzycie: python run_solver.py <ID_INSTANCJI> [--iterations N] [--seed N]"
-            )
+            print("\nUzycie: python run_solver.py <ID_INSTANCJI> [--iterations N] [--seed N]")
         return
 
     instance_id = args.instance_id or instances[0].id
@@ -119,76 +212,30 @@ def main(argv: list[str] | None = None) -> None:
         f"Zasoby={len(instance.resources)}  Ograniczenia={len(instance.constraints)}\n"
     )
 
-    rng = random.Random(args.seed)
-    print("Budowanie rozwiazania poczatkowego...")
-    t0 = time.time()
-    initial = build_initial(instance, rng)
-    infeasibility_0, objective_0 = evaluate_cost_components(instance, initial)
     print(
-        f"  gotowe w {time.time() - t0:.2f}s -> "
-        f"infeasibility={infeasibility_0}  objective={objective_0}\n"
+        f"LAHC: {args.iterations} iteracji, seed={args.seed}, "
+        f"history={args.history}, ewaluacja={args.evaluation}"
     )
-
-    print(
-        f"Uruchamianie LAHC ({args.iterations} iteracji, seed={args.seed}, "
-        f"history={args.history}, ewaluacja={args.evaluation})..."
-    )
-    t_start = time.time()
-
-    def on_progress(iteration: int, best_cost: int) -> None:
-        elapsed = time.time() - t_start
-        rate = iteration / elapsed if elapsed > 0 else 0.0
-        remaining = (args.iterations - iteration) / rate if rate > 0 else float("inf")
-        pct = 100 * iteration / args.iterations
-        print(
-            f"  [{iteration:>7}/{args.iterations} {pct:5.1f}%] koszt={best_cost:>14,}  "
-            f"{rate:6.1f} it/s  pozostalo ~{remaining:.0f}s"
-        )
-
-    # progress_seconds gives a live heartbeat every ~2s regardless of
-    # instance size -- large/slow instances (hundreds of events, dozens of
-    # constraints) can drop to a few iterations/s, where a purely
-    # iteration-count-based trigger could mean minutes of silence.
-    best, _ = run_lahc(
+    result = solve(
         instance,
-        initial,
-        rng,
+        rng=random.Random(args.seed),
+        iterations=args.iterations,
         history_length=args.history,
-        max_iterations=args.iterations,
-        on_progress=on_progress,
-        progress_every=max(1, args.iterations // 20),
-        progress_seconds=2.0,
         evaluation=args.evaluation,
     )
-    elapsed = time.time() - t_start
-    infeasibility_1, objective_1 = evaluate_cost_components(instance, best)
 
-    print(f"\nZakonczono w {elapsed:.1f}s ({args.iterations / elapsed:.0f} it/s)")
-    print(f"  Przed:  infeasibility={infeasibility_0:>6}  objective={objective_0:>6}")
-    print(f"  Po:     infeasibility={infeasibility_1:>6}  objective={objective_1:>6}")
+    rate = result.iterations / result.elapsed_seconds
+    print(f"\nZakonczono w {result.elapsed_seconds:.1f}s ({rate:.0f} it/s)")
+    print(f"  Przed:  infeasibility={result.infeasibility_before:>6}  objective={result.objective_before:>6}")
+    print(f"  Po:     infeasibility={result.infeasibility_after:>6}  objective={result.objective_after:>6}")
     print(
-        f"  Zmiana: infeasibility={infeasibility_1 - infeasibility_0:+d}  "
-        f"objective={objective_1 - objective_0:+d}"
+        f"  Zmiana: infeasibility={result.infeasibility_after - result.infeasibility_before:+d}  "
+        f"objective={result.objective_after - result.objective_before:+d}"
     )
 
     output_path = args.output or Path("output") / f"{instance.id}_solution.xml"
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    single_instance_xml = extract_instance_archive(archive_text, instance.id)
-    group = SolutionGroup(id=f"LAHC_{instance.id}_seed{args.seed}", solutions=[best])
-    output_path.write_text(
-        render_archive_with_solution_groups(single_instance_xml, [group]),
-        encoding="utf-8",
-    )
-    print(f"\nRozwiazanie zapisane do: {output_path}")
-
-    best_occurrences = resolve_occurrences(instance, best)
-    html_path = output_path.with_suffix(".html").with_stem(
-        f"{output_path.stem.removesuffix('_solution')}_timetable"
-    )
-    html_path.write_text(
-        render_timetable_page(instance, best_occurrences, infeasibility_1, objective_1),
-        encoding="utf-8",
-    )
+    xml_path, html_path = write_outputs(instance, archive_text, result, output_path, args.seed)
+    print(f"\nRozwiazanie zapisane do: {xml_path}")
     print(f"Plan zajec (HTML) zapisany do: {html_path}")
 
 

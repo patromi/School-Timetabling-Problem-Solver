@@ -80,7 +80,7 @@ def _render_cell_card(cell: TimetableCell, is_clash: bool) -> str:
         for role, name in cell.other_resources
     )
     return (
-        f'<div class="{tag_class}">'
+        f'<div class="{tag_class}" data-event="{escape(cell.event_ref)}">'
         f'<p class="lesson">{escape(cell.event_name)}</p>'
         f'<ul class="who-list">{other}</ul>'
         f"</div>"
