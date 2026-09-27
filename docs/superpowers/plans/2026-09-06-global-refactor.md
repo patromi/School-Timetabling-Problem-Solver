@@ -98,7 +98,7 @@ from src.evaluator_ref import evaluate_cost_components
 ```
 (usuń `resolve_occurrences`/`evaluate_constraint` jeśli nieużywane gdzie indziej w pliku — sprawdź resztę `main()`). Zamień wywołanie `cost_breakdown(instance, sol)` na `evaluate_cost_components(instance, sol)`.
 
-- [ ] **Step 3: Zweryfikuj**
+- [x] **Step 3: Zweryfikuj**
 
 ```bash
 uv run python -m pytest -m "not slow"
@@ -108,7 +108,7 @@ uv run python scripts/generate_summary.py --instances data/xhstt2014/XHSTT-2014.
 ```
 Oczekiwane: identyczne liczby infeasibility/objective jak przed zmianą (to jest ta sama funkcja, tylko jedna kopia).
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add run_solver.py scripts/generate_summary.py
@@ -158,7 +158,7 @@ Zamień na aktualny stan:
 
 Dopisz jedno zdanie: kontrakt `apply(solution, instance, rng)` z Etapu 4 jest już zaimplementowany (`src/heuristics.py`, `MANUAL_HEURISTICS`) i podłączony do pętli LAHC; delta evaluation (Etap 3) istnieje w `src/delta.py`, ale nie jest jeszcze wywoływane przez `lahc.py`.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add docs/flow-ukladania-planu.md CLAUDE.md
@@ -178,11 +178,11 @@ git commit -m "docs: update flow doc and CLAUDE.md status to match implemented h
 **Interfaces:**
 - Produces: `_PAGE_CSS` pozostaje nazwą modułową w `html_report.py` (żeby `render_timetable_page` nie musiał się zmieniać poza sposobem inicjalizacji), ale teraz wczytywana z pliku zamiast literału stringa.
 
-- [ ] **Step 1: Przenieś zawartość**
+- [x] **Step 1: Przenieś zawartość**
 
 Skopiuj całą zawartość trójcudzysłowowego stringa `_PAGE_CSS = """..."""` (linie 309-645 `html_report.py`, sam CSS bez cudzysłowów/przypisania Python) do nowego pliku `src/assets/timetable.css`.
 
-- [ ] **Step 2: Zamień definicję w `html_report.py`**
+- [x] **Step 2: Zamień definicję w `html_report.py`**
 
 Usuń literał `_PAGE_CSS = """...""" ` i zastąp go, obok istniejącego `_ASSETS_DIR = Path(__file__).parent / "assets"` (linia 8):
 ```python
@@ -190,7 +190,7 @@ _PAGE_CSS = (_ASSETS_DIR / "timetable.css").read_text(encoding="utf-8")
 ```
 (dokładnie ten sam wzorzec, jakim `render_timetable_page` już wczytuje `fonts.css` w linii 231 — trzymaj tę definicję blisko `_ASSETS_DIR`, na górze pliku, żeby `_PAGE_CSS` zachowywało się jak stała modułowa, nie coś liczone przy każdym wywołaniu `render_timetable_page`).
 
-- [ ] **Step 3: Zweryfikuj**
+- [x] **Step 3: Zweryfikuj**
 
 ```bash
 uv run python -m pytest tests/test_html_report.py -m "not slow"
@@ -198,7 +198,7 @@ uv run python run_solver.py AU-BG-98 --iterations 100 --seed 0
 ```
 Otwórz wygenerowany `output/AU-BG-98_timetable.html` w przeglądarce i porównaj wygląd z wersją sprzed zmiany (git stash/diff jeśli trzeba) — CSS musi renderować się identycznie.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/assets/timetable.css src/html_report.py
@@ -263,7 +263,7 @@ git rm src/html_report.py
 ```
 `tests/test_html_report.py` importuje dziś prawdopodobnie `from src.html_report import ...` albo `from src import html_report` z dostępem do prywatnych `_render_cell_card` itp. — sprawdź `grep -n "^from src.html_report\|^import src.html_report" tests/test_html_report.py` i jeśli test odwołuje się do prywatnej funkcji bezpośrednio (np. `html_report._render_cell_card`), zmień import na `from src.html_report import grid as html_report_grid` (albo analogicznie `evaluation`) w tym jednym miejscu.
 
-- [ ] **Step 5: Zweryfikuj**
+- [x] **Step 5: Zweryfikuj**
 
 ```bash
 uv run mypy --follow-imports=silent src/html_report/__init__.py src/html_report/grid.py src/html_report/evaluation.py
@@ -274,7 +274,7 @@ uv run python run_solver.py AU-BG-98 --iterations 100 --seed 0
 ```
 Oczekiwane: wszystkie testy przechodzą bez modyfikacji treści testów (poza ewentualną poprawką importu z kroku 4); wygenerowany HTML identyczny jak przed podziałem.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/html_report tests/test_html_report.py
@@ -433,14 +433,14 @@ with evaluator_ref.occupancy_index(new_index):
     new_contribution = evaluate_constraint(instance, new_occurrences, constraint)
 ```
 
-- [ ] **Step 3: Zweryfikuj**
+- [x] **Step 3: Zweryfikuj**
 
 ```bash
 uv run python -m pytest tests/test_delta.py tests/test_cost.py tests/test_evaluator_ref.py -m "not slow"
 ```
 Oczekiwane: identyczny wynik jak przed zmianą — `delta_cost` nadal zwraca te same liczby (context manager tylko formalizuje ten sam ciąg przypisań, z poprawką na przywracanie poprzedniej wartości zamiast twardego `None`, co przy braku zagnieżdżeń nie zmienia obserwowalnego zachowania).
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/evaluator_ref/occurrences.py src/delta.py
