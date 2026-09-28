@@ -1,8 +1,20 @@
+from collections import Counter
 from dataclasses import dataclass
 from html import escape
 
-from src.evaluator_ref import Occurrence, evaluate_constraint
-from src.model import Instance
+from src.evaluator_ref import (
+    Occurrence,
+    _assigned_resource,
+    _assigned_resource_ids,
+    _events_in_applies_to,
+    _preferred_resource_ids,
+    _preferred_time_ids,
+    _referenced_ids,
+    _resources_in_applies_to,
+    evaluate_constraint,
+)
+from src.evaluator_ref.occurrences import _occupied_time_ids
+from src.model import Constraint, Instance
 
 @dataclass
 class ConstraintScore:
@@ -34,11 +46,83 @@ def build_constraint_scores(
     ]
 
 
+def violation_event_refs(
+    instance: Instance, occurrences: list[Occurrence], constraint: Constraint
+) -> list[str]:
+    """Returns event_refs that contribute to this constraint's violation.
+    Precise for the most common types; falls back to applies_to scope for others."""
+    ctype = constraint.type
+
+    if ctype == "AssignTimeConstraint":
+        event_ids = _events_in_applies_to(instance, constraint.applies_to)
+        return list({o.event_ref for o in occurrences
+                     if o.event_ref in event_ids and o.time_ref is None})
+
+    if ctype == "AvoidClashesConstraint":
+        result: list[str] = []
+        for resource_id in _resources_in_applies_to(instance, constraint.applies_to):
+            time_to_events: dict[str, list[str]] = {}
+            for o in occurrences:
+                if o.time_ref is None or resource_id not in _assigned_resource_ids(o):
+                    continue
+                for t in _occupied_time_ids(instance, o.time_ref, o.duration):
+                    time_to_events.setdefault(t, []).append(o.event_ref)
+            for events in time_to_events.values():
+                if len(events) > 1:
+                    result.extend(events)
+        return list(dict.fromkeys(result))
+
+    if ctype == "PreferTimesConstraint":
+        event_ids = _events_in_applies_to(instance, constraint.applies_to)
+        preferred = _preferred_time_ids(instance, constraint)
+        duration_filter = constraint.params.get("Duration")
+        result = []
+        for o in occurrences:
+            if o.event_ref not in event_ids:
+                continue
+            if duration_filter is not None and o.duration != int(duration_filter):
+                continue
+            if o.time_ref is not None and o.time_ref not in preferred:
+                result.append(o.event_ref)
+        return list(dict.fromkeys(result))
+
+    if ctype == "PreferResourcesConstraint":
+        event_ids = _events_in_applies_to(instance, constraint.applies_to)
+        role = constraint.params.get("Role")
+        preferred = _preferred_resource_ids(instance, constraint)
+        result = []
+        for o in occurrences:
+            if o.event_ref not in event_ids:
+                continue
+            assigned = _assigned_resource(o, role)
+            if assigned is not None and assigned not in preferred:
+                result.append(o.event_ref)
+        return list(dict.fromkeys(result))
+
+    if ctype == "AvoidUnavailableTimesConstraint":
+        unavailable = _referenced_ids(constraint.params.get("Times"))
+        result = []
+        for resource_id in _resources_in_applies_to(instance, constraint.applies_to):
+            for o in occurrences:
+                if o.time_ref is None or resource_id not in _assigned_resource_ids(o):
+                    continue
+                if _occupied_time_ids(instance, o.time_ref, o.duration) & unavailable:
+                    result.append(o.event_ref)
+        return list(dict.fromkeys(result))
+
+    # Fallback: return events in applies_to scope (best-effort for resource-centric types)
+    return list(_events_in_applies_to(instance, constraint.applies_to))
+
+
 def _render_eval_row(score: ConstraintScore) -> str:
     row_class = "row--bad" if score.cost > 0 else "row--ok"
     hidden_attr = "" if score.cost > 0 else " hidden"
+    constraint_attr = (
+        f' data-constraint="{escape(score.id)}" title="Najedź, aby zobaczyć naruszenia na planie"'
+        if score.cost > 0 else ""
+    )
     return (
-        f'<tr class="{row_class}"{hidden_attr}>'
+        f'<tr class="{row_class}"{hidden_attr}{constraint_attr}>'
         f"<td>{escape(score.name)}</td>"
         f'<td class="mono">{escape(score.type)}</td>'
         f'<td class="mono num">{score.weight}</td>'
