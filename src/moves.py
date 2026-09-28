@@ -234,6 +234,50 @@ def kempe_chain_move(
 _LARGE_PERTURBATION_FRACTION = 0.3
 _LARGE_PERTURBATION_MIN_EVENTS = 4
 
+_SMALL_PERTURBATION_FRACTION = 0.1
+_SMALL_PERTURBATION_MIN_EVENTS = 2
+
+
+def small_perturbation_move(
+    instance: Instance, solution: Solution, rng: random.Random
+) -> Solution:
+    """Small random perturbation meant to kick LAHC out of a local minimum gently:
+    picks about _SMALL_PERTURBATION_FRACTION of the solution's movable
+    events (floored at _SMALL_PERTURBATION_MIN_EVENTS) and
+    reassigns each, independently, to a uniformly random valid start time.
+    Returns a new Solution; the input is untouched.
+
+    Raises ValueError if the solution has no movable event to perturb, or
+    if one of the chosen movable events has no valid start time at all."""
+    movable = [
+        i
+        for i, se in enumerate(solution.events)
+        if se.time_ref is not None and se.duration is not None
+    ]
+    if not movable:
+        raise ValueError(
+            "cannot apply a move: no solution event has a time to reassign"
+        )
+
+    k = min(
+        len(movable),
+        max(
+            _SMALL_PERTURBATION_MIN_EVENTS,
+            round(len(movable) * _SMALL_PERTURBATION_FRACTION),
+        ),
+    )
+    chosen = rng.sample(movable, k)
+
+    new_events = list(solution.events)
+    for i in chosen:
+        se = new_events[i]
+        assert se.duration is not None
+        candidates = valid_start_time_ids(instance, se.duration)
+        if not candidates:
+            raise ValueError(f"event {se.event_ref!r} has no valid start time")
+        new_events[i] = replace(se, time_ref=rng.choice(candidates))
+    return replace(solution, events=new_events)
+
 
 def large_perturbation_move(
     instance: Instance, solution: Solution, rng: random.Random
