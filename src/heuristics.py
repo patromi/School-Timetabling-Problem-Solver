@@ -15,6 +15,7 @@ from src.model import Instance, Solution
 from src.moves import (
     kempe_chain_move,
     large_perturbation_move,
+    small_perturbation_move,
     resource_reassign_move,
     time_reassign_move,
     time_swap_move,
@@ -151,6 +152,14 @@ def large_perturbation(
     ValueError (via large_perturbation_move) if the solution has no
     movable event to perturb, or a chosen event has no valid start time."""
     return large_perturbation_move(instance, solution, rng)
+
+
+def small_perturbation(
+    solution: Solution, instance: Instance, rng: random.Random
+) -> Solution:
+    """Thin wrapper around moves.small_perturbation_move, adapted to the
+    pool's apply(solution, instance, rng) argument order."""
+    return small_perturbation_move(instance, solution, rng)
 
 
 _RUIN_FRACTION = 0.1
@@ -332,6 +341,13 @@ MANUAL_HEURISTICS: list[Heuristic] = [
         name="Large random perturbation across many events",
         protected=True,
         apply=large_perturbation,
+        incremental_safe=True,
+    ),
+    Heuristic(
+        id="small_perturbation",
+        name="Small random perturbation across some events",
+        protected=True,
+        apply=small_perturbation,
         incremental_safe=True,
     ),
 ]
