@@ -19,6 +19,7 @@ from src.construct import build_initial
 from src.evaluator_ref import evaluate_cost_components, resolve_occurrences
 from src.html_report import render_timetable_page
 from src.lahc import run_lahc
+from src.selectors import EpsilonGreedySelector, RandomSelector, UCBSelector
 from src.model import Instance, Solution, SolutionGroup
 from src.parser import parse_archive
 from src.xml_writer import (
@@ -87,6 +88,7 @@ def solve(
     iterations: int,
     history_length: int,
     evaluation: str,
+    selector: RandomSelector | EpsilonGreedySelector | UCBSelector,
 ) -> SolveResult:
     """Buduje rozwiazanie poczatkowe i uruchamia LAHC; zwraca spakowany wynik."""
     initial = build_initial(instance, rng)
@@ -104,6 +106,7 @@ def solve(
         initial,
         rng,
         history_length=history_length,
+        selector=selector,
         max_iterations=iterations,
         on_progress=on_progress,
         progress_every=max(1, iterations // 20),
@@ -162,6 +165,7 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         help="Id instancji (np. AU-BG-98). Pomin, by wypisac liste.",
     )
     parser.add_argument("--archive", type=Path, default=DEFAULT_ARCHIVE)
+    parser.add_argument("--selector", type=str, choices=["random", "epsilon-greedy", "ucb"], default="random", help="Heuristic selector type")
     parser.add_argument("--iterations", type=int, default=30_000)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--history", type=int, default=30)
@@ -216,11 +220,19 @@ def main(argv: list[str] | None = None) -> None:
         f"LAHC: {args.iterations} iteracji, seed={args.seed}, "
         f"history={args.history}, ewaluacja={args.evaluation}"
     )
+    if args.selector == "epsilon-greedy":
+        selector_obj = EpsilonGreedySelector()
+    elif args.selector == "ucb":
+        selector_obj = UCBSelector()
+    else:
+        selector_obj = RandomSelector()
+
     result = solve(
         instance,
         rng=random.Random(args.seed),
         iterations=args.iterations,
         history_length=args.history,
+        selector=selector_obj,
         evaluation=args.evaluation,
     )
 

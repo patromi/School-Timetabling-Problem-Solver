@@ -1,6 +1,9 @@
+import math
 import random
 import time
 from collections.abc import Callable
+
+from src.selectors import HeuristicSelector, RandomSelector
 
 from src.cost import evaluate_cost
 from src.heuristics import MANUAL_HEURISTICS, Heuristic
@@ -72,6 +75,7 @@ def run_lahc(
     history_length: int = 30,
     max_iterations: int = 1000,
     heuristics: list[Heuristic] | None = None,
+    selector: HeuristicSelector | None = None,
     on_progress: Callable[[int, int], None] | None = None,
     progress_every: int = 1000,
     progress_seconds: float = 2.0,
@@ -104,6 +108,9 @@ def run_lahc(
         raise ValueError(f"unknown evaluation mode: {evaluation!r}")
     pool = heuristics if heuristics is not None else MANUAL_HEURISTICS
 
+    if selector is None:
+        selector = RandomSelector()
+
     evaluator = None if evaluation == FULL else IncrementalEvaluator(instance, initial)
     current = initial
     current_cost = (
@@ -114,10 +121,11 @@ def run_lahc(
     last_progress_time = time.monotonic()
 
     for step in range(max_iterations):
-        heuristic = rng.choice(pool)
+        heuristic = selector.select(pool, rng)
         try:
             candidate = heuristic.apply(current, instance, rng)
         except ValueError:
+            selector.update(heuristic, 0.0)
             continue
 
         candidate_cost, transaction = _score_candidate(
@@ -131,13 +139,23 @@ def run_lahc(
 
         v = step % history_length
         accepted = candidate_cost <= current_cost or candidate_cost <= history[v]
+        
+        reward = 0.0
         if accepted:
+            if candidate_cost < current_cost:
+                reward = math.log1p(current_cost - candidate_cost)
+            elif candidate_cost == current_cost:
+                reward = 0.1
+            else:
+                reward = 0.05 
+                
             current, current_cost = candidate, candidate_cost
             if current_cost < best_cost:
                 best, best_cost = current, current_cost
         history[v] = current_cost
 
         _finish(evaluator, transaction, accepted, current)
+        selector.update(heuristic, reward)
 
         if on_progress is not None:
             now = time.monotonic()
