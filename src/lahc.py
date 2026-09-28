@@ -120,7 +120,31 @@ def run_lahc(
     history = [current_cost] * history_length
     last_progress_time = time.monotonic()
 
+    stagnant_iterations = 0
+    perturbation_tier = 0
+    idle_limit = max(500, max_iterations // 20)
+
     for step in range(max_iterations):
+        if stagnant_iterations > idle_limit:
+            p_name = "small_perturbation" if perturbation_tier == 0 else "large_perturbation"
+            p_heuristic = next((h for h in pool if h.id == p_name), None)
+            
+            if p_heuristic is not None:
+                try:
+                    current = p_heuristic.apply(best, instance, rng)
+                    if evaluator is not None:
+                        evaluator.rebuild(current)
+                        current_cost = evaluator.cost.as_scalar()
+                    else:
+                        current_cost = evaluate_cost(instance, current).as_scalar()
+                    history = [current_cost] * history_length
+                    
+                    stagnant_iterations = 0
+                    perturbation_tier = 1 if perturbation_tier == 0 else 0
+                    continue
+                except ValueError:
+                    pass
+
         heuristic = selector.select(pool, rng)
         try:
             candidate = heuristic.apply(current, instance, rng)
@@ -136,6 +160,12 @@ def run_lahc(
             evaluation,
             check=step % verify_every == 0,
         )
+
+        if candidate_cost < best_cost:
+            stagnant_iterations = 0
+            perturbation_tier = 0
+        else:
+            stagnant_iterations += 1
 
         v = step % history_length
         accepted = candidate_cost <= current_cost or candidate_cost <= history[v]
