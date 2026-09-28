@@ -1,11 +1,23 @@
+import json
 from html import escape
 from pathlib import Path
 
 from src.evaluator_ref import Occurrence
 from src.model import Instance
 
-from src.html_report.grid import DayColumn, TimetableCell, build_days, build_resource_grid, _render_resource_table
-from src.html_report.evaluation import ConstraintScore, build_constraint_scores, render_evaluation_section
+from src.html_report.evaluation import (
+    ConstraintScore,
+    build_constraint_scores,
+    render_evaluation_section,
+    violation_event_refs,
+)
+from src.html_report.grid import (
+    DayColumn,
+    TimetableCell,
+    _render_resource_table,
+    build_days,
+    build_resource_grid,
+)
 
 _ASSETS_DIR = Path(__file__).parent.parent / "assets"
 _PAGE_CSS = (_ASSETS_DIR / "timetable.css").read_text(encoding="utf-8")
@@ -57,6 +69,14 @@ def render_timetable_page(
     scores = build_constraint_scores(instance, occurrences)
     eval_section = render_evaluation_section(scores, infeasibility, objective)
 
+    constraints_by_id = {c.id: c for c in instance.constraints}
+    violation_map = {
+        s.id: violation_event_refs(instance, occurrences, constraints_by_id[s.id])
+        for s in scores
+        if s.cost > 0
+    }
+    violation_json = json.dumps(violation_map, ensure_ascii=False)
+
     return f"""<!doctype html>
 <html lang="pl">
 <head>
@@ -92,6 +112,7 @@ def render_timetable_page(
 
   {eval_section}
 </div>
+<script type="application/json" id="violation-map">{violation_json}</script>
 <script>
 {_PAGE_JS}
 </script>
@@ -158,6 +179,35 @@ _PAGE_JS = """
         ? 'Pokaż wszystkie (' + btn.dataset.total + ')'
         : 'Pokaż tylko naruszone (' + btn.dataset.violated + ')';
     });
+  });
+
+  var violationMap = JSON.parse(
+    document.getElementById('violation-map').textContent
+  );
+
+  function allCards() {
+    return Array.prototype.slice.call(document.querySelectorAll('.cell-card[data-event]'));
+  }
+
+  function clearHighlight() {
+    allCards().forEach(function (card) {
+      card.classList.remove('cell-card--highlighted', 'cell-card--dimmed');
+    });
+  }
+
+  Array.prototype.slice.call(
+    document.querySelectorAll('.eval-table tr[data-constraint]')
+  ).forEach(function (row) {
+    row.addEventListener('mouseenter', function () {
+      var events = new Set(violationMap[row.dataset.constraint] || []);
+      if (!events.size) return;
+      allCards().forEach(function (card) {
+        var hit = events.has(card.dataset.event);
+        card.classList.toggle('cell-card--highlighted', hit);
+        card.classList.toggle('cell-card--dimmed', !hit);
+      });
+    });
+    row.addEventListener('mouseleave', clearHighlight);
   });
 })();
 """
