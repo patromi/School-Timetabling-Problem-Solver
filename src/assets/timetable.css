@@ -288,3 +288,18 @@ tr.row--ok td:first-child {
   padding-left: calc(0.6rem - 3px);
   color: var(--ink-muted);
 }
+tr[data-constraint] { cursor: pointer; }
+tr[data-constraint]:hover { background: var(--bad-wash); }
+
+.cell-card--highlighted {
+  outline: 2px solid var(--bad);
+  outline-offset: -2px;
+  background: var(--bad-wash) !important;
+  border-left-color: var(--bad) !important;
+  position: relative;
+  z-index: 1;
+}
+.cell-card--dimmed {
+  opacity: 0.25;
+  transition: opacity 0.1s ease;
+}
