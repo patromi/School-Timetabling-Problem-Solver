@@ -43,10 +43,16 @@ def _snapshot(solution: Solution) -> list:
     ]
 
 
-@pytest.mark.parametrize("heuristic", MANUAL_HEURISTICS, ids=lambda h: h.id)
+@pytest.mark.parametrize(
+    "heuristic",
+    [h for h in MANUAL_HEURISTICS if h.incremental_safe],
+    ids=lambda h: h.id,
+)
 def test_heuristic_preserves_events_and_does_not_mutate_input(
     heuristic: Heuristic,
 ) -> None:
+    """Covers structural-safe heuristics only. split_resize is structural
+    (incremental_safe=False) and has its own test below."""
     instance, solution = _sudoku_solution()
     before = _snapshot(solution)
 
@@ -76,6 +82,48 @@ def test_heuristic_preserves_events_and_does_not_mutate_input(
         sorted(new_solution.events, key=lambda e: e.event_ref)
     ):
         assert old_se.duration == new_se.duration, f"{heuristic.id} changed duration of event {old_se.event_ref}"
+
+
+def test_split_resize_returns_valid_solution_with_correct_total_duration() -> None:
+    """split_resize is structural (incremental_safe=False): changes piece count.
+    Uses BrazilInstance1 which has multi-duration split events."""
+    from src.heuristics import MANUAL_HEURISTICS
+    split_h = next(h for h in MANUAL_HEURISTICS if h.id == "split_resize")
+
+    instance = parse_archive(_load("BrazilInstance1.xml"))[0]
+    solution = build_initial(instance, random.Random(0))
+    before_snapshot = _snapshot(solution)
+
+    # Total duration per event_ref before
+    total_dur_before: dict[str, int] = {}
+    for se in solution.events:
+        if se.duration is not None:
+            total_dur_before[se.event_ref] = total_dur_before.get(se.event_ref, 0) + se.duration
+
+    new_solution = None
+    for seed in range(20):
+        try:
+            new_solution = split_h.apply(solution, instance, random.Random(seed))
+            break
+        except ValueError:
+            continue
+    assert new_solution is not None, "split_resize: no seed produced applicable move on BrazilInstance1"
+
+    # Input must not be mutated
+    assert _snapshot(solution) == before_snapshot, "split_resize mutated input"
+    assert isinstance(new_solution, Solution)
+
+    # Total duration per event_ref must be preserved
+    total_dur_after: dict[str, int] = {}
+    for se in new_solution.events:
+        if se.duration is not None:
+            total_dur_after[se.event_ref] = total_dur_after.get(se.event_ref, 0) + se.duration
+    assert total_dur_after == total_dur_before, "split_resize changed total event duration"
+
+    # Every sub-event must have a valid time_ref and duration > 0
+    for se in new_solution.events:
+        assert se.time_ref is not None
+        assert se.duration is not None and se.duration > 0
 
 
 def test_move_best_never_increases_total_cost() -> None:
