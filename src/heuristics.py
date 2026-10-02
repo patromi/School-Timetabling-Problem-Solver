@@ -17,6 +17,7 @@ from src.moves import (
     large_perturbation_move,
     small_perturbation_move,
     resource_reassign_move,
+    split_resize_move,
     time_reassign_move,
     time_swap_move,
 )
@@ -349,5 +350,12 @@ MANUAL_HEURISTICS: list[Heuristic] = [
         protected=True,
         apply=small_perturbation,
         incremental_safe=True,
+    ),
+    Heuristic(
+        id="split_resize",
+        name="Re-split one event into different-sized pieces",
+        protected=True,
+        apply=lambda sol, inst, rng: split_resize_move(inst, sol, rng),
+        incremental_safe=False,
     ),
 ]
