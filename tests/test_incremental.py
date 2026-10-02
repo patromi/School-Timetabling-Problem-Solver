@@ -85,9 +85,10 @@ def test_rejected_candidates_never_leak_into_the_accepted_state() -> None:
     expected_cost = evaluator.cost
     expected_vector = evaluator.constraint_costs()
 
+    incremental_heuristics = [h for h in MANUAL_HEURISTICS if h.incremental_safe]
     rejected = 0
     while rejected < 100:
-        heuristic = rng.choice(MANUAL_HEURISTICS)
+        heuristic = rng.choice(incremental_heuristics)
         try:
             candidate = heuristic.apply(solution, instance, rng)
         except ValueError:

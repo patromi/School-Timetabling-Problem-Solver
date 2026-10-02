@@ -74,6 +74,7 @@ def run_lahc(
     rng: random.Random,
     history_length: int = 30,
     max_iterations: int = 1000,
+    max_seconds: float | None = None,
     heuristics: list[Heuristic] | None = None,
     selector: HeuristicSelector | None = None,
     on_progress: Callable[[int, int], None] | None = None,
@@ -119,12 +120,15 @@ def run_lahc(
     best, best_cost = current, current_cost
     history = [current_cost] * history_length
     last_progress_time = time.monotonic()
+    t_start = time.monotonic()
 
     stagnant_iterations = 0
     perturbation_tier = 0
     idle_limit = max(500, max_iterations // 20)
 
     for step in range(max_iterations):
+        if max_seconds is not None and time.monotonic() - t_start >= max_seconds:
+            break
         if stagnant_iterations > idle_limit:
             p_name = "small_perturbation" if perturbation_tier == 0 else "large_perturbation"
             p_heuristic = next((h for h in pool if h.id == p_name), None)
@@ -146,46 +150,48 @@ def run_lahc(
                     pass
 
         heuristic = selector.select(pool, rng)
+        move_failed = False
         try:
             candidate = heuristic.apply(current, instance, rng)
         except ValueError:
             selector.update(heuristic, 0.0)
-            continue
+            move_failed = True
 
-        candidate_cost, transaction = _score_candidate(
-            instance,
-            evaluator,
-            heuristic,
-            candidate,
-            evaluation,
-            check=step % verify_every == 0,
-        )
+        if not move_failed:
+            candidate_cost, transaction = _score_candidate(
+                instance,
+                evaluator,
+                heuristic,
+                candidate,
+                evaluation,
+                check=step % verify_every == 0,
+            )
 
-        if candidate_cost < best_cost:
-            stagnant_iterations = 0
-            perturbation_tier = 0
-        else:
-            stagnant_iterations += 1
-
-        v = step % history_length
-        accepted = candidate_cost <= current_cost or candidate_cost <= history[v]
-        
-        reward = 0.0
-        if accepted:
-            if candidate_cost < current_cost:
-                reward = math.log1p(current_cost - candidate_cost)
-            elif candidate_cost == current_cost:
-                reward = 0.1
+            if candidate_cost < best_cost:
+                stagnant_iterations = 0
+                perturbation_tier = 0
             else:
-                reward = 0.05 
-                
-            current, current_cost = candidate, candidate_cost
-            if current_cost < best_cost:
-                best, best_cost = current, current_cost
-        history[v] = current_cost
+                stagnant_iterations += 1
 
-        _finish(evaluator, transaction, accepted, current)
-        selector.update(heuristic, reward)
+            v = step % history_length
+            accepted = candidate_cost <= current_cost or candidate_cost <= history[v]
+
+            reward = 0.0
+            if accepted:
+                if candidate_cost < current_cost:
+                    reward = math.log1p(current_cost - candidate_cost)
+                elif candidate_cost == current_cost:
+                    reward = 0.1
+                else:
+                    reward = 0.05
+
+                current, current_cost = candidate, candidate_cost
+                if current_cost < best_cost:
+                    best, best_cost = current, current_cost
+            history[v] = current_cost
+
+            _finish(evaluator, transaction, accepted, current)
+            selector.update(heuristic, reward)
 
         if on_progress is not None:
             now = time.monotonic()
