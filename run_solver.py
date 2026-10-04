@@ -20,6 +20,7 @@ from src.evaluator_ref import evaluate_cost_components, resolve_occurrences
 from src.html_report import render_timetable_page
 from src.lahc import run_lahc
 from src.selectors import EpsilonGreedySelector, RandomSelector, UCBSelector
+from src.solve_log import SolveLogger
 from src.model import Instance, Solution, SolutionGroup
 from src.parser import parse_archive
 from src.xml_writer import (
@@ -89,6 +90,7 @@ def solve(
     history_length: int,
     evaluation: str,
     selector: RandomSelector | EpsilonGreedySelector | UCBSelector,
+    logger: SolveLogger | None = None,
 ) -> SolveResult:
     """Buduje rozwiazanie poczatkowe i uruchamia LAHC; zwraca spakowany wynik."""
     initial = build_initial(instance, rng)
@@ -112,6 +114,7 @@ def solve(
         progress_every=max(1, iterations // 20),
         progress_seconds=2.0,
         evaluation=evaluation,
+        logger=logger,
     )
     elapsed = time.time() - t_start
     infeasibility_1, objective_1 = evaluate_cost_components(instance, best)
@@ -227,14 +230,37 @@ def main(argv: list[str] | None = None) -> None:
     else:
         selector_obj = RandomSelector()
 
-    result = solve(
-        instance,
-        rng=random.Random(args.seed),
-        iterations=args.iterations,
-        history_length=args.history,
-        selector=selector_obj,
-        evaluation=args.evaluation,
-    )
+    output_path = args.output or Path("output") / f"{instance.id}_solution.xml"
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    log_path = output_path.with_suffix(".jsonl")
+
+    with open(log_path, "w", encoding="utf-8") as log_file:
+        logger = SolveLogger(log_file)
+        
+        result = solve(
+            instance,
+            rng=random.Random(args.seed),
+            iterations=args.iterations,
+            history_length=args.history,
+            selector=selector_obj,
+            evaluation=args.evaluation,
+            logger=logger,
+        )
+        
+        logger.log_run_summary(
+            instance_id=instance.id,
+            seed=args.seed,
+            iterations=args.iterations,
+            history_length=args.history,
+            selector=args.selector,
+            evaluation=args.evaluation,
+            infeasibility_before=result.infeasibility_before,
+            objective_before=result.objective_before,
+            infeasibility_after=result.infeasibility_after,
+            objective_after=result.objective_after,
+            elapsed_seconds=result.elapsed_seconds,
+        )
+        logger.flush()
 
     rate = result.iterations / result.elapsed_seconds
     print(f"\nZakonczono w {result.elapsed_seconds:.1f}s ({rate:.0f} it/s)")
@@ -245,10 +271,10 @@ def main(argv: list[str] | None = None) -> None:
         f"objective={result.objective_after - result.objective_before:+d}"
     )
 
-    output_path = args.output or Path("output") / f"{instance.id}_solution.xml"
     xml_path, html_path = write_outputs(instance, archive_text, result, output_path, args.seed)
     print(f"\nRozwiazanie zapisane do: {xml_path}")
     print(f"Plan zajec (HTML) zapisany do: {html_path}")
+    print(f"Log (JSONL) zapisany do: {log_path}")
 
 
 if __name__ == "__main__":
