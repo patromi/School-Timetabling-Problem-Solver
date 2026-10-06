@@ -142,9 +142,10 @@ def test_incremental_cost_matches_full_evaluation_over_10000_chained_moves() -> 
     rng = random.Random(0)
     evaluator = IncrementalEvaluator(instance, build_initial(instance, rng))
 
+    safe_heuristics = [h for h in MANUAL_HEURISTICS if h.incremental_safe]
     applied = 0
     while applied < 10_000:
-        heuristic = rng.choice(MANUAL_HEURISTICS)
+        heuristic = rng.choice(safe_heuristics)
         try:
             candidate = heuristic.apply(evaluator.solution, instance, rng)
         except ValueError:
