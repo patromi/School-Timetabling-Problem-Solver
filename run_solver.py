@@ -89,6 +89,7 @@ def solve(
     history_length: int,
     evaluation: str,
     selector: RandomSelector | EpsilonGreedySelector | UCBSelector,
+    time_limit: float | None = None,
 ) -> SolveResult:
     """Buduje rozwiazanie poczatkowe i uruchamia LAHC; zwraca spakowany wynik."""
     initial = build_initial(instance, rng)
@@ -108,6 +109,7 @@ def solve(
         history_length=history_length,
         selector=selector,
         max_iterations=iterations,
+        max_seconds=time_limit,
         on_progress=on_progress,
         progress_every=max(1, iterations // 20),
         progress_seconds=2.0,
@@ -167,6 +169,8 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--archive", type=Path, default=DEFAULT_ARCHIVE)
     parser.add_argument("--selector", type=str, choices=["random", "epsilon-greedy", "ucb"], default="random", help="Heuristic selector type")
     parser.add_argument("--iterations", type=int, default=30_000)
+    parser.add_argument("--time-limit", type=float, default=None,
+                        help="Max wall-clock seconds (overrides --iterations as a stopping criterion)")
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--history", type=int, default=30)
     parser.add_argument(
@@ -234,6 +238,7 @@ def main(argv: list[str] | None = None) -> None:
         history_length=args.history,
         selector=selector_obj,
         evaluation=args.evaluation,
+        time_limit=args.time_limit,
     )
 
     rate = result.iterations / result.elapsed_seconds

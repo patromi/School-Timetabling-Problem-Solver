@@ -191,3 +191,73 @@ def test_build_initial_splits_brazil_instance_without_overflowing_any_time():
     for se in solution.events:
         start = all_time_ids.index(se.time_ref)
         assert start + se.duration <= len(all_time_ids)
+
+
+def _prefer_times_split_archive(event_duration: int, forbidden_durations: list[int]) -> str:
+    """Mini-archive with one event and PreferTimesConstraint entries that
+    declare certain durations as having no valid times (empty <Times>).
+    Simulates the AU-SA-96 pattern where splitting is implied by
+    PreferTimesConstraint rather than stated by SplitEventsConstraint."""
+    times_xml = "".join(
+        f'<Time Id="T{i}"><Name>T{i}</Name></Time>' for i in range(1, 13)
+    )
+    forbidden_constraints = "".join(
+        f"""<PreferTimesConstraint Id="PCT_dur{d}">
+              <Name>PCT_dur{d}</Name><Required>true</Required>
+              <Weight>1000</Weight><CostFunction>Linear</CostFunction>
+              <AppliesTo><EventGroups><EventGroup Reference="gr_All"/></EventGroups></AppliesTo>
+              <Duration>{d}</Duration>
+            </PreferTimesConstraint>"""
+        for d in forbidden_durations
+    )
+    return f"""<HighSchoolTimetableArchive>
+  <Instances>
+    <Instance Id="I1">
+      <MetaData><Name>Test</Name></MetaData>
+      <Times>
+        <TimeGroups></TimeGroups>
+        {times_xml}
+      </Times>
+      <Resources><ResourceTypes></ResourceTypes><ResourceGroups></ResourceGroups></Resources>
+      <Events>
+        <EventGroups><EventGroup Id="gr_All"><Name>All</Name></EventGroup></EventGroups>
+        <Event Id="E1">
+          <Name>E1</Name><Duration>{event_duration}</Duration>
+          <Resources></Resources>
+          <EventGroups><EventGroup Reference="gr_All"/></EventGroups>
+        </Event>
+      </Events>
+      <Constraints>{forbidden_constraints}</Constraints>
+    </Instance>
+  </Instances>
+</HighSchoolTimetableArchive>"""
+
+
+def test_build_initial_infers_split_from_prefer_times_when_large_durations_forbidden():
+    # Duration=6 event; PreferTimesConstraint marks durations 3,4,5,6 as
+    # having no valid times → inferred max_d = 2 → pieces must be ≤ 2.
+    instance = parse_archive(
+        _prefer_times_split_archive(event_duration=6, forbidden_durations=[3, 4, 5, 6])
+    )[0]
+
+    solution = build_initial(instance, random.Random(0))
+
+    sub_events = [se for se in solution.events if se.event_ref == "E1"]
+    assert len(sub_events) >= 2
+    for se in sub_events:
+        assert se.duration is not None
+        assert se.duration <= 2, f"piece has duration {se.duration}, expected ≤ 2"
+    assert sum(se.duration for se in sub_events) == 6  # type: ignore[arg-type]
+
+
+def test_build_initial_does_not_split_when_no_forbidden_durations():
+    # No constraints → single piece of full duration.
+    instance = parse_archive(
+        _prefer_times_split_archive(event_duration=4, forbidden_durations=[])
+    )[0]
+
+    solution = build_initial(instance, random.Random(0))
+
+    sub_events = [se for se in solution.events if se.event_ref == "E1"]
+    assert len(sub_events) == 1
+    assert sub_events[0].duration == 4
