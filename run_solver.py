@@ -19,7 +19,7 @@ from src.construct import build_initial
 from src.evaluator_ref import evaluate_cost_components, resolve_occurrences
 from src.html_report import render_timetable_page
 from src.lahc import run_lahc
-from src.selectors import EpsilonGreedySelector, RandomSelector, UCBSelector
+from src.selectors import EpsilonGreedySelector, RandomSelector, UCBSelector, SoftmaxSelector
 from src.model import Instance, Solution, SolutionGroup
 from src.parser import parse_archive
 from src.xml_writer import (
@@ -70,14 +70,14 @@ def format_instance_table(instances: list[Instance]) -> str:
 
 
 def _report_progress(
-    iteration: int, best_cost: int, *, total: int, t_start: float
+    iteration: int, best_cost: int, current_cost: int, *, total: int, t_start: float
 ) -> None:
     elapsed = time.time() - t_start
     rate = iteration / elapsed if elapsed > 0 else 0.0
     remaining = (total - iteration) / rate if rate > 0 else float("inf")
     pct = 100 * iteration / total
     print(
-        f"  [{iteration:>7}/{total} {pct:5.1f}%] koszt={best_cost:>14,}  "
+        f"  [{iteration:>7}/{total} {pct:5.1f}%] best={best_cost:>14,} curr={current_cost:>14,} "
         f"{rate:6.1f} it/s  pozostalo ~{remaining:.0f}s"
     )
 
@@ -167,12 +167,12 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         help="Id instancji (np. AU-BG-98). Pomin, by wypisac liste.",
     )
     parser.add_argument("--archive", type=Path, default=DEFAULT_ARCHIVE)
-    parser.add_argument("--selector", type=str, choices=["random", "epsilon-greedy", "ucb"], default="random", help="Heuristic selector type")
+    parser.add_argument("--selector", type=str, choices=["random", "epsilon-greedy", "ucb", "softmax"], default="random", help="Heuristic selector type")
     parser.add_argument("--iterations", type=int, default=30_000)
     parser.add_argument("--time-limit", type=float, default=None,
                         help="Max wall-clock seconds (overrides --iterations as a stopping criterion)")
     parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument("--history", type=int, default=30)
+    parser.add_argument("--history", type=int, default=1000)
     parser.add_argument(
         "--output",
         type=Path,
@@ -228,6 +228,8 @@ def main(argv: list[str] | None = None) -> None:
         selector_obj = EpsilonGreedySelector()
     elif args.selector == "ucb":
         selector_obj = UCBSelector()
+    elif args.selector == "softmax":
+        selector_obj = SoftmaxSelector()
     else:
         selector_obj = RandomSelector()
 

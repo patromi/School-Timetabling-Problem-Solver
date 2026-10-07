@@ -6,7 +6,7 @@ from collections.abc import Callable
 from src.selectors import HeuristicSelector, RandomSelector
 
 from src.cost import evaluate_cost
-from src.heuristics import MANUAL_HEURISTICS, Heuristic
+from src.heuristics import MANUAL_HEURISTICS, Heuristic, stagnation_ruin_and_recreate
 from src.incremental import (
     IncrementalEvaluator,
     StructuralChangeError,
@@ -77,7 +77,7 @@ def run_lahc(
     max_seconds: float | None = None,
     heuristics: list[Heuristic] | None = None,
     selector: HeuristicSelector | None = None,
-    on_progress: Callable[[int, int], None] | None = None,
+    on_progress: Callable[[int, int, int], None] | None = None,
     progress_every: int = 1000,
     progress_seconds: float = 2.0,
     evaluation: str = INCREMENTAL,
@@ -124,30 +124,28 @@ def run_lahc(
 
     stagnant_iterations = 0
     perturbation_tier = 0
-    idle_limit = max(500, max_iterations // 20)
+    idle_limit = max(500, max_iterations // 10)
 
     for step in range(max_iterations):
         if max_seconds is not None and time.monotonic() - t_start >= max_seconds:
             break
         if stagnant_iterations > idle_limit:
-            p_name = "small_perturbation" if perturbation_tier == 0 else "large_perturbation"
-            p_heuristic = next((h for h in pool if h.id == p_name), None)
-            
-            if p_heuristic is not None:
-                try:
-                    current = p_heuristic.apply(best, instance, rng)
-                    if evaluator is not None:
-                        evaluator.rebuild(current)
-                        current_cost = evaluator.cost.as_scalar()
-                    else:
-                        current_cost = evaluate_cost(instance, current).as_scalar()
-                    history = [current_cost] * history_length
-                    
-                    stagnant_iterations = 0
-                    perturbation_tier = 1 if perturbation_tier == 0 else 0
-                    continue
-                except ValueError:
-                    pass
+            try:
+                frac = 0.08 + (0.07 * perturbation_tier)
+                m_ev = 25 + (20 * perturbation_tier)
+                current = stagnation_ruin_and_recreate(best, instance, rng, fraction=frac, max_events=m_ev)
+                if evaluator is not None:
+                    evaluator.rebuild(current)
+                    current_cost = evaluator.cost.as_scalar()
+                else:
+                    current_cost = evaluate_cost(instance, current).as_scalar()
+                history = [current_cost] * history_length
+                
+                stagnant_iterations = 0
+                perturbation_tier = min(5, perturbation_tier + 1)
+                continue
+            except ValueError:
+                pass
 
         heuristic = selector.select(pool, rng)
         move_failed = False
@@ -198,7 +196,7 @@ def run_lahc(
             if (
                 step + 1
             ) % progress_every == 0 or now - last_progress_time >= progress_seconds:
-                on_progress(step + 1, best_cost)
+                on_progress(step + 1, best_cost, current_cost)
                 last_progress_time = now
 
     return best, best_cost

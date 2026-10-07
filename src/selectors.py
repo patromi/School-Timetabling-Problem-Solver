@@ -99,3 +99,49 @@ class UCBSelector:
         
         old_q = self._q_values.get(heuristic.id, 0.0)
         self._q_values[heuristic.id] = (1.0 - self.alpha) * old_q + self.alpha * reward
+
+
+class SoftmaxSelector:
+    """Softmax (Boltzmann) Selection.
+    Converts Q-values into a probability distribution.
+    Uses temperature to control the balance between exploration and exploitation.
+    High temperature = more exploration, low temperature = more exploitation.
+    Temperature decays over time to simulate annealing."""
+
+    def __init__(self, initial_temperature: float = 1.0, cooling_rate: float = 0.995, alpha: float = 0.05):
+        self.temperature = initial_temperature
+        self.cooling_rate = cooling_rate
+        self.alpha = alpha
+        self._q_values: dict[str, float] = {}
+
+    def select(self, heuristics: list[Heuristic], rng: random.Random) -> Heuristic:
+        if not heuristics:
+            raise ValueError("Heuristic pool cannot be empty.")
+
+        for h in heuristics:
+            if h.id not in self._q_values:
+                self._q_values[h.id] = 0.0
+
+        # Calculate probabilities using softmax
+        max_q = max(self._q_values[h.id] for h in heuristics)
+        
+        # If temperature is very close to 0, behave like greedy to avoid division by zero
+        if self.temperature < 1e-5:
+            best_heuristics = [h for h in heuristics if self._q_values[h.id] == max_q]
+            selected = rng.choice(best_heuristics)
+        else:
+            # Shift Q-values to avoid overflow in exp
+            exps = [math.exp((self._q_values[h.id] - max_q) / self.temperature) for h in heuristics]
+            total_exp = sum(exps)
+            probabilities = [e / total_exp for e in exps]
+            selected = rng.choices(heuristics, weights=probabilities, k=1)[0]
+        
+        # Cool down the temperature
+        self.temperature *= self.cooling_rate
+        
+        return selected
+
+    def update(self, heuristic: Heuristic, reward: float) -> None:
+        old_q = self._q_values.get(heuristic.id, 0.0)
+        self._q_values[heuristic.id] = (1.0 - self.alpha) * old_q + self.alpha * reward
+

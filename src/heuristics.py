@@ -57,9 +57,10 @@ def _best_time_for_event(
     solution: Solution,
     index: int,
     evaluator: IncrementalEvaluator | None = None,
+    excluded_time: str | None = None,
 ) -> Solution:
     """Returns the solution obtained by moving solution.events[index] to
-    whichever valid start time (INCLUDING its current one) yields the
+    whichever valid start time (INCLUDING its current one, unless excluded) yields the
     lowest cost (numerically identical to evaluator_ref.total_cost).
     Including the current time means the result is never worse than the
     input -- move_best and repair_hard_violation both depend on this to
@@ -81,7 +82,12 @@ def _best_time_for_event(
     # TypeError inside valid_start_time_ids if it's ever violated.
     assert event.duration is not None, f"event {event.event_ref!r} has no duration"
     candidates = valid_start_time_ids(instance, event.duration)
+    if excluded_time is not None:
+        candidates = [c for c in candidates if c != excluded_time]
     if not candidates:
+        if excluded_time is not None:
+            # Fall back to returning the solution unchanged if the only candidate is excluded
+            return solution
         raise ValueError(f"event {event.event_ref!r} has no valid start time")
 
     scorer = (
@@ -200,11 +206,7 @@ def ruin_and_recreate(
     events = list(solution.events)
     for i in ruined_indices:
         se = events[i]
-        assert se.duration is not None
-        candidates = valid_start_time_ids(instance, se.duration)
-        if not candidates:
-            raise ValueError(f"event {se.event_ref!r} has no valid start time")
-        events[i] = replace(se, time_ref=rng.choice(candidates))
+        events[i] = replace(se, time_ref=None)
     current = replace(solution, events=events)
 
     recreate_order = list(ruined_indices)
@@ -285,6 +287,47 @@ def repair_hard_violation(
         raise ValueError("no movable event participates in a hard constraint violation")
     index = rng.choice(candidates)
     return _best_time_for_event(instance, solution, index, evaluator)
+
+
+def stagnation_ruin_and_recreate(
+    solution: Solution, instance: Instance, rng: random.Random,
+    fraction: float = 0.15, max_events: int = 50
+) -> Solution:
+    """Special heavy ruin-and-recreate meant only for stagnation breaking.
+    Ruins a fraction of the timetable and greedily reconstructs them (forbidding original slot)."""
+    movable = [
+        i
+        for i, se in enumerate(solution.events)
+        if se.time_ref is not None and se.duration is not None
+    ]
+    if not movable:
+        raise ValueError(
+            "cannot apply ruin-and-recreate: no solution event has a time to reassign"
+        )
+
+    ruin_target = max(4, round(len(movable) * fraction))
+    k = min(len(movable), max_events, ruin_target)
+    ruined_indices = rng.sample(movable, k)
+    
+    # Track the original times so we can explicitly forbid them during recreation
+    # This prevents the heuristic from just putting everything back exactly where it was
+    original_times = {i: solution.events[i].time_ref for i in ruined_indices}
+
+    events = list(solution.events)
+    for i in ruined_indices:
+        se = events[i]
+        events[i] = replace(se, time_ref=None)
+    current = replace(solution, events=events)
+
+    recreate_order = list(ruined_indices)
+    rng.shuffle(recreate_order)
+    
+    evaluator = IncrementalEvaluator(instance, current)
+    for i in recreate_order:
+        orig_time = original_times[i]
+        current = _best_time_for_event(instance, current, i, evaluator, excluded_time=orig_time)
+        evaluator.commit(current)
+    return current
 
 
 MANUAL_HEURISTICS: list[Heuristic] = [
