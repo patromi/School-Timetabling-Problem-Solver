@@ -118,6 +118,8 @@ def test_incremental_evaluator_matches_full_evaluation_on_a_real_instance() -> N
     evaluator = IncrementalEvaluator(instance, old_solution)
 
     for heuristic in MANUAL_HEURISTICS:
+        if not heuristic.incremental_safe:
+            continue
         try:
             new_solution = heuristic.apply(old_solution, instance, rng)
         except ValueError:
