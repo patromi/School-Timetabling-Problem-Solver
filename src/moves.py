@@ -11,6 +11,13 @@ from src.model import (
     SolutionEventResource,
 )
 
+# Imported lazily inside split_resize_move to avoid a circular import at
+# module load time (construct imports evaluator_ref; moves imports construct).
+# The functions are stable and pure, so the lazy import is safe.
+def _get_split_helpers() -> tuple:  # type: ignore[return]
+    from src.construct import _split_duration_bounds, _split_durations  # noqa: PLC0415
+    return _split_duration_bounds, _split_durations
+
 # time_swap_move retries up to _MAX_SWAP_ATTEMPTS random pairs looking for one where
 # swapping keeps BOTH events in a valid span, rather than enumerating all O(n²) pairs.
 _MAX_SWAP_ATTEMPTS = 20
@@ -279,6 +286,59 @@ def small_perturbation_move(
     return replace(solution, events=new_events)
 
 
+def split_resize_move(
+    instance: Instance, solution: Solution, rng: random.Random
+) -> Solution:
+    """Structural move: picks one split event and re-splits it from scratch —
+    new piece sizes drawn randomly within [min_d, max_d] inferred from
+    SplitEventsConstraint or PreferTimesConstraint, and new random start
+    times assigned to each piece.
+
+    Because this can change the number of SolutionEvent entries for the chosen
+    event, it is NOT incremental-safe — the IncrementalEvaluator detects the
+    count change and falls back to a full rebuild. This is intentional: the
+    move is called infrequently (stagnation escape), so the full-eval cost is
+    acceptable.
+
+    Raises ValueError if the solution has no events with duration > 1."""
+    _split_duration_bounds, _split_durations = _get_split_helpers()
+
+    event_by_id = {e.id: e for e in instance.events}
+
+    groups: dict[str, list[SolutionEvent]] = {}
+    for se in solution.events:
+        groups.setdefault(se.event_ref, []).append(se)
+
+    splittable = [
+        ref
+        for ref, pieces in groups.items()
+        if ref in event_by_id
+        and event_by_id[ref].duration > 1
+        and (
+            len(pieces) >= 2
+            or (pieces[0].duration is not None and pieces[0].duration > 1)
+        )
+    ]
+    if not splittable:
+        raise ValueError("no splittable events in solution")
+
+    event_ref = rng.choice(splittable)
+    event_def = event_by_id[event_ref]
+    min_d, max_d = _split_duration_bounds(instance, event_def)
+
+    new_max_d = rng.randint(min_d, max_d)
+    new_durations = _split_durations(event_def.duration, min_d, new_max_d)
+
+    new_pieces: list[SolutionEvent] = []
+    for dur in new_durations:
+        cands = valid_start_time_ids(instance, dur)
+        time_ref = rng.choice(cands) if cands else rng.choice(instance.times).id
+        new_pieces.append(SolutionEvent(event_ref=event_ref, time_ref=time_ref, duration=dur))
+
+    kept = [se for se in solution.events if se.event_ref != event_ref]
+    return replace(solution, events=kept + new_pieces)
+
+
 def large_perturbation_move(
     instance: Instance, solution: Solution, rng: random.Random
 ) -> Solution:
@@ -332,3 +392,4 @@ def large_perturbation_move(
             raise ValueError(f"event {se.event_ref!r} has no valid start time")
         new_events[i] = replace(se, time_ref=rng.choice(candidates))
     return replace(solution, events=new_events)
+

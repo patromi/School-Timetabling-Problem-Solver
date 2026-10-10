@@ -1,6 +1,6 @@
 import random
 
-from src.evaluator_ref import _events_in_applies_to, valid_start_time_ids
+from src.evaluator_ref import _events_in_applies_to, _preferred_time_ids, valid_start_time_ids
 from src.model import (
     Event,
     Instance,
@@ -11,10 +11,17 @@ from src.model import (
 
 
 def _split_duration_bounds(instance: Instance, event: Event) -> tuple[int, int]:
-    """Finds MinimumDuration/MaximumDuration from a SplitEventsConstraint
-    applying to this event, if any. Without one, the event isn't meant to
-    be split -- (1, event.duration) yields a single piece covering the
-    whole duration, matching the pre-split-aware behavior."""
+    """Returns (min_duration, max_duration) for splitting this event's total
+    duration into sub-event pieces.
+
+    Priority order:
+    1. SplitEventsConstraint — explicit structural split rule; takes precedence.
+    2. PreferTimesConstraint with Duration filter — if a Required constraint
+       says a given sub-event duration has *no* preferred times (empty set),
+       treat that duration as forbidden and step down to the next valid size.
+       Handles instances like AU-SA-96 where splitting is implied by
+       PreferTimesConstraint rather than stated directly.
+    3. Fallback: single piece covering the whole duration."""
     for c in instance.constraints:
         if c.type != "SplitEventsConstraint":
             continue
@@ -23,7 +30,25 @@ def _split_duration_bounds(instance: Instance, event: Event) -> tuple[int, int]:
         min_d = int(c.params.get("MinimumDuration", 1))
         max_d = int(c.params.get("MaximumDuration", event.duration))
         return min_d, max_d
-    return 1, event.duration
+
+    # Infer forbidden piece sizes from Required PreferTimesConstraint with a
+    # Duration filter and an empty preferred-times set (nothing can satisfy it).
+    forbidden: set[int] = set()
+    for c in instance.constraints:
+        if c.type != "PreferTimesConstraint" or not c.required:
+            continue
+        dur_param = c.params.get("Duration")
+        if dur_param is None:
+            continue
+        if event.id not in _events_in_applies_to(instance, c.applies_to):
+            continue
+        if not _preferred_time_ids(instance, c):
+            forbidden.add(int(dur_param))
+
+    max_d = event.duration
+    while max_d in forbidden and max_d > 1:
+        max_d -= 1
+    return 1, max_d
 
 
 def _split_durations(total: int, min_duration: int, max_duration: int) -> list[int]:
