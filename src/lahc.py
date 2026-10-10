@@ -3,10 +3,9 @@ import random
 import time
 from collections.abc import Callable
 
+from src.acceptance import AcceptanceCriterion, LAHCAcceptance
 from src.solve_log import SolveLogger
-
 from src.selectors import HeuristicSelector, RandomSelector
-
 from src.cost import evaluate_cost
 from src.heuristics import MANUAL_HEURISTICS, Heuristic
 from src.incremental import (
@@ -85,20 +84,16 @@ def run_lahc(
     evaluation: str = INCREMENTAL,
     verify_every: int = 1,
     logger: SolveLogger | None = None,
+    acceptance: AcceptanceCriterion | None = None,
 ) -> tuple[Solution, int]:
-    """Late Acceptance Hill Climbing (Burke & Bykov): a candidate move is
-    accepted if it's no worse than the current solution OR no worse than
-    the solution accepted `history_length` steps ago. Returns the best
-    solution seen and its cost. A move step that cannot be applied (e.g.
-    no reassignable resource in a tiny instance) is skipped.
+    """Local search loop with a pluggable acceptance criterion.
+
+    When `acceptance` is None, defaults to LAHCAcceptance(history_length).
+    `history_length` is ignored when an explicit `acceptance` is supplied.
 
     If `on_progress` is given, it's called as `on_progress(iteration,
     best_cost)` whenever `progress_every` completed iterations have passed
-    OR at least `progress_seconds` have elapsed since the last call,
-    whichever comes first -- on a large/slow instance, waiting for a fixed
-    iteration count could mean minutes with no feedback at all, so a
-    wall-clock heartbeat guarantees the caller hears something regularly
-    regardless of instance size.
+    OR at least `progress_seconds` have elapsed since the last call.
 
     `evaluation` selects how candidates are costed: INCREMENTAL keeps one
     IncrementalEvaluator and applies/undoes each candidate against it, FULL
@@ -115,13 +110,17 @@ def run_lahc(
     if selector is None:
         selector = RandomSelector()
 
+    criterion: AcceptanceCriterion = (
+        acceptance if acceptance is not None else LAHCAcceptance(history_length)
+    )
+
     evaluator = None if evaluation == FULL else IncrementalEvaluator(instance, initial)
     current = initial
     current_cost = (
         evaluator.cost if evaluator is not None else evaluate_cost(instance, current)
     ).as_scalar()
     best, best_cost = current, current_cost
-    history = [current_cost] * history_length
+    criterion.reset(current_cost)
     last_progress_time = time.monotonic()
     t_start = time.monotonic()
 
@@ -135,7 +134,7 @@ def run_lahc(
         if stagnant_iterations > idle_limit:
             p_name = "small_perturbation" if perturbation_tier == 0 else "large_perturbation"
             p_heuristic = next((h for h in pool if h.id == p_name), None)
-            
+
             if p_heuristic is not None:
                 try:
                     current = p_heuristic.apply(best, instance, rng)
@@ -144,8 +143,8 @@ def run_lahc(
                         current_cost = evaluator.cost.as_scalar()
                     else:
                         current_cost = evaluate_cost(instance, current).as_scalar()
-                    history = [current_cost] * history_length
-                    
+                    criterion.reset(current_cost)
+
                     stagnant_iterations = 0
                     perturbation_tier = 1 if perturbation_tier == 0 else 0
                     if logger is not None:
@@ -196,8 +195,7 @@ def run_lahc(
             else:
                 stagnant_iterations += 1
 
-            v = step % history_length
-            accepted = candidate_cost <= current_cost or candidate_cost <= history[v]
+            accepted = criterion.accepts(current_cost, candidate_cost, rng)
 
             reward = 0.0
             if accepted:
@@ -211,8 +209,8 @@ def run_lahc(
                 current, current_cost = candidate, candidate_cost
                 if current_cost < best_cost:
                     best, best_cost = current, current_cost
-            history[v] = current_cost
 
+            criterion.after_step(current_cost)
             _finish(evaluator, transaction, accepted, current)
             selector.update(heuristic, reward)
             if logger is not None:
