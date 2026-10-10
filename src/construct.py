@@ -31,8 +31,6 @@ def _split_duration_bounds(instance: Instance, event: Event) -> tuple[int, int]:
         max_d = int(c.params.get("MaximumDuration", event.duration))
         return min_d, max_d
 
-    # Infer forbidden piece sizes from Required PreferTimesConstraint with a
-    # Duration filter and an empty preferred-times set (nothing can satisfy it).
     forbidden: set[int] = set()
     for c in instance.constraints:
         if c.type != "PreferTimesConstraint" or not c.required:
