@@ -3,6 +3,8 @@ import random
 import time
 from collections.abc import Callable
 
+from src.solve_log import SolveLogger
+
 from src.selectors import HeuristicSelector, RandomSelector
 
 from src.cost import evaluate_cost
@@ -82,6 +84,7 @@ def run_lahc(
     progress_seconds: float = 2.0,
     evaluation: str = INCREMENTAL,
     verify_every: int = 1,
+    logger: SolveLogger | None = None,
 ) -> tuple[Solution, int]:
     """Late Acceptance Hill Climbing (Burke & Bykov): a candidate move is
     accepted if it's no worse than the current solution OR no worse than
@@ -145,6 +148,14 @@ def run_lahc(
                     
                     stagnant_iterations = 0
                     perturbation_tier = 1 if perturbation_tier == 0 else 0
+                    if logger is not None:
+                        logger.log_perturbation(
+                            step=step,
+                            tier=0 if p_name == "small_perturbation" else 1,
+                            heuristic_id=p_heuristic.id,
+                            cost_before=best_cost,
+                            cost_after=current_cost,
+                        )
                     continue
                 except ValueError:
                     pass
@@ -170,6 +181,18 @@ def run_lahc(
             if candidate_cost < best_cost:
                 stagnant_iterations = 0
                 perturbation_tier = 0
+                if logger is not None:
+                    infeasibility = candidate_cost // 1_000_000
+                    objective = candidate_cost % 1_000_000
+                    logger.log_new_best(
+                        step=step,
+                        heuristic_id=heuristic.id,
+                        old_cost=best_cost,
+                        new_cost=candidate_cost,
+                        infeasibility=infeasibility,
+                        objective=objective,
+                        elapsed=time.monotonic() - t_start,
+                    )
             else:
                 stagnant_iterations += 1
 
@@ -192,6 +215,13 @@ def run_lahc(
 
             _finish(evaluator, transaction, accepted, current)
             selector.update(heuristic, reward)
+            if logger is not None:
+                logger.record_step(
+                    step=step,
+                    heuristic_id=heuristic.id,
+                    reward=reward,
+                    accepted=accepted,
+                )
 
         if on_progress is not None:
             now = time.monotonic()
