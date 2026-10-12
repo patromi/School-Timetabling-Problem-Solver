@@ -195,7 +195,7 @@ def run_lahc(
             else:
                 stagnant_iterations += 1
 
-            accepted = criterion.accepts(current_cost, candidate_cost, rng)
+            accepted = criterion.accepts(current_cost, candidate_cost, rng, step)
 
             reward = 0.0
             if accepted:
@@ -210,7 +210,7 @@ def run_lahc(
                 if current_cost < best_cost:
                     best, best_cost = current, current_cost
 
-            criterion.after_step(current_cost)
+            criterion.after_step(current_cost, step)
             _finish(evaluator, transaction, accepted, current)
             selector.update(heuristic, reward)
             if logger is not None:

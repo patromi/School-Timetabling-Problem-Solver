@@ -1,10 +1,14 @@
 """Acceptance criteria for local search: LAHC and Simulated Annealing.
 
 Each criterion exposes three methods called by the solver loop:
-  accepts(current_cost, candidate_cost, rng) -> bool   -- make accept/reject decision
-  after_step(current_cost)                             -- update internal state; current_cost
-                                                          is already the post-accept/reject value
-  reset(current_cost)                                  -- reinitialise after a perturbation restart
+  accepts(current_cost, candidate_cost, rng, step) -> bool  -- make accept/reject decision
+  after_step(current_cost, step)                            -- update internal state; current_cost
+                                                               is already the post-accept/reject value
+  reset(current_cost)                                       -- reinitialise after a perturbation restart
+
+`step` is the solver loop's iteration index. It is passed in rather than counted
+by the criterion because the loop also advances on steps that never reach the
+criterion (failed moves, perturbation restarts).
 """
 
 import math
@@ -20,10 +24,10 @@ class AcceptanceCriterion(Protocol):
     def name(self) -> str: ...
 
     def accepts(
-        self, current_cost: int, candidate_cost: int, rng: random.Random
+        self, current_cost: int, candidate_cost: int, rng: random.Random, step: int
     ) -> bool: ...
 
-    def after_step(self, current_cost: int) -> None: ...
+    def after_step(self, current_cost: int, step: int) -> None: ...
 
     def reset(self, current_cost: int) -> None: ...
 
@@ -38,26 +42,23 @@ class LAHCAcceptance:
     def __init__(self, history_length: int = 30) -> None:
         self._L = history_length
         self._history: list[int] = [0] * history_length
-        self._step: int = 0
 
     @property
     def name(self) -> str:
         return f"lahc(L={self._L})"
 
     def accepts(
-        self, current_cost: int, candidate_cost: int, rng: random.Random
+        self, current_cost: int, candidate_cost: int, rng: random.Random, step: int
     ) -> bool:
-        v = self._step % self._L
+        v = step % self._L
         return candidate_cost <= current_cost or candidate_cost <= self._history[v]
 
-    def after_step(self, current_cost: int) -> None:
-        v = self._step % self._L
+    def after_step(self, current_cost: int, step: int) -> None:
+        v = step % self._L
         self._history[v] = current_cost
-        self._step += 1
 
     def reset(self, current_cost: int) -> None:
         self._history = [current_cost] * self._L
-        self._step = 0
 
 
 class SimulatedAnnealingAcceptance:
@@ -92,14 +93,14 @@ class SimulatedAnnealingAcceptance:
         return self._T
 
     def accepts(
-        self, current_cost: int, candidate_cost: int, rng: random.Random
+        self, current_cost: int, candidate_cost: int, rng: random.Random, step: int
     ) -> bool:
         if candidate_cost <= current_cost:
             return True
         delta = candidate_cost - current_cost
         return rng.random() < math.exp(-delta / self._T)
 
-    def after_step(self, current_cost: int) -> None:
+    def after_step(self, current_cost: int, step: int) -> None:
         self._T = max(self._t_end, self._T * self._cooling_rate)
 
     def reset(self, current_cost: int) -> None:
