@@ -15,6 +15,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+from src.acceptance import AcceptanceCriterion, LAHCAcceptance, SimulatedAnnealingAcceptance
 from src.construct import build_initial
 from src.evaluator_ref import evaluate_cost_components, resolve_occurrences
 from src.html_report import render_timetable_page
@@ -92,8 +93,9 @@ def solve(
     selector: RandomSelector | EpsilonGreedySelector | UCBSelector,
     logger: SolveLogger | None = None,
     time_limit: float | None = None,
+    acceptance: AcceptanceCriterion | None = None,
 ) -> SolveResult:
-    """Buduje rozwiazanie poczatkowe i uruchamia LAHC; zwraca spakowany wynik."""
+    """Buduje rozwiazanie poczatkowe i uruchamia solver; zwraca spakowany wynik."""
     initial = build_initial(instance, rng)
     infeasibility_0, objective_0 = evaluate_cost_components(instance, initial)
     print(f"  Rozwiazanie poczatkowe -> infeasibility={infeasibility_0}  objective={objective_0}\n")
@@ -101,9 +103,6 @@ def solve(
     t_start = time.time()
     on_progress = functools.partial(_report_progress, total=iterations, t_start=t_start)
 
-    # progress_seconds gives a live heartbeat every ~2s regardless of
-    # instance size -- large/slow instances can drop to a few it/s, making
-    # a purely iteration-count trigger mean minutes of silence.
     best, _ = run_lahc(
         instance,
         initial,
@@ -117,6 +116,7 @@ def solve(
         progress_seconds=2.0,
         evaluation=evaluation,
         logger=logger,
+        acceptance=acceptance,
     )
     elapsed = time.time() - t_start
     infeasibility_1, objective_1 = evaluate_cost_components(instance, best)
@@ -171,11 +171,20 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     )
     parser.add_argument("--archive", type=Path, default=DEFAULT_ARCHIVE)
     parser.add_argument("--selector", type=str, choices=["random", "epsilon-greedy", "ucb"], default="random", help="Heuristic selector type")
+    parser.add_argument("--acceptance", type=str, choices=["lahc", "sa"], default="lahc",
+                        help="Acceptance criterion: Late Acceptance HC (domyslnie) lub Simulated Annealing")
     parser.add_argument("--iterations", type=int, default=30_000)
     parser.add_argument("--time-limit", type=float, default=None,
                         help="Max wall-clock seconds (overrides --iterations as a stopping criterion)")
     parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument("--history", type=int, default=30)
+    parser.add_argument("--history", type=int, default=30,
+                        help="Dlugosc historii LAHC (ignorowane dla --acceptance sa)")
+    parser.add_argument("--sa-t-start", type=float, default=10_000.0,
+                        help="SA: temperatura poczatkowa (domyslnie 10000)")
+    parser.add_argument("--sa-t-end", type=float, default=1.0,
+                        help="SA: temperatura koncowa (domyslnie 1.0)")
+    parser.add_argument("--sa-cooling", type=float, default=0.9999,
+                        help="SA: wspolczynnik chlodzenia geometrycznego (domyslnie 0.9999)")
     parser.add_argument(
         "--output",
         type=Path,
@@ -223,10 +232,20 @@ def main(argv: list[str] | None = None) -> None:
         f"Zasoby={len(instance.resources)}  Ograniczenia={len(instance.constraints)}\n"
     )
 
+    if args.acceptance == "sa":
+        acceptance_obj: AcceptanceCriterion = SimulatedAnnealingAcceptance(
+            t_start=args.sa_t_start,
+            t_end=args.sa_t_end,
+            cooling_rate=args.sa_cooling,
+        )
+    else:
+        acceptance_obj = LAHCAcceptance(history_length=args.history)
+
     print(
-        f"LAHC: {args.iterations} iteracji, seed={args.seed}, "
-        f"history={args.history}, ewaluacja={args.evaluation}"
+        f"Solver: {args.iterations} iteracji, seed={args.seed}, "
+        f"akceptacja={acceptance_obj.name}, ewaluacja={args.evaluation}"
     )
+    selector_obj: RandomSelector | EpsilonGreedySelector | UCBSelector
     if args.selector == "epsilon-greedy":
         selector_obj = EpsilonGreedySelector()
     elif args.selector == "ucb":
@@ -250,6 +269,7 @@ def main(argv: list[str] | None = None) -> None:
             evaluation=args.evaluation,
             logger=logger,
             time_limit=args.time_limit,
+            acceptance=acceptance_obj,
         )
 
         logger.log_run_summary(
