@@ -1,12 +1,10 @@
-import math
 import random
 import time
 from collections.abc import Callable
 
 from src.acceptance import AcceptanceCriterion, LAHCAcceptance
-from src.solve_log import SolveLogger
-from src.selectors import HeuristicSelector, RandomSelector
 from src.cost import evaluate_cost
+from src.evaluator_ref import INFEASIBILITY_WEIGHT
 from src.heuristics import MANUAL_HEURISTICS, Heuristic
 from src.incremental import (
     IncrementalEvaluator,
@@ -14,10 +12,14 @@ from src.incremental import (
     Transaction,
 )
 from src.model import Instance, Solution
+from src.selectors import HeuristicSelector, RandomSelector, SolverState
+from src.solve_log import SolveLogger
 
 FULL = "full"
 INCREMENTAL = "incremental"
 VERIFY = "verify"
+
+_BEST_BONUS = 0.1
 
 
 def _score_candidate(
@@ -127,12 +129,20 @@ def run_lahc(
     stagnant_iterations = 0
     perturbation_tier = 0
     idle_limit = max(500, max_iterations // 20)
+    # Stagnation thresholds for the contextual UCB state:
+    # bucket 0 = low  [0, idle_limit/3)
+    # bucket 1 = medium  [idle_limit/3, 2*idle_limit/3)
+    # bucket 2 = high  [2*idle_limit/3, ∞)
+    _stag_low = idle_limit // 3
+    _stag_med = (2 * idle_limit) // 3
 
     for step in range(max_iterations):
         if max_seconds is not None and time.monotonic() - t_start >= max_seconds:
             break
         if stagnant_iterations > idle_limit:
-            p_name = "small_perturbation" if perturbation_tier == 0 else "large_perturbation"
+            p_name = (
+                "small_perturbation" if perturbation_tier == 0 else "large_perturbation"
+            )
             p_heuristic = next((h for h in pool if h.id == p_name), None)
 
             if p_heuristic is not None:
@@ -159,7 +169,17 @@ def run_lahc(
                 except ValueError:
                     pass
 
-        heuristic = selector.select(pool, rng)
+        hard_bucket = 1 if current_cost < INFEASIBILITY_WEIGHT else 0
+        stagnation_bucket = (
+            0
+            if stagnant_iterations < _stag_low
+            else 1
+            if stagnant_iterations < _stag_med
+            else 2
+        )
+        solver_state: SolverState = (hard_bucket, stagnation_bucket)
+
+        heuristic = selector.select(pool, rng, state=solver_state)
         move_failed = False
         try:
             candidate = heuristic.apply(current, instance, rng)
@@ -197,22 +217,25 @@ def run_lahc(
 
             accepted = criterion.accepts(current_cost, candidate_cost, rng, step)
 
-            reward = 0.0
-            if accepted:
-                if candidate_cost < current_cost:
-                    reward = math.log1p(current_cost - candidate_cost)
-                elif candidate_cost == current_cost:
-                    reward = 0.1
-                else:
-                    reward = 0.05
+            # Reward: relative improvement regardless of acceptance, plus a
+            # bonus when the candidate beats the global best.
+            if current_cost > 0:
+                relative_improvement = max(
+                    0.0, (current_cost - candidate_cost) / current_cost
+                )
+            else:
+                relative_improvement = 0.0
+            best_bonus = _BEST_BONUS if candidate_cost < best_cost else 0.0
+            reward = relative_improvement + best_bonus
 
+            if accepted:
                 current, current_cost = candidate, candidate_cost
                 if current_cost < best_cost:
                     best, best_cost = current, current_cost
 
             criterion.after_step(current_cost, step)
             _finish(evaluator, transaction, accepted, current)
-            selector.update(heuristic, reward)
+            selector.update(heuristic, reward, state=solver_state)
             if logger is not None:
                 logger.record_step(
                     step=step,

@@ -1,18 +1,17 @@
 """Acceptance criteria for local search: LAHC and Simulated Annealing.
 
 Each criterion exposes three methods called by the solver loop:
-  accepts(current_cost, candidate_cost, rng, step) -> bool  -- make accept/reject decision
-  after_step(current_cost, step)                            -- update internal state; current_cost
-                                                               is already the post-accept/reject value
-  reset(current_cost)                                       -- reinitialise after a perturbation restart
+  accepts(current_cost, candidate_cost, rng, step) -> bool
+  after_step(current_cost, step)
+  reset(current_cost)
 
-`step` is the solver loop's iteration index. It is passed in rather than counted
-by the criterion because the loop also advances on steps that never reach the
-criterion (failed moves, perturbation restarts).
+`step` is the solver loop's iteration index, passed in rather than counted
+by the criterion because the loop also advances on failed moves and restarts.
 """
 
 import math
 import random
+import time
 from typing import Protocol, runtime_checkable
 
 
@@ -86,7 +85,10 @@ class SimulatedAnnealingAcceptance:
 
     @property
     def name(self) -> str:
-        return f"sa(T0={self._t_start:.0f},Tend={self._t_end:.1f},alpha={self._cooling_rate})"
+        return (
+            f"sa(T0={self._t_start:.0f},"
+            f"Tend={self._t_end:.1f},alpha={self._cooling_rate})"
+        )
 
     @property
     def temperature(self) -> float:
@@ -105,3 +107,73 @@ class SimulatedAnnealingAcceptance:
 
     def reset(self, current_cost: int) -> None:
         self._T = self._t_start
+
+
+class AutoSAAcceptance:
+    """Simulated Annealing with time-proportional cooling and auto-calibrated T₀.
+
+    T₀ is set to `initial_cost * t0_factor` on the first `reset()` call, so
+    it scales automatically with the problem's cost magnitude — no per-instance
+    tuning required.
+
+    Temperature follows an exponential decay keyed to wall-clock time rather
+    than iteration count:
+
+        T(t) = T₀ * (t_end / T₀) ** (elapsed / time_budget)
+
+    This makes the cooling schedule invariant to instance speed: a fast instance
+    (many iterations in 120 s) and a slow one (few iterations) both see T₀ at
+    the start and t_end at the end of the budget.
+
+    After perturbation restarts the criterion re-heats to T₀ and resets its
+    internal clock, matching the behaviour of LAHCAcceptance.reset().
+    """
+
+    def __init__(
+        self,
+        t0_factor: float = 0.001,
+        t_end: float = 1.0,
+        time_budget: float = 120.0,
+    ) -> None:
+        if t0_factor <= 0:
+            raise ValueError(f"t0_factor must be positive, got {t0_factor}")
+        if t_end <= 0:
+            raise ValueError(f"t_end must be positive, got {t_end}")
+        if time_budget <= 0:
+            raise ValueError(f"time_budget must be positive, got {time_budget}")
+        self._t0_factor = t0_factor
+        self._t_end = t_end
+        self._time_budget = time_budget
+        self._t0: float = max(t_end, 1.0)
+        self._start: float = time.monotonic()
+
+    @property
+    def name(self) -> str:
+        return (
+            f"sa_auto(t0_factor={self._t0_factor},"
+            f"t_end={self._t_end},budget={self._time_budget:.0f}s)"
+        )
+
+    @property
+    def temperature(self) -> float:
+        elapsed = time.monotonic() - self._start
+        ratio = min(1.0, elapsed / self._time_budget)
+        return self._t0 * (self._t_end / self._t0) ** ratio
+
+    def accepts(
+        self, current_cost: int, candidate_cost: int, rng: random.Random, step: int
+    ) -> bool:
+        if candidate_cost <= current_cost:
+            return True
+        T = self.temperature
+        if T <= 0.0:
+            return False
+        delta = candidate_cost - current_cost
+        return rng.random() < math.exp(-delta / T)
+
+    def after_step(self, current_cost: int, step: int) -> None:
+        pass  # temperature is derived from wall time, no per-step update
+
+    def reset(self, current_cost: int) -> None:
+        self._t0 = max(self._t_end, current_cost * self._t0_factor)
+        self._start = time.monotonic()
