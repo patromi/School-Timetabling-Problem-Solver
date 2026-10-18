@@ -87,6 +87,7 @@ def run_lahc(
     verify_every: int = 1,
     logger: SolveLogger | None = None,
     acceptance: AcceptanceCriterion | None = None,
+    idle_limit: int | None = None,
 ) -> tuple[Solution, int]:
     """Local search loop with a pluggable acceptance criterion.
 
@@ -104,6 +105,12 @@ def run_lahc(
     construction). All three explore the same trajectory for a given seed --
     the search draws from `rng` identically regardless of how costs are
     obtained.
+
+    `idle_limit` is the number of iterations without a new best solution
+    after which the solver perturbs the best solution; it also sets the
+    stagnation buckets of the selector state (thirds of `idle_limit`). When
+    None it is derived from `max_iterations`, which only makes sense for
+    iteration-bounded runs -- time-bounded runs should pass it explicitly.
     """
     if evaluation not in (FULL, INCREMENTAL, VERIFY):
         raise ValueError(f"unknown evaluation mode: {evaluation!r}")
@@ -128,7 +135,8 @@ def run_lahc(
 
     stagnant_iterations = 0
     perturbation_tier = 0
-    idle_limit = max(500, max_iterations // 20)
+    if idle_limit is None:
+        idle_limit = max(500, max_iterations // 20)
     # Stagnation thresholds for the contextual UCB state:
     # bucket 0 = low  [0, idle_limit/3)
     # bucket 1 = medium  [idle_limit/3, 2*idle_limit/3)
@@ -184,7 +192,8 @@ def run_lahc(
         try:
             candidate = heuristic.apply(current, instance, rng)
         except ValueError:
-            selector.update(heuristic, 0.0)
+            selector.update(heuristic, 0.0, state=solver_state)
+            stagnant_iterations += 1
             move_failed = True
 
         if not move_failed:

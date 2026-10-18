@@ -201,3 +201,76 @@ def test_a_heuristic_not_marked_incremental_safe_is_costed_by_full_evaluation():
     )
 
     assert total_cost(instance, best) == cost
+
+
+class _RecordingSelector:
+    """RandomSelector that records the state of every select/update call."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, str, object]] = []
+
+    def select(self, heuristics, rng, state=None):  # type: ignore[no-untyped-def]
+        chosen = rng.choice(heuristics)
+        self.calls.append(("select", chosen.id, state))
+        return chosen
+
+    def update(self, heuristic, reward, state=None):  # type: ignore[no-untyped-def]
+        self.calls.append(("update", heuristic.id, state))
+
+
+def _always_fails(solution, instance, rng):  # type: ignore[no-untyped-def]
+    raise ValueError("no applicable move")
+
+
+def test_a_failed_move_is_reported_to_the_selector_in_the_current_state():
+    # A contextual selector keeps per-state statistics; crediting a failed
+    # move to some other state leaves its n == 0 in the current one, so it
+    # is force-explored forever.
+    instance = parse_archive(_load("ArtificialSudoku4x4.xml"))[0]
+    initial = build_initial(instance, random.Random(0))
+    move_random = next(h for h in MANUAL_HEURISTICS if h.id == "move_random")
+    failing = replace(move_random, id="always_fails", apply=_always_fails)
+    selector = _RecordingSelector()
+
+    run_lahc(
+        instance,
+        initial,
+        random.Random(4),
+        max_iterations=100,
+        heuristics=[failing, move_random],
+        selector=selector,
+    )
+
+    pairs = list(zip(selector.calls[::2], selector.calls[1::2], strict=True))
+    failed = [(s, u) for s, u in pairs if s[1] == "always_fails"]
+    assert failed
+    for select_call, update_call in failed:
+        assert update_call[0] == "update"
+        assert update_call[2] == select_call[2]
+
+
+def test_an_explicit_idle_limit_sets_the_stagnation_buckets():
+    # With an explicit idle_limit the stagnation buckets no longer depend on
+    # max_iterations: a solver that never improves walks through medium and
+    # high stagnation within idle_limit steps.
+    instance = parse_archive(_load("ArtificialSudoku4x4.xml"))[0]
+    initial = build_initial(instance, random.Random(0))
+    move_random = next(h for h in MANUAL_HEURISTICS if h.id == "move_random")
+    failing = replace(move_random, id="always_fails", apply=_always_fails)
+    selector = _RecordingSelector()
+
+    run_lahc(
+        instance,
+        initial,
+        random.Random(4),
+        max_iterations=10_000_000,
+        max_seconds=5,
+        idle_limit=30,
+        heuristics=[failing],
+        selector=selector,
+    )
+
+    states = [c[2] for c in selector.calls[:60:2]]
+    assert states[0] is not None and states[0][1] == 0
+    assert any(s is not None and s[1] == 1 for s in states)
+    assert any(s is not None and s[1] == 2 for s in states)
