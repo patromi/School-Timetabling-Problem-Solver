@@ -1,7 +1,22 @@
 import re
+from typing import Any
 from xml.sax.saxutils import escape, quoteattr
 
-from src.model import Solution, SolutionEvent, SolutionGroup
+from src.model import (
+    AppliesTo,
+    Constraint,
+    Event,
+    EventPair,
+    EventResource,
+    Group,
+    Instance,
+    Resource,
+    ResourceType,
+    Solution,
+    SolutionEvent,
+    SolutionGroup,
+    Time,
+)
 
 _SOLUTION_GROUPS_RE = re.compile(r"<SolutionGroups>.*?</SolutionGroups>", re.DOTALL)
 _ARCHIVE_CLOSE_RE = re.compile(r"</HighSchoolTimetableArchive>")
@@ -88,3 +103,235 @@ def render_archive_with_solution_groups(
     return _ARCHIVE_CLOSE_RE.sub(
         groups_xml + "</HighSchoolTimetableArchive>", archive_xml, count=1
     )
+
+
+def _render_applies_to(applies_to: AppliesTo) -> str:
+    parts: list[str] = []
+    if applies_to.event_groups:
+        parts.append(
+            "<EventGroups>"
+            + "".join(
+                f"<EventGroup Reference={quoteattr(r)}/>"
+                for r in applies_to.event_groups
+            )
+            + "</EventGroups>"
+        )
+    if applies_to.events:
+        parts.append(
+            "<Events>"
+            + "".join(
+                f"<Event Reference={quoteattr(r)}/>" for r in applies_to.events
+            )
+            + "</Events>"
+        )
+    if applies_to.resource_groups:
+        parts.append(
+            "<ResourceGroups>"
+            + "".join(
+                f"<ResourceGroup Reference={quoteattr(r)}/>"
+                for r in applies_to.resource_groups
+            )
+            + "</ResourceGroups>"
+        )
+    if applies_to.resources:
+        parts.append(
+            "<Resources>"
+            + "".join(
+                f"<Resource Reference={quoteattr(r)}/>"
+                for r in applies_to.resources
+            )
+            + "</Resources>"
+        )
+    if applies_to.time_groups:
+        parts.append(
+            "<TimeGroups>"
+            + "".join(
+                f"<TimeGroup Reference={quoteattr(r)}/>"
+                for r in applies_to.time_groups
+            )
+            + "</TimeGroups>"
+        )
+    if applies_to.times:
+        parts.append(
+            "<Times>"
+            + "".join(
+                f"<Time Reference={quoteattr(r)}/>" for r in applies_to.times
+            )
+            + "</Times>"
+        )
+    if applies_to.event_pairs:
+        ep_xml = []
+        for ep in applies_to.event_pairs:
+            ep_parts = [
+                f"<FirstEvent Reference={quoteattr(ep.first_event)}/>",
+                f"<SecondEvent Reference={quoteattr(ep.second_event)}/>",
+                f"<MinSeparation>{ep.min_separation}</MinSeparation>",
+            ]
+            if ep.max_separation is not None:
+                ep_parts.append(f"<MaxSeparation>{ep.max_separation}</MaxSeparation>")
+            ep_xml.append(f"<EventPair>{''.join(ep_parts)}</EventPair>")
+        parts.append(f"<EventPairs>{''.join(ep_xml)}</EventPairs>")
+    if not parts:
+        return ""
+    return f"<AppliesTo>{''.join(parts)}</AppliesTo>"
+
+
+def _render_constraint_param(key: str, val: Any) -> str:
+    if isinstance(val, list):
+        items: list[str] = []
+        child_tag = key[:-1] if key.endswith("s") else "Item"
+        for item in val:
+            if isinstance(item, dict) and "reference" in item:
+                sub_parts = []
+                for subk, subv in item.items():
+                    if subk != "reference" and subv is not None:
+                        sub_parts.append(f"<{subk}>{escape(str(subv))}</{subk}>")
+                items.append(
+                    f"<{child_tag} Reference={quoteattr(item['reference'])}>"
+                    f"{''.join(sub_parts)}</{child_tag}>"
+                )
+            elif isinstance(item, str):
+                items.append(f"<{child_tag} Reference={quoteattr(item)}/>")
+        return f"<{key}>{''.join(items)}</{key}>"
+    if val is not None:
+        return f"<{key}>{escape(str(val))}</{key}>"
+    return ""
+
+
+def _render_times_section(instance: Instance) -> str:
+    parts = ["<Times>"]
+    if instance.time_groups:
+        parts.append("<TimeGroups>")
+        for g in instance.time_groups:
+            tag = g.kind if g.kind else "TimeGroup"
+            parts.append(f"<{tag} Id={quoteattr(g.id)}><Name>{escape(g.name)}</Name></{tag}>")
+        parts.append("</TimeGroups>")
+    for t in instance.times:
+        parts.append(f"<Time Id={quoteattr(t.id)}><Name>{escape(t.name)}</Name>")
+        if t.group_refs:
+            parts.append("<TimeGroups>")
+            for ref in t.group_refs:
+                parts.append(f"<TimeGroup Reference={quoteattr(ref)}/>")
+            parts.append("</TimeGroups>")
+        parts.append("</Time>")
+    parts.append("</Times>")
+    return "".join(parts)
+
+
+def _render_resources_section(instance: Instance) -> str:
+    parts = ["<Resources>"]
+    if instance.resource_types:
+        parts.append("<ResourceTypes>")
+        for rt in instance.resource_types:
+            parts.append(
+                f"<ResourceType Id={quoteattr(rt.id)}><Name>{escape(rt.name)}</Name></ResourceType>"
+            )
+        parts.append("</ResourceTypes>")
+    if instance.resource_groups:
+        parts.append("<ResourceGroups>")
+        for rg in instance.resource_groups:
+            tag = rg.kind if rg.kind else "ResourceGroup"
+            parts.append(f"<{tag} Id={quoteattr(rg.id)}><Name>{escape(rg.name)}</Name></{tag}>")
+        parts.append("</ResourceGroups>")
+    for r in instance.resources:
+        parts.append(f"<Resource Id={quoteattr(r.id)}><Name>{escape(r.name)}</Name>")
+        parts.append(f"<ResourceType Reference={quoteattr(r.resource_type_ref)}/>")
+        if r.group_refs:
+            parts.append("<ResourceGroups>")
+            for ref in r.group_refs:
+                parts.append(f"<ResourceGroup Reference={quoteattr(ref)}/>")
+            parts.append("</ResourceGroups>")
+        parts.append("</Resource>")
+    parts.append("</Resources>")
+    return "".join(parts)
+
+
+def _render_events_section(instance: Instance) -> str:
+    parts = ["<Events>"]
+    if instance.event_groups:
+        parts.append("<EventGroups>")
+        for eg in instance.event_groups:
+            tag = eg.kind if eg.kind else "EventGroup"
+            parts.append(f"<{tag} Id={quoteattr(eg.id)}><Name>{escape(eg.name)}</Name></{tag}>")
+        parts.append("</EventGroups>")
+    for e in instance.events:
+        parts.append(f"<Event Id={quoteattr(e.id)}><Name>{escape(e.name)}</Name>")
+        parts.append(f"<Duration>{e.duration}</Duration>")
+        if e.course_ref:
+            parts.append(f"<Course Reference={quoteattr(e.course_ref)}/>")
+        if e.time_ref:
+            parts.append(f"<Time Reference={quoteattr(e.time_ref)}/>")
+        if e.workload is not None:
+            parts.append(f"<Workload>{e.workload}</Workload>")
+        if e.resources:
+            parts.append("<Resources>")
+            for res in e.resources:
+                if res.resource_ref:
+                    parts.append(f"<Resource Reference={quoteattr(res.resource_ref)}>")
+                    parts.append(f"<Role>{escape(res.role)}</Role>")
+                    if res.resource_type_ref:
+                        parts.append(
+                            f"<ResourceType Reference={quoteattr(res.resource_type_ref)}/>"
+                        )
+                    if res.workload is not None:
+                        parts.append(f"<Workload>{res.workload}</Workload>")
+                    parts.append("</Resource>")
+                else:
+                    parts.append("<Resource>")
+                    parts.append(f"<Role>{escape(res.role)}</Role>")
+                    if res.resource_type_ref:
+                        parts.append(
+                            f"<ResourceType Reference={quoteattr(res.resource_type_ref)}/>"
+                        )
+                    if res.workload is not None:
+                        parts.append(f"<Workload>{res.workload}</Workload>")
+                    parts.append("</Resource>")
+            parts.append("</Resources>")
+        if e.group_refs:
+            parts.append("<EventGroups>")
+            for ref in e.group_refs:
+                parts.append(f"<EventGroup Reference={quoteattr(ref)}/>")
+            parts.append("</EventGroups>")
+        parts.append("</Event>")
+    parts.append("</Events>")
+    return "".join(parts)
+
+
+def _render_constraints_section(instance: Instance) -> str:
+    parts = ["<Constraints>"]
+    for c in instance.constraints:
+        parts.append(f"<{c.type} Id={quoteattr(c.id)}>")
+        parts.append(f"<Name>{escape(c.name)}</Name>")
+        parts.append(f"<Required>{'true' if c.required else 'false'}</Required>")
+        parts.append(f"<Weight>{c.weight}</Weight>")
+        parts.append(f"<CostFunction>{escape(c.cost_function)}</CostFunction>")
+        applies_xml = _render_applies_to(c.applies_to)
+        if applies_xml:
+            parts.append(applies_xml)
+        for key, val in c.params.items():
+            param_xml = _render_constraint_param(key, val)
+            if param_xml:
+                parts.append(param_xml)
+        parts.append(f"</{c.type}>")
+    parts.append("</Constraints>")
+    return "".join(parts)
+
+
+def render_instance_xml(instance: Instance) -> str:
+    """Renders a complete XHSTT-compliant XML archive containing the given instance."""
+    body = [
+        '<?xml version="1.0" encoding="utf-8"?>',
+        '<HighSchoolTimetableArchive xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">',
+        "  <Instances>",
+        f"    <Instance Id={quoteattr(instance.id)}>",
+        f"      <MetaData><Name>{escape(instance.name or instance.id)}</Name></MetaData>",
+        "      " + _render_times_section(instance),
+        "      " + _render_resources_section(instance),
+        "      " + _render_events_section(instance),
+        "      " + _render_constraints_section(instance),
+        "    </Instance>",
+        "  </Instances>",
+        "</HighSchoolTimetableArchive>",
+    ]
+    return "\n".join(body)
+
