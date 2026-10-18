@@ -92,6 +92,14 @@ Pracuj etapami. Przed rozpoczęciem etapu przedstaw krótki plan plików i inter
 
 ## Bieżący stan implementacji (repo)
 
+> **Decyzja (18.10.2026): kryterium akceptacji to zawsze symulowane wyżarzanie (SA).** LAHC jest
+> rozwiązaniem historycznym z etapu przejściowego — zostaje w kodzie wyłącznie jako opcja
+> (`--acceptance lahc`) do porównań i odtworzenia starszych wyników. Nowe eksperymenty, wyniki do pracy
+> i domyślne ustawienia mają używać SA (`--acceptance sa`; w `experiments.py` — `AutoSAAcceptance`
+> z temperaturą dobieraną do budżetu czasu, w `run_solver.py` — `SimulatedAnnealingAcceptance`).
+> Plik pętli nadal nazywa się `src/lahc.py` (`run_lahc`), ale samo kryterium akceptacji jest
+> wymienne (`src/acceptance.py`). Opis poniżej dotyczy stanu sprzed tej decyzji.
+
 Obecnie zaimplementowany pipeline to construct + Late Acceptance Hill Climbing (LAHC), czyli **etap
 przejściowy sprzed powyższej specyfikacji** — nie ma jeszcze selektora RL (Etap 6) ani generatora LLM
 (Etap 7); akceptacja kandydatów działa wg reguły LAHC (Burke & Bykov), nie symulowanego wyżarzania z

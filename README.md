@@ -28,9 +28,14 @@ Do zarządzania zależnościami i środowiskiem w Pythonie używamy narzędzia `
 * **Uruchomienie solvera**:
   ```bash
   uv run python run_solver.py --list              # wypisz dostępne instancje
-  uv run python run_solver.py AU-BG-98            # rozwiąż instancję (domyślne archiwum)
-  uv run python run_solver.py AU-BG-98 --iterations 50000 --seed 1
+  uv run python run_solver.py AU-BG-98 --acceptance sa                      # rozwiąż instancję (domyślne archiwum)
+  uv run python run_solver.py AU-BG-98 --acceptance sa --iterations 50000 --seed 1
   ```
+
+  > [!IMPORTANT]
+  > **Kryterium akceptacji: zawsze symulowane wyżarzanie (`--acceptance sa`).** LAHC
+  > (`--acceptance lahc`) to stare kryterium z etapu przejściowego, zachowane tylko jako opcja do
+  > porównań i odtworzenia wcześniejszych wyników — nie używamy go w nowych eksperymentach.
 * **Uruchomienie przepływu (workflow) za pomocą Snakemake**:
   Potok automatycznie wykrywa wszystkie pliki instancji `.xml` w katalogu `data/raw/` (z wyłączeniem pustych plików i szablonu `instance.xml`), uruchamia dla nich solver równolegle, a na koniec generuje zbiorcze raporty podsumowujące koszty rozwiązań (`summary.csv` oraz `summary.md` w `data/results/`).
 

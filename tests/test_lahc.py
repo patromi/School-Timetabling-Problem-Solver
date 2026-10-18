@@ -6,7 +6,9 @@ import pytest
 from src.construct import build_initial
 from src.evaluator_ref import total_cost
 from src.heuristics import MANUAL_HEURISTICS
+from src.acceptance import LAHCAcceptance
 from src.lahc import run_lahc
+from src.selectors import RandomSelector
 from src.parser import parse_archive
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -302,3 +304,42 @@ def test_the_selector_reward_is_binary_improvement_plus_a_new_best_bonus():
     assert set(selector.rewards) <= {0.0, 1.0, 1.0 + _BEST_BONUS}
     assert 1.0 + _BEST_BONUS in selector.rewards
     assert 0.0 in selector.rewards
+
+
+def _perturbation_count(min_relative_improvement: float) -> int:
+    import io
+    import json
+
+    from src.solve_log import SolveLogger
+
+    instance = parse_archive(_load("ArtificialSudoku4x4.xml"))[0]
+    initial = build_initial(instance, random.Random(0))
+    out = io.StringIO()
+    run_lahc(
+        instance,
+        initial,
+        random.Random(6),
+        max_iterations=3000,
+        idle_limit=50,
+        min_relative_improvement=min_relative_improvement,
+        logger=SolveLogger(out),
+        # pinned to the configuration the reference count (52) was taken with
+        acceptance=LAHCAcceptance(30),
+        selector=RandomSelector(),
+    )
+    events = [json.loads(line)["event"] for line in out.getvalue().splitlines()]
+    return events.count("perturbation")
+
+
+def test_small_improvements_do_not_reset_stagnation_when_a_minimum_is_set():
+    # With a minimum relative improvement, a trickle of tiny new bests no
+    # longer keeps the stagnation counter at zero, so the solver perturbs
+    # at least as often as when every new best resets it.
+    assert _perturbation_count(0.99) > _perturbation_count(0.0)
+
+
+def test_a_zero_minimum_improvement_keeps_the_original_stagnation_rule():
+    # 52 is the perturbation count of this seeded run before
+    # min_relative_improvement existed (every strictly better new best reset
+    # the counter); the default 0 must reproduce that trajectory exactly.
+    assert _perturbation_count(0.0) == 52

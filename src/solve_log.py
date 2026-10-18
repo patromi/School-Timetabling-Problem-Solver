@@ -41,6 +41,8 @@ class SolveLogger:
         self._window_calls: dict[str, int] = {}
         self._window_reward_sum: dict[str, float] = {}
         self._window_accepted: dict[str, int] = {}
+        # accepted candidates split by the sign of their cost change
+        self._window_accepted_by_change: dict[str, list[int]] = {}
         self._window_start_step: int = 0
 
     # ── public API (called from lahc.py / run_solver.py) ──
@@ -100,15 +102,20 @@ class SolveLogger:
         heuristic_id: str,
         reward: float,
         accepted: bool,
+        cost_change: int = 0,
     ) -> None:
         """Accumulate per-heuristic stats for the current window.
+
+        *cost_change* is the candidate's cost minus the current solution's
+        cost. Accepted candidates are counted separately as better (< 0),
+        equal (== 0) and worse (> 0): an accepted candidate with equal cost
+        moves the search sideways (or not at all), so a high acceptance rate
+        alone does not show that the search is still making progress.
 
         When *step* crosses a window boundary, a ``selector_window``
         record is flushed automatically.
         """
-        self._window_calls[heuristic_id] = (
-            self._window_calls.get(heuristic_id, 0) + 1
-        )
+        self._window_calls[heuristic_id] = self._window_calls.get(heuristic_id, 0) + 1
         self._window_reward_sum[heuristic_id] = (
             self._window_reward_sum.get(heuristic_id, 0.0) + reward
         )
@@ -116,6 +123,10 @@ class SolveLogger:
             self._window_accepted[heuristic_id] = (
                 self._window_accepted.get(heuristic_id, 0) + 1
             )
+            by_change = self._window_accepted_by_change.setdefault(
+                heuristic_id, [0, 0, 0]
+            )
+            by_change[0 if cost_change < 0 else 1 if cost_change == 0 else 2] += 1
 
         if (step + 1) % self._window_size == 0:
             self._flush_window(step)
@@ -132,9 +143,13 @@ class SolveLogger:
         heuristics: dict[str, dict[str, Any]] = {}
         for h_id in sorted(self._window_calls):
             n = self._window_calls[h_id]
+            better, equal, worse = self._window_accepted_by_change.get(h_id, [0, 0, 0])
             heuristics[h_id] = {
                 "calls": n,
                 "accepted": self._window_accepted.get(h_id, 0),
+                "accepted_better": better,
+                "accepted_equal": equal,
+                "accepted_worse": worse,
                 "avg_reward": round(self._window_reward_sum.get(h_id, 0.0) / n, 6)
                 if n
                 else 0.0,
@@ -150,6 +165,7 @@ class SolveLogger:
         self._window_calls.clear()
         self._window_reward_sum.clear()
         self._window_accepted.clear()
+        self._window_accepted_by_change.clear()
         self._window_start_step = last_step + 1
 
     def _emit(self, event: str, **data: Any) -> None:
