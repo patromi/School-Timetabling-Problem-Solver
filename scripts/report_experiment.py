@@ -8,6 +8,8 @@ Writes into --out-dir:
   acceptance_breakdown.{png,pdf} ... split into better / equal / worse
                                  (logs with those counters only)
   final_results.{png,pdf}        final hard cost of every seed, per selector
+  selector_state.csv             mean final UCB Q and n per state and
+                                 heuristic (logs with selector_state only)
   summary.md                     per-selector table + paired exact Wilcoxon
                                  signed-rank tests (by seed) on the
                                  lexicographic cost (hard first, then soft)
@@ -88,6 +90,55 @@ def wilcoxon_exact(diffs: list[int]) -> float:
 
 def _selectors(results: Results) -> list[str]:
     return plot_convergence.order_labels(sel for _, sel in results)
+
+
+def write_selector_state(log_dir: Path, output: Path) -> bool:
+    """CSV of what UCB learned by the end of the run: mean Q and n over the
+    seeds, per (instance, configuration, state, heuristic), from each run's
+    final selector_state record. Returns False when the logs predate those
+    records (nothing is written)."""
+    cells: dict[tuple[str, str, str, str], list[tuple[float, int]]] = defaultdict(list)
+    for path in sorted(log_dir.glob("*.jsonl")):
+        final = None
+        label = None
+        with path.open(encoding="utf-8") as f:
+            for line in f:
+                if '"selector_state"' in line and '"final":true' in line:
+                    final = json.loads(line)
+                elif '"run_summary"' in line:
+                    record = json.loads(line)
+                    label = (
+                        str(record["instance_id"]),
+                        plot_convergence.config_label(
+                            str(record["selector"]),
+                            str(record.get("acceptance", "lahc")),
+                        ),
+                    )
+        if final is None or label is None:
+            continue
+        for state, table in final["selector"].get("states", {}).items():
+            for h_id, stats in table["heuristics"].items():
+                cells[(*label, state, h_id)].append((stats["Q"], stats["n"]))
+    if not cells:
+        return False
+    with output.open("w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(
+            ["instance_id", "config", "state", "heuristic", "q_mean", "n_mean", "seeds"]
+        )
+        for (inst, config, state, h_id), values in sorted(cells.items()):
+            writer.writerow(
+                [
+                    inst,
+                    config,
+                    state,
+                    h_id,
+                    round(statistics.mean(q for q, _ in values), 4),
+                    round(statistics.mean(n for _, n in values), 1),
+                    len(values),
+                ]
+            )
+    return True
 
 
 def hard_breakdown_lines(log_dir: Path) -> list[str]:
@@ -302,6 +353,7 @@ def main() -> None:
 
     results, iterations = load_results(args.csv)
     write_summary(results, iterations, args.out_dir / "summary.md")
+    write_selector_state(args.log_dir, args.out_dir / "selector_state.csv")
     breakdown = hard_breakdown_lines(args.log_dir)
     if breakdown:
         with (args.out_dir / "summary.md").open("a", encoding="utf-8") as f:

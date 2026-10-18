@@ -1,6 +1,6 @@
 import math
 import random
-from typing import Protocol
+from typing import Any, Protocol
 
 from src.heuristics import Heuristic
 
@@ -44,6 +44,10 @@ class HeuristicSelector(Protocol):
 class RandomSelector:
     """Classic random selection. Ignores the reward signal."""
 
+    def snapshot(self) -> dict[str, Any]:
+        """What the selector has learned, for the run log (nothing)."""
+        return {"type": "random", "params": {}}
+
     def select(
         self,
         heuristics: list[Heuristic],
@@ -69,6 +73,14 @@ class EpsilonGreedySelector:
         self.epsilon = epsilon
         self.alpha = alpha
         self._q_values: dict[str, float] = {}
+
+    def snapshot(self) -> dict[str, Any]:
+        """Parameters and the current Q of every heuristic, for the run log."""
+        return {
+            "type": "epsilon-greedy",
+            "params": {"epsilon": self.epsilon, "alpha": self.alpha},
+            "q": {h: round(q, 6) for h, q in sorted(self._q_values.items())},
+        }
 
     def select(
         self,
@@ -154,6 +166,36 @@ class UCBSelector:
         self._stats: dict[tuple[SolverState, str], tuple[float, float]] = {}
         # state -> total pulls in that state (sum of n across all heuristics)
         self._total_n: dict[SolverState, float] = {}
+
+    def snapshot(self) -> dict[str, Any]:
+        """Parameters and the full statistics table, for the run log: for
+        every visited state ("hard,stagnation") its pull count N and, per
+        heuristic, its Q and n."""
+        states: dict[str, dict[str, Any]] = {}
+        for state in self._all_states:
+            total = self._total_n.get(state, 0.0)
+            if total == 0:
+                continue
+            states[f"{state[0]},{state[1]}"] = {
+                "N": int(total),
+                "heuristics": {
+                    h_id: {"Q": round(q, 6), "n": int(n)}
+                    for (s, h_id), (q, n) in sorted(self._stats.items())
+                    if s == state
+                },
+            }
+        return {
+            "type": "ucb",
+            "params": {
+                "c": self.c,
+                "alpha": self.alpha,
+                "initial_q": self.initial_q,
+                "collapse_stagnation": self.collapse_stagnation,
+                "pool_limit": self.pool_limit,
+                "min_pulls_before_removal": self.min_pulls_before_removal,
+            },
+            "states": states,
+        }
 
     def _resolve_state(self, state: SolverState) -> SolverState:
         """Map incoming state to internal state (strips stagnation if collapsed)."""

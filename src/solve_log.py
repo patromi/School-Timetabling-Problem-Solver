@@ -6,6 +6,10 @@ Emits one JSON object per line to a ``.jsonl`` file.  Event types:
 - ``selector_window`` — periodic aggregate of heuristic usage/rewards over
   the last *window_size* iterations (emitted every *window_size* steps).
 - ``perturbation`` — when the stagnation-triggered perturbation fires.
+- ``run_config`` — once at the start: every solver and selector parameter.
+- ``selector_state`` — periodically, at each perturbation and at the end:
+  the selector's learned statistics (for UCB, Q and n per state and
+  heuristic) plus the solver's state, stagnation and SA temperature.
 - ``run_summary`` — single record at the end of a run (config + outcome).
 
 Named ``solve_log`` (not ``logging``) so it never shadows the stdlib module.
@@ -88,6 +92,14 @@ class SolveLogger:
             cost_before=cost_before,
             cost_after=cost_after,
         )
+
+    def log_run_config(self, **fields: Any) -> None:
+        """Record the run's parameters (called once at the start)."""
+        self._emit("run_config", **fields)
+
+    def log_selector_state(self, **fields: Any) -> None:
+        """Record a snapshot of what the selector has learned so far."""
+        self._emit("selector_state", **fields)
 
     def log_run_summary(self, **fields: Any) -> None:
         """Record final run metadata (called once at the end)."""
