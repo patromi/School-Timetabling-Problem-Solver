@@ -29,14 +29,16 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 from plot_convergence import config_label, order_labels
 
-# Heuristic -> group shown on the plot. The two perturbation operators are
-# folded into one group so the pool fits the 8-colour categorical palette.
+# Heuristic -> group shown on the plot. The two perturbation operators, and
+# the two random moves, are each folded into one group so the pool fits the
+# 8-colour categorical palette.
 GROUP_OF = {
     "ruin_and_recreate": "ruin_and_recreate",
     "move_best": "move_best",
     "repair_hard_violation": "repair_hard_violation",
-    "move_random": "move_random",
-    "swap": "swap",
+    "repair_clash": "repair_clash",
+    "move_random": "ruchy losowe",
+    "swap": "ruchy losowe",
     "kempe_chain": "kempe_chain",
     "split_resize": "split_resize",
     "small_perturbation": "perturbacje",
@@ -49,8 +51,8 @@ GROUP_COLORS = {
     "ruin_and_recreate": "#2a78d6",
     "move_best": "#eb6834",
     "repair_hard_violation": "#1baf7a",
-    "move_random": "#eda100",
-    "swap": "#e87ba4",
+    "repair_clash": "#eda100",
+    "ruchy losowe": "#e87ba4",
     "kempe_chain": "#008300",
     "split_resize": "#6250d6",
     "perturbacje": "#e34948",
