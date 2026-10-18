@@ -205,7 +205,13 @@ def run_lahc(
         heuristic = selector.select(pool, rng, state=solver_state)
         move_failed = False
         try:
-            candidate = heuristic.apply(current, instance, rng)
+            if evaluator is not None and heuristic.apply_with_evaluator is not None:
+                # the evaluator is positioned on `current` here
+                candidate = heuristic.apply_with_evaluator(
+                    current, instance, rng, evaluator
+                )
+            else:
+                candidate = heuristic.apply(current, instance, rng)
         except ValueError:
             selector.update(heuristic, 0.0, state=solver_state)
             stagnant_iterations += 1

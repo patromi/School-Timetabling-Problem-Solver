@@ -43,6 +43,16 @@ class Heuristic:
     protected: bool
     apply: Callable[[Solution, Instance, random.Random], Solution]
     incremental_safe: bool = False
+    # Optional faster path: the same operator, given the solver's
+    # IncrementalEvaluator positioned on `solution`, so it can score its
+    # candidate times with probe() instead of building an evaluator from
+    # scratch on every call (~25% of run time in profiling). It must give
+    # exactly what apply() gives for the same rng state and must leave
+    # the evaluator where it found it -- probe() only, never commit().
+    apply_with_evaluator: (
+        Callable[[Solution, Instance, random.Random, IncrementalEvaluator], Solution]
+        | None
+    ) = None
 
 
 def move_random(solution: Solution, instance: Instance, rng: random.Random) -> Solution:
@@ -116,6 +126,7 @@ def move_best(
     instance: Instance,
     rng: random.Random,
     max_probe: int | None = None,
+    evaluator: IncrementalEvaluator | None = None,
 ) -> Solution:
     """Picks one solution event with a time to reassign at random, then
     moves it to the valid start time that minimizes total_cost (see
@@ -129,7 +140,9 @@ def move_best(
             "cannot apply a move: no solution event has a time to reassign"
         )
     index = rng.choice(candidates)
-    return _best_time_for_event(instance, solution, index, rng=rng, max_probe=max_probe)
+    return _best_time_for_event(
+        instance, solution, index, evaluator, rng=rng, max_probe=max_probe
+    )
 
 
 def swap(solution: Solution, instance: Instance, rng: random.Random) -> Solution:
@@ -297,12 +310,14 @@ def repair_hard_violation(
     instance: Instance,
     rng: random.Random,
     max_probe: int | None = None,
+    evaluator: IncrementalEvaluator | None = None,
 ) -> Solution:
     """Picks one (movable) event involved in a violated Required
     constraint at random and moves it to its best available time (see
     _best_time_for_event) -- never a purely random move, so the operator
     actually tends to repair rather than just perturb."""
-    evaluator = IncrementalEvaluator(instance, solution)
+    if evaluator is None:
+        evaluator = IncrementalEvaluator(instance, solution)
     candidates = _movable_violating_indices(instance, solution, evaluator)
     if not candidates:
         raise ValueError("no movable event participates in a hard constraint violation")
@@ -370,12 +385,18 @@ class _ClashTable:
 
 
 def _cheapest_time(
-    instance: Instance, solution: Solution, index: int, times: list[str]
+    instance: Instance,
+    solution: Solution,
+    index: int,
+    times: list[str],
+    evaluator: IncrementalEvaluator | None = None,
 ) -> Solution:
     """The solution with solution.events[index] moved to whichever of
     `times` gives the lowest total cost."""
     event = solution.events[index]
-    scorer = IncrementalEvaluator(instance, solution)
+    scorer = (
+        evaluator if evaluator is not None else IncrementalEvaluator(instance, solution)
+    )
     best_solution: Solution | None = None
     best_cost: int | None = None
     for time_ref in times:
@@ -394,6 +415,7 @@ def repair_clash(
     instance: Instance,
     rng: random.Random,
     max_probe: int | None = None,
+    evaluator: IncrementalEvaluator | None = None,
 ) -> Solution:
     """Targets the hard violation that dominates every in-scope instance:
     a resource (teacher, class, room) booked into two events at once, as
@@ -428,7 +450,7 @@ def repair_clash(
     best_times = [t for t in candidates if counts[t] == fewest]
     if max_probe is not None and len(best_times) > max_probe:
         best_times = rng.sample(best_times, max_probe)
-    return _cheapest_time(instance, solution, index, best_times)
+    return _cheapest_time(instance, solution, index, best_times, evaluator)
 
 
 # Probe cap used for the "fast" variants of exhaustive-search heuristics.
@@ -453,6 +475,9 @@ MANUAL_HEURISTICS: list[Heuristic] = [
             sol, inst, rng, max_probe=_FAST_MAX_PROBE
         ),
         incremental_safe=True,
+        apply_with_evaluator=lambda sol, inst, rng, ev: move_best(
+            sol, inst, rng, max_probe=_FAST_MAX_PROBE, evaluator=ev
+        ),
     ),
     Heuristic(
         id="swap",
@@ -469,6 +494,9 @@ MANUAL_HEURISTICS: list[Heuristic] = [
             sol, inst, rng, max_probe=_FAST_MAX_PROBE
         ),
         incremental_safe=True,
+        apply_with_evaluator=lambda sol, inst, rng, ev: repair_hard_violation(
+            sol, inst, rng, max_probe=_FAST_MAX_PROBE, evaluator=ev
+        ),
     ),
     Heuristic(
         id="repair_clash",
@@ -478,6 +506,9 @@ MANUAL_HEURISTICS: list[Heuristic] = [
             sol, inst, rng, max_probe=_FAST_MAX_PROBE
         ),
         incremental_safe=True,
+        apply_with_evaluator=lambda sol, inst, rng, ev: repair_clash(
+            sol, inst, rng, max_probe=_FAST_MAX_PROBE, evaluator=ev
+        ),
     ),
     Heuristic(
         id="resource_reassign",
