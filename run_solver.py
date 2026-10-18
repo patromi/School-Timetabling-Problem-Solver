@@ -31,6 +31,12 @@ from src.xml_writer import (
 
 DEFAULT_ARCHIVE = Path(__file__).parent / "data" / "xhstt2014" / "XHSTT-2014.xml"
 
+# Iteracje bez nowego najlepszego wyniku przed perturbacja -- ta sama wartosc
+# co STAGNATION_LIMIT w experiments.py. Podawana jawnie, bo domyslny prog
+# run_lahc (max_iterations // 20) przy --time-limit z duzym --iterations
+# rosl do milionow krokow i perturbacje nigdy sie nie uruchamialy.
+DEFAULT_IDLE_LIMIT = 3000
+
 
 @dataclass
 class SolveResult:
@@ -95,6 +101,7 @@ def solve(
     time_limit: float | None = None,
     acceptance: AcceptanceCriterion | None = None,
     construct: str = "greedy",
+    idle_limit: int | None = DEFAULT_IDLE_LIMIT,
 ) -> SolveResult:
     """Buduje rozwiazanie poczatkowe i uruchamia solver; zwraca spakowany wynik."""
     build = build_greedy if construct == "greedy" else build_initial
@@ -119,6 +126,7 @@ def solve(
         evaluation=evaluation,
         logger=logger,
         acceptance=acceptance,
+        idle_limit=idle_limit,
     )
     elapsed = time.time() - t_start
     infeasibility_1, objective_1 = evaluate_cost_components(instance, best)
@@ -190,6 +198,10 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--sa-t0-factor", type=float, default=0.01,
                         help="SA: temperatura startowa jako ulamek kosztu startowego "
                         "(domyslnie 0.01, dostrojone w issue #82)")
+    parser.add_argument("--idle-limit", type=int, default=DEFAULT_IDLE_LIMIT,
+                        help="Iteracje bez nowego najlepszego wyniku przed "
+                        "perturbacja; tercje wyznaczaja stan stagnacji selektora "
+                        f"(domyslnie {DEFAULT_IDLE_LIMIT}, jak w experiments.py)")
     parser.add_argument(
         "--output",
         type=Path,
@@ -281,6 +293,7 @@ def main(argv: list[str] | None = None) -> None:
             time_limit=args.time_limit,
             acceptance=acceptance_obj,
             construct=args.construct,
+            idle_limit=args.idle_limit,
         )
 
         logger.log_run_summary(
