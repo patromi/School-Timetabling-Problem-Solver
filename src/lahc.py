@@ -1,6 +1,7 @@
 import random
 import time
 from collections.abc import Callable
+from typing import Any
 
 from src.acceptance import AcceptanceCriterion, SimulatedAnnealingAcceptance
 from src.cost import evaluate_cost
@@ -97,6 +98,7 @@ def run_lahc(
     min_relative_improvement: float = 0.0,
     select_perturbations: bool = False,
     time_aware_reward: bool = False,
+    snapshot_every: int = 5000,
 ) -> tuple[Solution, int]:
     """Local search loop with a pluggable acceptance criterion.
 
@@ -144,6 +146,11 @@ def run_lahc(
     reads the wall clock, so a run is no longer reproducible step by step
     from its seed -- meant for time-bounded experiments, which already
     depend on machine speed; off by default.
+
+    With a `logger`, the run's parameters are logged once at the start
+    (run_config) and the selector's learned statistics every
+    `snapshot_every` steps, at each perturbation and at the end
+    (selector_state).
     """
     if evaluation not in (FULL, INCREMENTAL, VERIFY):
         raise ValueError(f"unknown evaluation mode: {evaluation!r}")
@@ -187,6 +194,52 @@ def run_lahc(
     _stag_low = idle_limit // 3
     _stag_med = (2 * idle_limit) // 3
 
+    def solver_state_now() -> SolverState:
+        hard_bucket = 1 if current_cost < INFEASIBILITY_WEIGHT else 0
+        stagnation_bucket = (
+            0
+            if stagnant_iterations < _stag_low
+            else 1
+            if stagnant_iterations < _stag_med
+            else 2
+        )
+        return (hard_bucket, stagnation_bucket)
+
+    def log_selector_state(step: int, reason: str) -> None:
+        if logger is None:
+            return
+        logger.log_selector_state(
+            step=step,
+            reason=reason,
+            final=reason == "end",
+            elapsed_s=round(time.monotonic() - t_start, 3),
+            state=list(solver_state_now()),
+            stagnant_iterations=stagnant_iterations,
+            temperature=_temperature(criterion, step),
+            current_cost=current_cost,
+            best_cost=best_cost,
+            selector=_snapshot(selector),
+        )
+
+    if logger is not None:
+        logger.log_run_config(
+            acceptance=getattr(criterion, "name", type(criterion).__name__),
+            selector=_snapshot(selector),
+            pool=[h.id for h in selectable],
+            fired_on_stagnation=sorted(h.id for h in pool if h.id in PERTURBATION_IDS),
+            idle_limit=idle_limit,
+            stagnation_thresholds=[_stag_low, _stag_med],
+            min_relative_improvement=min_relative_improvement,
+            best_bonus=_BEST_BONUS,
+            time_aware_reward=time_aware_reward,
+            evaluation=evaluation,
+            max_iterations=max_iterations,
+            max_seconds=max_seconds,
+            snapshot_every=snapshot_every,
+            initial_cost=current_cost,
+        )
+
+    steps_done = 0
     for step in range(max_iterations):
         if max_seconds is not None and time.monotonic() - t_start >= max_seconds:
             break
@@ -217,19 +270,13 @@ def run_lahc(
                             cost_before=best_cost,
                             cost_after=current_cost,
                         )
+                    log_selector_state(step, "perturbation")
+                    steps_done = step + 1
                     continue
                 except ValueError:
                     pass
 
-        hard_bucket = 1 if current_cost < INFEASIBILITY_WEIGHT else 0
-        stagnation_bucket = (
-            0
-            if stagnant_iterations < _stag_low
-            else 1
-            if stagnant_iterations < _stag_med
-            else 2
-        )
-        solver_state: SolverState = (hard_bucket, stagnation_bucket)
+        solver_state = solver_state_now()
 
         heuristic = selector.select(selectable, rng, state=solver_state)
         move_failed = False
@@ -327,4 +374,27 @@ def run_lahc(
                 on_progress(step + 1, best_cost)
                 last_progress_time = now
 
+        steps_done = step + 1
+        if snapshot_every > 0 and steps_done % snapshot_every == 0:
+            log_selector_state(step, "periodic")
+
+    log_selector_state(steps_done, "end")
     return best, best_cost
+
+
+def _snapshot(selector: HeuristicSelector) -> dict[str, Any]:
+    """The selector's own snapshot() when it has one, else just its name."""
+    snapshot = getattr(selector, "snapshot", None)
+    if callable(snapshot):
+        result: dict[str, Any] = snapshot()
+        return result
+    return {"type": type(selector).__name__}
+
+
+def _temperature(criterion: AcceptanceCriterion, step: int) -> float | None:
+    """The acceptance temperature at `step`, or None for LAHC."""
+    temperature_for = getattr(criterion, "temperature_for", None)
+    if callable(temperature_for):
+        return round(float(temperature_for(step)), 3)
+    temperature = getattr(criterion, "temperature", None)
+    return round(float(temperature), 3) if temperature is not None else None
