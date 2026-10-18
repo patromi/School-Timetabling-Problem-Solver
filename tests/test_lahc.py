@@ -7,7 +7,7 @@ from src.construct import build_initial
 from src.evaluator_ref import total_cost
 from src.heuristics import MANUAL_HEURISTICS
 from src.acceptance import LAHCAcceptance
-from src.lahc import run_lahc
+from src.lahc import RunStats, run_lahc
 from src.selectors import RandomSelector
 from src.parser import parse_archive
 
@@ -94,11 +94,22 @@ def test_lahc_reaches_full_feasibility_on_sudoku4x4_within_a_modest_budget():
     instance = parse_archive(_load("ArtificialSudoku4x4.xml"))[0]
     initial = build_initial(instance, random.Random(0))
 
+    stats = RunStats()
     best, best_cost = run_lahc(
-        instance, initial, random.Random(2), history_length=30, max_iterations=40000
+        instance,
+        initial,
+        random.Random(2),
+        history_length=30,
+        max_iterations=40000,
+        stats=stats,
     )
 
     assert best_cost == 0
+    # the run statistics follow what happened
+    assert stats.steps_done == 40000
+    assert stats.first_feasible_step is not None
+    assert stats.last_improvement_step is not None
+    assert 0 < stats.first_feasible_step <= stats.last_improvement_step < 40000
 
 
 def test_lahc_accepts_an_explicit_heuristic_pool_override():

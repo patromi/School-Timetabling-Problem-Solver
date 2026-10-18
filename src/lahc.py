@@ -1,6 +1,7 @@
 import random
 import time
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Any
 
 from src.acceptance import AcceptanceCriterion, SimulatedAnnealingAcceptance
@@ -27,6 +28,40 @@ _BEST_BONUS = 0.1
 # on their own they almost never improve the current solution, so as
 # arms they only take calls from the useful operators.
 PERTURBATION_IDS = frozenset({"small_perturbation", "large_perturbation"})
+
+
+@dataclass
+class RunStats:
+    """What a run did, as opposed to what it was configured to do: filled in
+    by run_lahc when passed as `stats`, for the caller's run summary.
+
+    Every field is updated only on rare events (a new best, a perturbation)
+    or once at the end, so collecting them costs nothing per step."""
+
+    steps_done: int = 0
+    elapsed_s: float = 0.0
+    # first new best with no hard violation; None if the run never got there
+    first_feasible_step: int | None = None
+    first_feasible_elapsed_s: float | None = None
+    last_improvement_step: int | None = None
+    last_improvement_elapsed_s: float | None = None
+    small_perturbations: int = 0
+    large_perturbations: int = 0
+
+
+@dataclass
+class _OpenPerturbation:
+    """A perturbation whose outcome is still being watched -- until the
+    next perturbation or the end of the run, when it is logged."""
+
+    step: int
+    heuristic_id: str
+    best_before: int
+    cost_after: int
+    # first step at which the current cost was back at best_before
+    recovered_step: int | None = None
+    # best cost reached since the perturbation, if it beat best_before
+    new_best: int | None = None
 
 
 def _score_candidate(
@@ -99,6 +134,7 @@ def run_lahc(
     select_perturbations: bool = False,
     time_aware_reward: bool = False,
     snapshot_every: int = 5000,
+    stats: RunStats | None = None,
 ) -> tuple[Solution, int]:
     """Local search loop with a pluggable acceptance criterion.
 
@@ -150,7 +186,13 @@ def run_lahc(
     With a `logger`, the run's parameters are logged once at the start
     (run_config) and the selector's learned statistics every
     `snapshot_every` steps, at each perturbation and at the end
-    (selector_state).
+    (selector_state). Each perturbation's outcome -- whether and when the
+    current cost got back to the best cost it started from, and whether it
+    led to a new best -- is logged when the next perturbation fires or the
+    run ends (perturbation_outcome).
+
+    A `stats` object, if given, is filled in with what the run actually did
+    (steps done, first feasible step, perturbation counts...; see RunStats).
     """
     if evaluation not in (FULL, INCREMENTAL, VERIFY):
         raise ValueError(f"unknown evaluation mode: {evaluation!r}")
@@ -185,6 +227,29 @@ def run_lahc(
     # best cost when stagnant_iterations was last reset
     progress_reference = best_cost
     perturbation_tier = 0
+    run_stats = stats if stats is not None else RunStats()
+    if best_cost < INFEASIBILITY_WEIGHT:
+        run_stats.first_feasible_step = 0
+        run_stats.first_feasible_elapsed_s = 0.0
+    open_perturbation: _OpenPerturbation | None = None
+
+    def close_perturbation() -> None:
+        if logger is None or open_perturbation is None:
+            return
+        p = open_perturbation
+        logger.log_perturbation_outcome(
+            step=p.step,
+            heuristic_id=p.heuristic_id,
+            best_before=p.best_before,
+            cost_after=p.cost_after,
+            recovered=p.recovered_step is not None,
+            steps_to_recover=None
+            if p.recovered_step is None
+            else p.recovered_step - p.step,
+            new_best=p.new_best is not None,
+            best_after=p.new_best if p.new_best is not None else p.best_before,
+        )
+
     if idle_limit is None:
         idle_limit = max(500, max_iterations // 20)
     # Stagnation thresholds for the contextual UCB state:
@@ -262,6 +327,17 @@ def run_lahc(
                     stagnant_iterations = 0
                     progress_reference = best_cost
                     perturbation_tier = 1 if perturbation_tier == 0 else 0
+                    if p_name == "small_perturbation":
+                        run_stats.small_perturbations += 1
+                    else:
+                        run_stats.large_perturbations += 1
+                    close_perturbation()
+                    open_perturbation = _OpenPerturbation(
+                        step=step,
+                        heuristic_id=p_heuristic.id,
+                        best_before=best_cost,
+                        cost_after=current_cost,
+                    )
                     if logger is not None:
                         logger.log_perturbation(
                             step=step,
@@ -269,6 +345,7 @@ def run_lahc(
                             heuristic_id=p_heuristic.id,
                             cost_before=best_cost,
                             cost_after=current_cost,
+                            temperature=_temperature(criterion, step),
                         )
                     log_selector_state(step, "perturbation")
                     steps_done = step + 1
@@ -353,6 +430,28 @@ def run_lahc(
                 current, current_cost = candidate, candidate_cost
                 if current_cost < best_cost:
                     best, best_cost = current, current_cost
+                    run_stats.last_improvement_step = step
+                    run_stats.last_improvement_elapsed_s = round(
+                        time.monotonic() - t_start, 3
+                    )
+                    if (
+                        run_stats.first_feasible_step is None
+                        and best_cost < INFEASIBILITY_WEIGHT
+                    ):
+                        run_stats.first_feasible_step = step
+                        run_stats.first_feasible_elapsed_s = (
+                            run_stats.last_improvement_elapsed_s
+                        )
+                    if open_perturbation is not None:
+                        open_perturbation.new_best = best_cost
+                # the only per-step addition for the logs: one comparison,
+                # and only while a perturbation's recovery is still unseen
+                if (
+                    open_perturbation is not None
+                    and open_perturbation.recovered_step is None
+                    and current_cost <= open_perturbation.best_before
+                ):
+                    open_perturbation.recovered_step = step
 
             criterion.after_step(current_cost, step)
             _finish(evaluator, transaction, accepted, current)
@@ -378,6 +477,9 @@ def run_lahc(
         if snapshot_every > 0 and steps_done % snapshot_every == 0:
             log_selector_state(step, "periodic")
 
+    close_perturbation()
+    run_stats.steps_done = steps_done
+    run_stats.elapsed_s = round(time.monotonic() - t_start, 3)
     log_selector_state(steps_done, "end")
     return best, best_cost
 
