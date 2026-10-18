@@ -167,6 +167,7 @@ def solve(
     acceptance: AcceptanceCriterion | None = None,
     construct: str = "greedy",
     idle_limit: int | None = DEFAULT_IDLE_LIMIT,
+    perturbations: bool = True,
 ) -> SolveResult:
     """Buduje rozwiazanie poczatkowe i uruchamia solver; zwraca spakowany wynik."""
     build = build_greedy if construct == "greedy" else build_initial
@@ -198,6 +199,7 @@ def solve(
         acceptance=acceptance,
         idle_limit=idle_limit,
         stats=stats,
+        perturbations=perturbations,
     )
     elapsed = time.time() - t_start
     by_type_1 = cost_by_type(instance, best)
@@ -283,6 +285,9 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
                         help="SA po perturbacji: stygnie przez pozostala czesc "
                         "budzetu (remaining, domyslnie) albo przez caly budzet od "
                         "nowa (full, zachowanie sprzed 18.10.2026 i experiments.py)")
+    parser.add_argument("--no-perturbations", action="store_true",
+                        help="Wylacz perturbacje przy stagnacji (sam SA z selektorem; "
+                        "na duzych instancjach dalo to najlepsze wyniki 18.10.2026)")
     parser.add_argument(
         "--output",
         type=Path,
@@ -387,6 +392,7 @@ def main(argv: list[str] | None = None) -> None:
             acceptance=acceptance_obj,
             construct=args.construct,
             idle_limit=resolve_idle_limit(args.idle_limit, instance),
+            perturbations=not args.no_perturbations,
         )
         rate = (
             result.stats.steps_done / result.elapsed_seconds

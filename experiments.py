@@ -122,6 +122,7 @@ def _run_one(
     select_perturbations: bool = False,
     time_aware_reward: bool = False,
     exclude_heuristics: tuple[str, ...] = (),
+    perturbations: bool = True,
 ) -> RunResult:
     """Run one solver configuration. Imports inside so ProcessPoolExecutor
     can spawn cleanly without pickling the module-level state."""
@@ -177,6 +178,7 @@ def _run_one(
             select_perturbations=select_perturbations,
             time_aware_reward=time_aware_reward,
             heuristics=[h for h in MANUAL_HEURISTICS if h.id not in exclude_heuristics],
+            perturbations=perturbations,
         )
     finally:
         if logger is not None:
@@ -202,6 +204,7 @@ def _run_one(
                         "seed": seed,
                         "construct": construct,
                         "select_perturbations": select_perturbations,
+                        "perturbations": perturbations,
                         "time_aware_reward": time_aware_reward,
                         "exclude_heuristics": list(exclude_heuristics),
                         "infeasibility_before": inf0,
@@ -324,6 +327,11 @@ def main() -> None:
         help="Offer small/large_perturbation to the selector (pre-step-6)",
     )
     parser.add_argument(
+        "--no-perturbations",
+        action="store_true",
+        help="Never perturb on stagnation (plain SA + selector)",
+    )
+    parser.add_argument(
         "--time-aware-reward",
         action="store_true",
         help="Scale the selector reward by mean move time / move time",
@@ -399,6 +407,7 @@ def main() -> None:
                 args.select_perturbations,
                 args.time_aware_reward,
                 tuple(args.exclude_heuristic),
+                not args.no_perturbations,
             ): (inst, sel, acc, seed)
             for inst, sel, acc, seed in jobs
         }

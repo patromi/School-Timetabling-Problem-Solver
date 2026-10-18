@@ -110,3 +110,15 @@ def test_run_solver_reheats_over_the_remaining_budget_by_default(
     records = _run(tmp_path, "--iterations", "100")
     config = next(r for r in records if r["event"] == "run_config")
     assert "reheat=remaining" in str(config["acceptance"])
+
+
+def test_perturbations_can_be_switched_off(tmp_path: Path) -> None:
+    # the same run that perturbs with --idle-limit 50 must not perturb at all
+    records = _run(
+        tmp_path, "--iterations", "2000", "--idle-limit", "50", "--no-perturbations"
+    )
+    config = next(r for r in records if r["event"] == "run_config")
+    summary = next(r for r in records if r["event"] == "run_summary")
+    assert config["fired_on_stagnation"] == []
+    assert not any(r["event"] == "perturbation" for r in records)
+    assert summary["small_perturbations"] == summary["large_perturbations"] == 0

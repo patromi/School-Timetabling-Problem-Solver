@@ -413,3 +413,20 @@ def test_a_time_aware_reward_stays_within_the_binary_reward_range():
 
     assert all(0.0 <= r <= 1.0 + _BEST_BONUS for r in selector.rewards)
     assert any(r > 0 for r in selector.rewards)
+
+
+def test_no_perturbations_means_no_restarts_however_long_the_stagnation():
+    instance = parse_archive(_load("ArtificialSudoku4x4.xml"))[0]
+    initial = build_initial(instance, random.Random(0))
+    stats = RunStats()
+    run_lahc(
+        instance,
+        initial,
+        random.Random(6),
+        max_iterations=3000,
+        idle_limit=50,
+        stats=stats,
+        perturbations=False,
+    )
+    assert stats.steps_done == 3000
+    assert stats.small_perturbations == stats.large_perturbations == 0
