@@ -55,6 +55,24 @@ class RunResult:
     objective_after: int
     elapsed_s: float
     iterations_done: int
+    # full description of the acceptance criterion, e.g.
+    # "sa_auto(t0_factor=0.01,t_end=1.0,budget=120s)": the short name "sa"
+    # meant T0 = 1e-3 before 18.10.2026 and 1e-2 after, this does not drift
+    acceptance_detail: str = ""
+
+
+def _apply_preset(args: argparse.Namespace) -> None:
+    """--preset bazowy: the configuration before the feasibility work
+    (issue #82), so older results can be reproduced with one flag instead
+    of five."""
+    if args.preset != "bazowy":
+        return
+    args.acceptance = ["sa-t0=1e-3" if a == "sa" else a for a in args.acceptance]
+    args.selectors = ["ucb-a=0.08" if s == "ucb" else s for s in args.selectors]
+    args.construct = "naive"
+    args.select_perturbations = True
+    if "repair_clash" not in args.exclude_heuristic:
+        args.exclude_heuristic.append("repair_clash")
 
 
 def _make_selector(selector_name: str) -> "HeuristicSelector":
@@ -180,6 +198,7 @@ def _run_one(
                         "instance_id": instance_id,
                         "selector": selector_name,
                         "acceptance": acceptance_name,
+                        "acceptance_detail": acceptance.name,
                         "seed": seed,
                         "construct": construct,
                         "select_perturbations": select_perturbations,
@@ -212,6 +231,7 @@ def _run_one(
         objective_after=obj1,
         elapsed_s=round(elapsed, 1),
         iterations_done=iters_done[0],
+        acceptance_detail=acceptance.name,
     )
 
 
@@ -319,7 +339,18 @@ def main() -> None:
         action="store_true",
         help="Disable per-run JSONL logging",
     )
+    parser.add_argument(
+        "--preset",
+        choices=["domyslny", "bazowy"],
+        default="domyslny",
+        help=(
+            "bazowy: every setting from before issue #82 at once -- SA with "
+            "T0 1e-3, naive start, perturbations offered to the selector, "
+            "UCB alpha 0.08, no repair_clash"
+        ),
+    )
     args = parser.parse_args()
+    _apply_preset(args)
 
     log_dir: Path | None = None
     if not args.no_logs:

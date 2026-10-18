@@ -43,10 +43,10 @@ class TestLAHCAcceptance:
         rng = random.Random(0)
         # step 0: v=0, history[0]=300; accept improvement to 50
         assert c.accepts(300, 50, rng, 0) is True
-        c.after_step(50, 0)   # history[0]=50
+        c.after_step(50, 0)  # history[0]=50
         # step 1: v=1, history[1]=300; accept improvement to 40
         assert c.accepts(50, 40, rng, 1) is True
-        c.after_step(40, 1)   # history[1]=40
+        c.after_step(40, 1)  # history[1]=40
         # step 2: v=0, history[0]=50; current=40; candidate=45
         # 45 <= 40? No. 45 <= history[0]=50? Yes → accept
         assert c.accepts(40, 45, rng, 2) is True
@@ -103,7 +103,9 @@ class TestSimulatedAnnealingAcceptance:
         c = SimulatedAnnealingAcceptance(t_start=1e12, t_end=1.0, cooling_rate=0.9999)
         rng = random.Random(0)
         accepted = sum(c.accepts(100, 101, rng, step) for step in range(1000))
-        assert accepted > 990, "At very high T, nearly all worsenings should be accepted"
+        assert accepted > 990, (
+            "At very high T, nearly all worsenings should be accepted"
+        )
 
     def test_cooling_decreases_temperature(self) -> None:
         c = SimulatedAnnealingAcceptance(t_start=1000.0, t_end=1.0, cooling_rate=0.5)
@@ -144,3 +146,43 @@ class TestSimulatedAnnealingAcceptance:
         ).name
         assert "sa(" in name
         assert "T0=10000" in name
+
+
+class TestAutoSAIterationBudget:
+    """The iteration-budget mode cools by step number instead of the clock,
+    so a run is reproducible from its seed."""
+
+    def test_temperature_runs_from_t0_to_t_end_over_the_budget(self) -> None:
+        from src.acceptance import AutoSAAcceptance
+
+        c = AutoSAAcceptance(t0_factor=0.01, t_end=1.0, iteration_budget=1000)
+        c.reset(1_000_000)
+        assert c.temperature_at(0) == pytest.approx(10_000.0)
+        assert c.temperature_at(500) == pytest.approx(100.0)
+        assert c.temperature_at(1000) == pytest.approx(1.0)
+        assert c.temperature_at(5000) == pytest.approx(1.0)
+
+    def test_reset_reheats_from_the_current_step(self) -> None:
+        from src.acceptance import AutoSAAcceptance
+
+        c = AutoSAAcceptance(t0_factor=0.01, t_end=1.0, iteration_budget=1000)
+        c.reset(1_000_000)
+        for step in range(400):
+            c.after_step(1_000_000, step)
+        c.reset(1_000_000)
+        assert c.temperature_at(400) == pytest.approx(10_000.0)
+
+    def test_decisions_are_reproducible_from_the_seed(self) -> None:
+        from src.acceptance import AutoSAAcceptance
+
+        def decisions() -> list[bool]:
+            c = AutoSAAcceptance(iteration_budget=200)
+            c.reset(50_000)
+            rng = random.Random(7)
+            out = []
+            for step in range(200):
+                out.append(c.accepts(50_000, 50_300, rng, step))
+                c.after_step(50_000, step)
+            return out
+
+        assert decisions() == decisions()

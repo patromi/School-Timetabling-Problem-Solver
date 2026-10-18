@@ -36,6 +36,20 @@ Do zarządzania zależnościami i środowiskiem w Pythonie używamy narzędzia `
   > **Kryterium akceptacji: zawsze symulowane wyżarzanie (`--acceptance sa`).** LAHC
   > (`--acceptance lahc`) to stare kryterium z etapu przejściowego, zachowane tylko jako opcja do
   > porównań i odtworzenia wcześniejszych wyników — nie używamy go w nowych eksperymentach.
+
+  Domyślnie solver startuje od rozwiązania zachłannego (`--construct greedy`) i używa SA z temperaturą
+  startową 1% kosztu startowego (`--sa-t0-factor 0.01`). Z `--time-limit` temperatura spada według
+  zegara, bez niego według numeru iteracji — wtedy przebieg jest w pełni powtarzalny z `--seed`.
+* **Eksperymenty porównawcze** (`experiments.py`, wyniki w `data/results/`, logi w `data/logs/`):
+  ```bash
+  uv run python experiments.py --instances GR-H1-97 GR-PA-08 ZA-WD-09 BR-SA-00 --seeds 0 1 2 3 4
+  uv run python experiments.py --preset bazowy ...   # konfiguracja sprzed optymalizacji wykonalności (issue #82)
+  uv run python scripts/report_experiment.py --csv data/results/<plik>.csv --log-dir data/logs/<katalog> --out-dir data/results/<raport>
+  ```
+  Każdy przebieg zapisuje w CSV i logu pełny opis kryterium akceptacji (`acceptance_detail`, np.
+  `sa_auto(t0_factor=0.01,…)`). Skrót `sa` w kolumnie `acceptance` oznaczał przed 18.10.2026 temperaturę
+  startową 1e-3, a od tej daty 1e-2 — przy starszych plikach wyników rozstrzyga data, w nowych
+  `acceptance_detail`.
 * **Uruchomienie przepływu (workflow) za pomocą Snakemake**:
   Potok automatycznie wykrywa wszystkie pliki instancji `.xml` w katalogu `data/raw/` (z wyłączeniem pustych plików i szablonu `instance.xml`), uruchamia dla nich solver równolegle, a na koniec generuje zbiorcze raporty podsumowujące koszty rozwiązań (`summary.csv` oraz `summary.md` w `data/results/`).
 
