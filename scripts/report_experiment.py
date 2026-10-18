@@ -261,7 +261,8 @@ def plot_final(results: Results, output: Path) -> None:
             ax.yaxis.set_major_formatter(FuncFormatter(plot_convergence._format_count))
         ax.yaxis.set_minor_formatter(NullFormatter())
         # long configuration names wrap onto several lines instead of overlapping
-        names = [textwrap.fill(s, 16) for s in selectors]
+        width = 16 if len(selectors) <= 3 else 11
+        names = [textwrap.fill(s, width, break_long_words=False) for s in selectors]
         ax.set_xticks(range(len(selectors)), names, fontsize=8)
         ax.set_xlim(-0.6, len(selectors) - 0.4)
         ax.set_title(inst, color=plot_convergence.TEXT_PRIMARY, fontsize=11, loc="left")
