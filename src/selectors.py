@@ -123,12 +123,18 @@ class UCBSelector:
     BR-SA-00 and ZA-WD-09 (c in 0.02..1.0, 5 seeds, 60 s): 0.02 was best or
     near-best on both, though differences between c values were within
     seed-to-seed noise.
+
+    The default `alpha` was lowered from 0.08 to 0.02: with 0.08 a
+    heuristic's rare successes faded within a dozen calls, every Q fell
+    to ~0 once improvements became rare, and the exploration bonus alone
+    decided -- UCB drifted to near-uniform choice late in long runs
+    (AU-BG-98, 600 s; ZA-WD-09, 120 s).
     """
 
     def __init__(
         self,
         c: float = 0.02,
-        alpha: float = 0.08,
+        alpha: float = 0.02,
         pool_limit: int = _POOL_LIMIT,
         min_pulls_before_removal: int = _MIN_PULLS_BEFORE_REMOVAL,
         initial_q: float = _OPTIMISTIC_Q,
@@ -185,9 +191,7 @@ class UCBSelector:
         if not heuristics:
             raise ValueError("Heuristic pool cannot be empty.")
 
-        s: SolverState = self._resolve_state(
-            state if state is not None else (0, 0)
-        )
+        s: SolverState = self._resolve_state(state if state is not None else (0, 0))
 
         for h in heuristics:
             self._init_heuristic(h.id)
@@ -215,9 +219,7 @@ class UCBSelector:
         reward: float,
         state: SolverState | None = None,
     ) -> None:
-        s: SolverState = self._resolve_state(
-            state if state is not None else (0, 0)
-        )
+        s: SolverState = self._resolve_state(state if state is not None else (0, 0))
         self._init_heuristic(heuristic.id)
         key = (s, heuristic.id)
         old_q, old_n = self._stats[key]
@@ -230,8 +232,7 @@ class UCBSelector:
     def total_pulls(self, heuristic: Heuristic) -> float:
         """Total pull count for a heuristic summed across all states."""
         return sum(
-            self._stats.get((s, heuristic.id), (0.0, 0.0))[1]
-            for s in self._all_states
+            self._stats.get((s, heuristic.id), (0.0, 0.0))[1] for s in self._all_states
         )
 
     def mean_q(self, heuristic: Heuristic) -> float:

@@ -28,7 +28,8 @@ Priorytety projektu (w tej kolejności): poprawność > powtarzalność eksperym
    - stan dyskretny: `(naruszenia_twarde: {0,1}, stagnacja: {niska, srednia, wysoka})` — 6 stanów,
    - statystyki: słownik `(stan, h_id) -> [Q, n]`,
    - wybór: `argmax Q + c*sqrt(ln N / n)`, dla `n == 0` priorytet nieskończony,
-   - aktualizacja Q: średnia wykładnicza `Q <- (1-alpha)*Q + alpha*r`, alpha ~0.08,
+   - aktualizacja Q: średnia wykładnicza `Q <- (1-alpha)*Q + alpha*r`, alpha 0.02 (pierwotnie ~0.08; przy 0.08 rzadkie sukcesy zanikały po kilkunastu wywołaniach, wszystkie Q spadały do ~0 i UCB w późnej fazie wybierał heurystyki niemal równomiernie),
+   - perturbacje (`small_perturbation`, `large_perturbation`) uruchamia solver przy stagnacji; selektor ich nie wybiera,
    - nagroda binarna: `r = 1` jeśli kandydat poprawia bieżące rozwiązanie, inaczej `0`, + bonus za pobicie najlepszego globalnego rozwiązania (pierwotnie względna poprawa `(koszt_przed - koszt_po)/koszt_przed`; zmienione, bo przy spłaszczonym koszcie poprawa miękka przy naruszeniach twardych dawała nagrodę ~1e-6 i wszystkie Q ≈ 0 — UCB działał jak round-robin),
    - optymistyczna inicjalizacja Q dla nowych heurystyk, okres ochronny min. 100 wywołań przed usuwaniem,
    - usuwanie: tylko gdy pula > limit (20), heurystyka ma n > 100 i najgorsze Q; heurystyki ręczne mają flagę `protected` i nie są usuwane.
