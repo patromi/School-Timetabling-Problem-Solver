@@ -79,6 +79,13 @@ def _make_acceptance(acceptance_name: str, time_limit: float) -> "AcceptanceCrit
 
     if acceptance_name == "sa":
         return AutoSAAcceptance(time_budget=time_limit)
+    if acceptance_name.startswith("sa-t0="):
+        # e.g. "sa-t0=1e-4" -- the starting temperature as a fraction of the
+        # initial cost, used to tune SA (the default "sa" is 1e-3)
+        return AutoSAAcceptance(
+            t0_factor=float(acceptance_name.removeprefix("sa-t0=")),
+            time_budget=time_limit,
+        )
     return LAHCAcceptance(HISTORY_LENGTH)
 
 

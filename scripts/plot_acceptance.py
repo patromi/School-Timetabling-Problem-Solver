@@ -34,10 +34,11 @@ import matplotlib.pyplot as plt
 from matplotlib.axes import Axes
 from plot_convergence import (
     GRID,
-    SELECTOR_COLORS,
-    SELECTOR_ORDER,
     TEXT_PRIMARY,
     TEXT_SECONDARY,
+    config_label,
+    label_colors,
+    order_labels,
 )
 
 Curve = list[float | None]  # acceptance rate [%] on the time grid
@@ -84,7 +85,10 @@ def load_curves(
             continue
         curve = _seed_curve(records, grid, field)
         if curve is not None:
-            key = (str(summary["instance_id"]), str(summary["selector"]))
+            label = config_label(
+                str(summary["selector"]), str(summary.get("acceptance", "lahc"))
+            )
+            key = (str(summary["instance_id"]), label)
             curves[key].append(curve)
     return curves
 
@@ -132,11 +136,14 @@ def plot(
         sharey=True,
         squeeze=False,
     )
+    colors = label_colors(k[1] for k in curves)
     for ax, inst in zip(axes[0], instances, strict=True):
-        for sel in [s for s in SELECTOR_ORDER if (inst, s) in curves]:
+        for sel in [
+            s for s in order_labels(k[1] for k in curves) if (inst, s) in curves
+        ]:
             runs = curves[(inst, sel)]
             stats = _stats(runs, len(grid), min_seeds=max(1, len(runs) // 2))
-            color = SELECTOR_COLORS.get(sel, TEXT_SECONDARY)
+            color = colors[sel]
             xs = [t for t, s in zip(grid, stats, strict=True) if s is not None]
             kept = [s for s in stats if s is not None]
             ax.fill_between(
@@ -200,7 +207,7 @@ def plot_breakdown(log_dir: Path, grid: list[float], output: Path) -> bool:
     if not keys:
         return False
     instances = sorted({inst for inst, _ in keys})
-    selectors = [s for s in SELECTOR_ORDER if any(k[1] == s for k in keys)]
+    selectors = order_labels(k[1] for k in keys)
     fig, axes = plt.subplots(
         len(instances),
         len(selectors),
