@@ -226,16 +226,15 @@ def run_lahc(
 
             accepted = criterion.accepts(current_cost, candidate_cost, rng, step)
 
-            # Reward: relative improvement regardless of acceptance, plus a
-            # bonus when the candidate beats the global best.
-            if current_cost > 0:
-                relative_improvement = max(
-                    0.0, (current_cost - candidate_cost) / current_cost
-                )
-            else:
-                relative_improvement = 0.0
+            # Reward: 1 if the candidate improves on the current solution
+            # (regardless of acceptance), plus a bonus when it also beats the
+            # global best. Binary rather than relative to the flattened cost:
+            # with INFEASIBILITY_WEIGHT in the denominator a soft improvement
+            # is worth ~1e-6 while any hard violation remains, which left
+            # every selector Q at ~0 and UCB choosing round-robin.
+            improved = 1.0 if candidate_cost < current_cost else 0.0
             best_bonus = _BEST_BONUS if candidate_cost < best_cost else 0.0
-            reward = relative_improvement + best_bonus
+            reward = improved + best_bonus
 
             if accepted:
                 current, current_cost = candidate, candidate_cost

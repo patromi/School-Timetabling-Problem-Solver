@@ -118,11 +118,16 @@ class UCBSelector:
     selected again (the protection period). When the pool exceeds `pool_limit`,
     `try_remove_weakest` identifies the lowest-average-Q non-protected
     heuristic that has been pulled at least `min_pulls_before_removal` times.
+
+    The default `c` was calibrated for the binary reward (0, 1, 1 + bonus) on
+    BR-SA-00 and ZA-WD-09 (c in 0.02..1.0, 5 seeds, 60 s): 0.02 was best or
+    near-best on both, though differences between c values were within
+    seed-to-seed noise.
     """
 
     def __init__(
         self,
-        c: float = 1.0,
+        c: float = 0.02,
         alpha: float = 0.08,
         pool_limit: int = _POOL_LIMIT,
         min_pulls_before_removal: int = _MIN_PULLS_BEFORE_REMOVAL,
