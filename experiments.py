@@ -84,7 +84,8 @@ def _make_acceptance(acceptance_name: str, time_limit: float) -> "AcceptanceCrit
         return AutoSAAcceptance(time_budget=time_limit)
     if acceptance_name.startswith("sa-t0="):
         # e.g. "sa-t0=1e-4" -- the starting temperature as a fraction of the
-        # initial cost, used to tune SA (the default "sa" is 1e-3)
+        # initial cost, used to tune SA (the default "sa" is 1e-2; it was
+        # 1e-3 before 18.10.2026)
         return AutoSAAcceptance(
             t0_factor=float(acceptance_name.removeprefix("sa-t0=")),
             time_budget=time_limit,
@@ -99,7 +100,7 @@ def _run_one(
     seed: int,
     time_limit: float,
     log_path: "Path | None",
-    construct: str = "naive",
+    construct: str = "greedy",
     select_perturbations: bool = False,
     time_aware_reward: bool = False,
     exclude_heuristics: tuple[str, ...] = (),
@@ -294,8 +295,8 @@ def main() -> None:
     parser.add_argument(
         "--construct",
         choices=["naive", "greedy"],
-        default="naive",
-        help="Initial solution: naive (build_initial) or greedy (clash-aware)",
+        default="greedy",
+        help="Initial solution: greedy (clash-aware, default) or naive",
     )
     parser.add_argument(
         "--select-perturbations",

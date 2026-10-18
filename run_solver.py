@@ -15,8 +15,13 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from src.acceptance import AcceptanceCriterion, LAHCAcceptance, SimulatedAnnealingAcceptance
-from src.construct import build_initial
+from src.acceptance import (
+    AcceptanceCriterion,
+    AutoSAAcceptance,
+    LAHCAcceptance,
+    SimulatedAnnealingAcceptance,
+)
+from src.construct import build_greedy, build_initial
 from src.evaluator_ref import evaluate_cost_components, resolve_occurrences
 from src.html_report import render_timetable_page
 from src.lahc import run_lahc
@@ -94,9 +99,11 @@ def solve(
     logger: SolveLogger | None = None,
     time_limit: float | None = None,
     acceptance: AcceptanceCriterion | None = None,
+    construct: str = "greedy",
 ) -> SolveResult:
     """Buduje rozwiazanie poczatkowe i uruchamia solver; zwraca spakowany wynik."""
-    initial = build_initial(instance, rng)
+    build = build_greedy if construct == "greedy" else build_initial
+    initial = build(instance, rng)
     infeasibility_0, objective_0 = evaluate_cost_components(instance, initial)
     print(f"  Rozwiazanie poczatkowe -> infeasibility={infeasibility_0}  objective={objective_0}\n")
 
@@ -177,6 +184,12 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--time-limit", type=float, default=None,
                         help="Max wall-clock seconds (overrides --iterations as a stopping criterion)")
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument(
+        "--construct",
+        choices=["greedy", "naive"],
+        default="greedy",
+        help="Rozwiazanie poczatkowe: greedy (unika kolizji, domyslnie) lub naive (losowe)",
+    )
     parser.add_argument("--history", type=int, default=30,
                         help="Dlugosc historii LAHC (ignorowane dla --acceptance sa)")
     parser.add_argument("--sa-t-start", type=float, default=10_000.0,
@@ -232,8 +245,14 @@ def main(argv: list[str] | None = None) -> None:
         f"Zasoby={len(instance.resources)}  Ograniczenia={len(instance.constraints)}\n"
     )
 
-    if args.acceptance == "sa":
-        acceptance_obj: AcceptanceCriterion = SimulatedAnnealingAcceptance(
+    if args.acceptance == "sa" and args.time_limit is not None:
+        # przy limicie czasu: SA z temperatura wzgledem kosztu startowego,
+        # jak w eksperymentach (T0 = 1e-2 kosztu startowego)
+        acceptance_obj: AcceptanceCriterion = AutoSAAcceptance(
+            time_budget=args.time_limit
+        )
+    elif args.acceptance == "sa":
+        acceptance_obj = SimulatedAnnealingAcceptance(
             t_start=args.sa_t_start,
             t_end=args.sa_t_end,
             cooling_rate=args.sa_cooling,
@@ -270,6 +289,7 @@ def main(argv: list[str] | None = None) -> None:
             logger=logger,
             time_limit=args.time_limit,
             acceptance=acceptance_obj,
+            construct=args.construct,
         )
 
         logger.log_run_summary(
