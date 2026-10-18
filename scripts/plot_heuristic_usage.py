@@ -53,8 +53,10 @@ GROUP_COLORS = {
     "repair_hard_violation": "#1baf7a",
     "repair_clash": "#eda100",
     "ruchy losowe": "#e87ba4",
-    "kempe_chain": "#008300",
-    "split_resize": "#6250d6",
+    # kempe_chain dominates some instances; violet keeps it apart from the
+    # aqua of repair_hard_violation, green goes to the rarely used split_resize
+    "kempe_chain": "#6250d6",
+    "split_resize": "#008300",
     "perturbacje": "#e34948",
 }
 OTHER_COLOR = "#b5b3ad"
