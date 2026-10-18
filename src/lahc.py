@@ -96,6 +96,7 @@ def run_lahc(
     idle_limit: int | None = None,
     min_relative_improvement: float = 0.0,
     select_perturbations: bool = False,
+    time_aware_reward: bool = False,
 ) -> tuple[Solution, int]:
     """Local search loop with a pluggable acceptance criterion.
 
@@ -135,6 +136,14 @@ def run_lahc(
     on stagnation; the selector chooses among the rest of `heuristics`
     unless `select_perturbations` is True (the behaviour before
     18.10.2026, kept for reproducing older runs).
+
+    With `time_aware_reward` the selector's reward is scaled by
+    min(1, mean move time / this move's time): a move slower than the
+    average move earns proportionally less, so an expensive heuristic has to
+    improve more often per second, not just per call, to be preferred. It
+    reads the wall clock, so a run is no longer reproducible step by step
+    from its seed -- meant for time-bounded experiments, which already
+    depend on machine speed; off by default.
     """
     if evaluation not in (FULL, INCREMENTAL, VERIFY):
         raise ValueError(f"unknown evaluation mode: {evaluation!r}")
@@ -163,6 +172,9 @@ def run_lahc(
     t_start = time.monotonic()
 
     stagnant_iterations = 0
+    # running mean of one move's wall time (apply + scoring), for
+    # time_aware_reward
+    mean_move_time: float | None = None
     # best cost when stagnant_iterations was last reset
     progress_reference = best_cost
     perturbation_tier = 0
@@ -221,6 +233,7 @@ def run_lahc(
 
         heuristic = selector.select(selectable, rng, state=solver_state)
         move_failed = False
+        move_start = time.perf_counter()
         try:
             if evaluator is not None and heuristic.apply_with_evaluator is not None:
                 # the evaluator is positioned on `current` here
@@ -243,6 +256,7 @@ def run_lahc(
                 evaluation,
                 check=step % verify_every == 0,
             )
+            move_time = time.perf_counter() - move_start
 
             if candidate_cost < best_cost and candidate_cost <= progress_reference * (
                 1 - min_relative_improvement
@@ -279,6 +293,14 @@ def run_lahc(
             improved = 1.0 if candidate_cost < current_cost else 0.0
             best_bonus = _BEST_BONUS if candidate_cost < best_cost else 0.0
             reward = improved + best_bonus
+            if time_aware_reward:
+                if mean_move_time is not None and move_time > 0:
+                    reward *= min(1.0, mean_move_time / move_time)
+                mean_move_time = (
+                    move_time
+                    if mean_move_time is None
+                    else 0.99 * mean_move_time + 0.01 * move_time
+                )
 
             if accepted:
                 current, current_cost = candidate, candidate_cost
