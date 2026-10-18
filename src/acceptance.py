@@ -137,7 +137,17 @@ class AutoSAAcceptance:
 
     After perturbation restarts the criterion re-heats to T₀ and resets its
     internal clock (or step counter), matching LAHCAcceptance.reset().
+
+    `reheat` decides how long the schedule after such a restart lasts:
+    "full" (the default, and the only behaviour before 18.10.2026) cools
+    over the whole budget again; "remaining" cools over what is left of the
+    budget since the first reset(), so the run still ends at t_end. With
+    "full" and perturbations every few thousand steps, a long run never
+    cools down: on the large instances the temperature stayed in the
+    millions for the whole hour and the search stopped improving.
     """
+
+    REHEAT_MODES = ("full", "remaining")
 
     def __init__(
         self,
@@ -145,6 +155,7 @@ class AutoSAAcceptance:
         t_end: float = 1.0,
         time_budget: float = 120.0,
         iteration_budget: int | None = None,
+        reheat: str = "full",
     ) -> None:
         if t0_factor <= 0:
             raise ValueError(f"t0_factor must be positive, got {t0_factor}")
@@ -156,6 +167,18 @@ class AutoSAAcceptance:
             raise ValueError(
                 f"iteration_budget must be positive, got {iteration_budget}"
             )
+        if reheat not in self.REHEAT_MODES:
+            raise ValueError(
+                f"reheat must be one of {self.REHEAT_MODES}, got {reheat!r}"
+            )
+        self._reheat = reheat
+        # length of the current cooling schedule: the whole budget, or (after
+        # a "remaining" re-heat) what was left of it
+        self._schedule_time = time_budget
+        self._schedule_steps = iteration_budget
+        # clock time / step of the first reset(), where the budget starts
+        self._run_start: float | None = None
+        self._run_start_step = 0
         self._t0_factor = t0_factor
         self._t_end = t_end
         self._time_budget = time_budget
@@ -172,8 +195,10 @@ class AutoSAAcceptance:
             if self._iteration_budget is not None
             else f"{self._time_budget:.0f}s"
         )
+        reheat = "" if self._reheat == "full" else f",reheat={self._reheat}"
         return (
-            f"sa_auto(t0_factor={self._t0_factor},t_end={self._t_end},budget={budget})"
+            f"sa_auto(t0_factor={self._t0_factor},t_end={self._t_end},"
+            f"budget={budget}{reheat})"
         )
 
     def temperature_for(self, step: int) -> float:
@@ -185,14 +210,14 @@ class AutoSAAcceptance:
 
     def temperature_at(self, step: int) -> float:
         """Temperature for `step` in iteration-budget mode."""
-        assert self._iteration_budget is not None
-        ratio = min(1.0, (step - self._start_step) / self._iteration_budget)
+        assert self._schedule_steps is not None
+        ratio = min(1.0, (step - self._start_step) / self._schedule_steps)
         return float(self._t0 * (self._t_end / self._t0) ** ratio)
 
     @property
     def temperature(self) -> float:
         elapsed = time.monotonic() - self._start
-        ratio = min(1.0, elapsed / self._time_budget)
+        ratio = min(1.0, elapsed / self._schedule_time)
         return float(self._t0 * (self._t_end / self._t0) ** ratio)
 
     def accepts(
@@ -219,3 +244,17 @@ class AutoSAAcceptance:
         self._t0 = max(self._t_end, current_cost * self._t0_factor)
         self._start = time.monotonic()
         self._start_step = self._last_step + 1
+        if self._run_start is None:
+            self._run_start = self._start
+            self._run_start_step = self._start_step
+        if self._reheat == "remaining":
+            # what is left of the budget; never zero, so the next schedule
+            # still starts at T₀ (and, past the budget, sits at t_end)
+            self._schedule_time = max(
+                1e-9, self._time_budget - (self._start - self._run_start)
+            )
+            if self._iteration_budget is not None:
+                self._schedule_steps = max(
+                    1,
+                    self._iteration_budget - (self._start_step - self._run_start_step),
+                )
