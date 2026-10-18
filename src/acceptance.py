@@ -112,6 +112,10 @@ class SimulatedAnnealingAcceptance:
 class AutoSAAcceptance:
     """Simulated Annealing with time-proportional cooling and auto-calibrated T₀.
 
+    The default t0_factor (0.01, raised from 0.001) came out best in a sweep
+    over 1e-2..1e-5 on GR-H1-97, GR-PA-08, ZA-WD-09 and BR-SA-00: colder
+    starts left more hard violations, monotonically.
+
     T₀ is set to `initial_cost * t0_factor` on the first `reset()` call, so
     it scales automatically with the problem's cost magnitude — no per-instance
     tuning required.
@@ -131,7 +135,7 @@ class AutoSAAcceptance:
 
     def __init__(
         self,
-        t0_factor: float = 0.001,
+        t0_factor: float = 0.01,
         t_end: float = 1.0,
         time_budget: float = 120.0,
     ) -> None:

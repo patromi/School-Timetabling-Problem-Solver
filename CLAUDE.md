@@ -100,6 +100,14 @@ Pracuj etapami. Przed rozpoczęciem etapu przedstaw krótki plan plików i inter
 > z temperaturą dobieraną do budżetu czasu, w `run_solver.py` — `SimulatedAnnealingAcceptance`).
 > Plik pętli nadal nazywa się `src/lahc.py` (`run_lahc`), ale samo kryterium akceptacji jest
 > wymienne (`src/acceptance.py`). Opis poniżej dotyczy stanu sprzed tej decyzji.
+>
+> **Domyślna konfiguracja (18.10.2026, issue #82, „konfiguracja 5”):** UCB (`c = 0.02`, `alpha = 0.02`,
+> nagroda binarna, perturbacje poza pulą selektora), SA z temperaturą startową 1e-2 kosztu startowego
+> (`AutoSAAcceptance`), heurystyka `repair_clash` w puli, start zachłanny `build_greedy`. W eksperymencie
+> na 10 seedach dała 25/30 planów wykonalnych na BR-SA-00, GR-H1-97 i GR-PA-08 (bazowo 13/30).
+> Wyniki i wykresy: `data/results/report_final/`. Stare ustawienia są dostępne przez flagi
+> `experiments.py` (`--acceptance sa-t0=1e-3`, `--construct naive`, `--select-perturbations`,
+> `--selectors ucb-a=0.08`, `--exclude-heuristic repair_clash`).
 
 Obecnie zaimplementowany pipeline to construct + Late Acceptance Hill Climbing (LAHC), czyli **etap
 przejściowy sprzed powyższej specyfikacji** — nie ma jeszcze selektora RL (Etap 6) ani generatora LLM
