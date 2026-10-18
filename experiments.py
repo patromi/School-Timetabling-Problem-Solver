@@ -95,6 +95,7 @@ def _run_one(
     from pathlib import Path as _Path
 
     from src.construct import build_initial
+    from src.cost import cost_by_constraint_type
     from src.evaluator_ref import evaluate_cost_components
     from src.lahc import run_lahc
     from src.parser import parse_archive
@@ -164,6 +165,10 @@ def _run_one(
                         "objective_before": obj0,
                         "infeasibility_after": inf1,
                         "objective_after": obj1,
+                        # which constraint types the cost comes from, at the
+                        # start and for the best solution found
+                        "by_type_before": cost_by_constraint_type(instance, initial),
+                        "by_type_after": cost_by_constraint_type(instance, best),
                         "iterations_done": iters_done[0],
                         "elapsed_s": round(elapsed, 1),
                     },

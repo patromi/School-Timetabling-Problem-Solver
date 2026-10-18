@@ -33,6 +33,7 @@ from src.evaluator_ref import (
     INFEASIBILITY_WEIGHT,
     Occurrence,
     apply_cost_function,
+    evaluate_constraint_costs,
     evaluate_cost_components,
     resolve_occurrences,
 )
@@ -64,6 +65,24 @@ def evaluate_cost(instance: Instance, solution: Solution) -> Cost:
     kept apart instead of pre-combined."""
     infeasibility, objective = evaluate_cost_components(instance, solution)
     return Cost(infeasibility, objective)
+
+
+def cost_by_constraint_type(
+    instance: Instance, solution: Solution
+) -> dict[str, dict[str, int]]:
+    """The cost pair broken down by XHSTT constraint type: {"hard": {type:
+    cost}, "soft": {type: cost}}, summing Required constraints into "hard"
+    and the rest into "soft"; types with zero cost are left out. The hard
+    part sums to `Cost.infeasibility` and the soft part to `Cost.objective`
+    -- it shows *which* constraints a solution still violates, which the
+    two totals alone hide."""
+    breakdown: dict[str, dict[str, int]] = {"hard": {}, "soft": {}}
+    costs = evaluate_constraint_costs(instance, solution)
+    for constraint, value in zip(instance.constraints, costs, strict=True):
+        if value:
+            part = breakdown["hard" if constraint.required else "soft"]
+            part[constraint.type] = part.get(constraint.type, 0) + value
+    return breakdown
 
 
 def resources_of_type(instance: Instance, resource_type_ref: str) -> list[str]:
