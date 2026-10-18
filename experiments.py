@@ -25,7 +25,7 @@ if TYPE_CHECKING:
 DEFAULT_ARCHIVE = Path(__file__).parent / "data" / "xhstt2014" / "XHSTT-2014.xml"
 DEFAULT_INSTANCES = ["BR-SA-00", "ZA-WD-09", "AU-SA-96"]
 DEFAULT_SELECTORS = ["random", "epsilon-greedy", "ucb"]
-DEFAULT_ACCEPTANCE = ["lahc"]
+DEFAULT_ACCEPTANCE = ["sa"]
 DEFAULT_SEEDS = list(range(10))
 DEFAULT_TIME_LIMIT = 120  # seconds per run
 HISTORY_LENGTH = 30
@@ -35,6 +35,12 @@ LOG_WINDOW_SIZE = 2000  # iterations per selector_window log record
 # between new_best records in random-selector runs (BR-SA-00: p90 ~800,
 # p99 ~7300 iterations).
 STAGNATION_LIMIT = 3000
+# A new best resets stagnation only if it improves the best cost at the last
+# reset by at least this fraction (0 = every new best resets it). 0.05 was
+# tried (experiment v3b vs v2, LAHC): perturbations then fired on ZA-WD-09,
+# but UCB ended worse (mean hard 103.5 -> 112.3, 2:8 seeds, p = 0.020), so it
+# is off.
+MIN_RELATIVE_IMPROVEMENT = 0.0
 
 
 @dataclass
@@ -131,6 +137,7 @@ def _run_one(
             progress_every=LOG_WINDOW_SIZE,
             logger=logger,
             idle_limit=STAGNATION_LIMIT,
+            min_relative_improvement=MIN_RELATIVE_IMPROVEMENT,
         )
     finally:
         if logger is not None:
@@ -230,7 +237,7 @@ def main() -> None:
         "--acceptance",
         nargs="+",
         default=DEFAULT_ACCEPTANCE,
-        help="Acceptance criteria: lahc sa (default: lahc)",
+        help="Acceptance criteria: sa lahc (default: sa; lahc is historical)",
     )
     parser.add_argument("--seeds", nargs="+", type=int, default=DEFAULT_SEEDS)
     parser.add_argument(

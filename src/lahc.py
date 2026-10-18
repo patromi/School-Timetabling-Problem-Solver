@@ -2,7 +2,7 @@ import random
 import time
 from collections.abc import Callable
 
-from src.acceptance import AcceptanceCriterion, LAHCAcceptance
+from src.acceptance import AcceptanceCriterion, SimulatedAnnealingAcceptance
 from src.cost import evaluate_cost
 from src.evaluator_ref import INFEASIBILITY_WEIGHT
 from src.heuristics import MANUAL_HEURISTICS, Heuristic
@@ -12,7 +12,7 @@ from src.incremental import (
     Transaction,
 )
 from src.model import Instance, Solution
-from src.selectors import HeuristicSelector, RandomSelector, SolverState
+from src.selectors import HeuristicSelector, SolverState, UCBSelector
 from src.solve_log import SolveLogger
 
 FULL = "full"
@@ -88,11 +88,16 @@ def run_lahc(
     logger: SolveLogger | None = None,
     acceptance: AcceptanceCriterion | None = None,
     idle_limit: int | None = None,
+    min_relative_improvement: float = 0.0,
 ) -> tuple[Solution, int]:
     """Local search loop with a pluggable acceptance criterion.
 
-    When `acceptance` is None, defaults to LAHCAcceptance(history_length).
-    `history_length` is ignored when an explicit `acceptance` is supplied.
+    Defaults follow the project's choice (CLAUDE.md, 18.10.2026): when
+    `acceptance` is None, simulated annealing (SimulatedAnnealingAcceptance,
+    cooled per iteration so a run stays reproducible from its seed); when
+    `selector` is None, the contextual UCBSelector. LAHC is still available
+    by passing LAHCAcceptance explicitly. `history_length` is unused and kept
+    only so older callers do not break.
 
     If `on_progress` is given, it's called as `on_progress(iteration,
     best_cost)` whenever `progress_every` completed iterations have passed
@@ -111,16 +116,23 @@ def run_lahc(
     stagnation buckets of the selector state (thirds of `idle_limit`). When
     None it is derived from `max_iterations`, which only makes sense for
     iteration-bounded runs -- time-bounded runs should pass it explicitly.
+
+    `min_relative_improvement` is how much a new best has to improve on the
+    best cost at the last stagnation reset to reset it again: a new best
+    counts as progress only if cost <= reference * (1 - min_relative_
+    improvement). With the default 0 every new best is progress; a positive
+    value makes a trickle of tiny improvements count as stagnation, so the
+    solver also perturbs when its progress has merely slowed down.
     """
     if evaluation not in (FULL, INCREMENTAL, VERIFY):
         raise ValueError(f"unknown evaluation mode: {evaluation!r}")
     pool = heuristics if heuristics is not None else MANUAL_HEURISTICS
 
     if selector is None:
-        selector = RandomSelector()
+        selector = UCBSelector()
 
     criterion: AcceptanceCriterion = (
-        acceptance if acceptance is not None else LAHCAcceptance(history_length)
+        acceptance if acceptance is not None else SimulatedAnnealingAcceptance()
     )
 
     evaluator = None if evaluation == FULL else IncrementalEvaluator(instance, initial)
@@ -134,6 +146,8 @@ def run_lahc(
     t_start = time.monotonic()
 
     stagnant_iterations = 0
+    # best cost when stagnant_iterations was last reset
+    progress_reference = best_cost
     perturbation_tier = 0
     if idle_limit is None:
         idle_limit = max(500, max_iterations // 20)
@@ -164,6 +178,7 @@ def run_lahc(
                     criterion.reset(current_cost)
 
                     stagnant_iterations = 0
+                    progress_reference = best_cost
                     perturbation_tier = 1 if perturbation_tier == 0 else 0
                     if logger is not None:
                         logger.log_perturbation(
@@ -206,9 +221,16 @@ def run_lahc(
                 check=step % verify_every == 0,
             )
 
-            if candidate_cost < best_cost:
+            if candidate_cost < best_cost and candidate_cost <= progress_reference * (
+                1 - min_relative_improvement
+            ):
                 stagnant_iterations = 0
+                progress_reference = candidate_cost
                 perturbation_tier = 0
+            else:
+                stagnant_iterations += 1
+
+            if candidate_cost < best_cost:
                 if logger is not None:
                     infeasibility = candidate_cost // 1_000_000
                     objective = candidate_cost % 1_000_000
@@ -221,10 +243,9 @@ def run_lahc(
                         objective=objective,
                         elapsed=time.monotonic() - t_start,
                     )
-            else:
-                stagnant_iterations += 1
 
             accepted = criterion.accepts(current_cost, candidate_cost, rng, step)
+            cost_change = candidate_cost - current_cost
 
             # Reward: 1 if the candidate improves on the current solution
             # (regardless of acceptance), plus a bonus when it also beats the
@@ -250,6 +271,7 @@ def run_lahc(
                     heuristic_id=heuristic.id,
                     reward=reward,
                     accepted=accepted,
+                    cost_change=cost_change,
                 )
 
         if on_progress is not None:

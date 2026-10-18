@@ -170,9 +170,9 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         help="Id instancji (np. AU-BG-98). Pomin, by wypisac liste.",
     )
     parser.add_argument("--archive", type=Path, default=DEFAULT_ARCHIVE)
-    parser.add_argument("--selector", type=str, choices=["random", "epsilon-greedy", "ucb"], default="random", help="Heuristic selector type")
-    parser.add_argument("--acceptance", type=str, choices=["lahc", "sa"], default="lahc",
-                        help="Acceptance criterion: Late Acceptance HC (domyslnie) lub Simulated Annealing")
+    parser.add_argument("--selector", type=str, choices=["random", "epsilon-greedy", "ucb"], default="ucb", help="Heuristic selector type (domyslnie ucb)")
+    parser.add_argument("--acceptance", type=str, choices=["lahc", "sa"], default="sa",
+                        help="Kryterium akceptacji: Simulated Annealing (domyslnie) lub Late Acceptance HC (opcja historyczna)")
     parser.add_argument("--iterations", type=int, default=30_000)
     parser.add_argument("--time-limit", type=float, default=None,
                         help="Max wall-clock seconds (overrides --iterations as a stopping criterion)")
