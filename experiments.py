@@ -30,6 +30,11 @@ DEFAULT_SEEDS = list(range(10))
 DEFAULT_TIME_LIMIT = 120  # seconds per run
 HISTORY_LENGTH = 30
 LOG_WINDOW_SIZE = 2000  # iterations per selector_window log record
+# Iterations without a new best before perturbation; thirds of it are the
+# low/medium/high stagnation buckets of the UCB state. Chosen from the gaps
+# between new_best records in random-selector runs (BR-SA-00: p90 ~800,
+# p99 ~7300 iterations).
+STAGNATION_LIMIT = 3000
 
 
 @dataclass
@@ -57,6 +62,9 @@ def _make_selector(selector_name: str) -> "HeuristicSelector":
         return UCBSelector(collapse_stagnation=True)
     if selector_name == "ucb-c03":
         return UCBSelector(c=0.3)
+    if selector_name.startswith("ucb-c="):
+        # e.g. "ucb-c=0.01" -- used to calibrate the exploration constant
+        return UCBSelector(c=float(selector_name.removeprefix("ucb-c=")))
     return RandomSelector()
 
 
@@ -122,6 +130,7 @@ def _run_one(
             on_progress=_on_progress,
             progress_every=LOG_WINDOW_SIZE,
             logger=logger,
+            idle_limit=STAGNATION_LIMIT,
         )
     finally:
         if logger is not None:
