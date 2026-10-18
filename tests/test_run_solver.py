@@ -89,3 +89,24 @@ def test_the_environment_is_logged_for_reproducing_the_run(tmp_path: Path) -> No
     assert env["python"] and env["cpu_count"]
     # run from a git checkout, so the commit is known
     assert isinstance(env["git_commit"], str) and len(env["git_commit"]) == 40
+
+
+def test_the_automatic_idle_limit_grows_with_the_instance() -> None:
+    from src.parser import parse_archive
+
+    for name in ("ArtificialSudoku4x4.xml", "BrazilInstance1.xml"):
+        instance = parse_archive((FIXTURES / name).read_text(encoding="utf-8"))[0]
+        expected = max(
+            run_solver.DEFAULT_IDLE_LIMIT,
+            run_solver.IDLE_LIMIT_PER_EVENT * len(instance.events),
+        )
+        assert run_solver.resolve_idle_limit("auto", instance) == expected
+        assert run_solver.resolve_idle_limit("123", instance) == 123
+
+
+def test_run_solver_reheats_over_the_remaining_budget_by_default(
+    tmp_path: Path,
+) -> None:
+    records = _run(tmp_path, "--iterations", "100")
+    config = next(r for r in records if r["event"] == "run_config")
+    assert "reheat=remaining" in str(config["acceptance"])

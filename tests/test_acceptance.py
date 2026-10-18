@@ -5,7 +5,11 @@ import random
 
 import pytest
 
-from src.acceptance import LAHCAcceptance, SimulatedAnnealingAcceptance
+from src.acceptance import (
+    AutoSAAcceptance,
+    LAHCAcceptance,
+    SimulatedAnnealingAcceptance,
+)
 
 
 class TestLAHCAcceptance:
@@ -186,3 +190,52 @@ class TestAutoSAIterationBudget:
             return out
 
         assert decisions() == decisions()
+
+
+class TestAutoSAReheat:
+    """After a perturbation's reset(), "full" cools over the whole budget
+    again and "remaining" over what is left of it."""
+
+    @staticmethod
+    def _reheated(reheat: str) -> AutoSAAcceptance:
+        c = AutoSAAcceptance(
+            t0_factor=0.01, t_end=1.0, iteration_budget=1000, reheat=reheat
+        )
+        c.reset(1_000_000)
+        for step in range(600):
+            c.after_step(1_000_000, step)
+        c.reset(1_000_000)  # perturbation at step 600: 400 steps left
+        return c
+
+    def test_full_cools_over_the_whole_budget_again(self) -> None:
+        c = self._reheated("full")
+        assert c.temperature_at(600) == pytest.approx(10_000.0)
+        assert c.temperature_at(1100) == pytest.approx(100.0)
+        assert c.temperature_at(1600) == pytest.approx(1.0)
+
+    def test_remaining_still_ends_at_t_end_on_budget(self) -> None:
+        c = self._reheated("remaining")
+        assert c.temperature_at(600) == pytest.approx(10_000.0)
+        assert c.temperature_at(800) == pytest.approx(100.0)
+        assert c.temperature_at(1000) == pytest.approx(1.0)
+
+    def test_remaining_in_clock_mode_shortens_the_schedule(self) -> None:
+        from src.acceptance import AutoSAAcceptance
+
+        c = AutoSAAcceptance(time_budget=100.0, reheat="remaining")
+        c.reset(1_000_000)
+        c._run_start = c._start - 60.0  # 60 s of the budget already used
+        c.reset(1_000_000)
+        assert c._schedule_time == pytest.approx(40.0, abs=0.5)
+
+    def test_an_unknown_mode_is_rejected(self) -> None:
+        from src.acceptance import AutoSAAcceptance
+
+        with pytest.raises(ValueError):
+            AutoSAAcceptance(reheat="sometimes")
+
+    def test_the_default_keeps_the_original_name(self) -> None:
+        from src.acceptance import AutoSAAcceptance
+
+        assert "reheat" not in AutoSAAcceptance().name
+        assert "reheat=remaining" in AutoSAAcceptance(reheat="remaining").name

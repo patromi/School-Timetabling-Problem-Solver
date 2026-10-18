@@ -34,11 +34,27 @@ from src.xml_writer import (
 
 DEFAULT_ARCHIVE = Path(__file__).parent / "data" / "xhstt2014" / "XHSTT-2014.xml"
 
-# Iteracje bez nowego najlepszego wyniku przed perturbacja -- ta sama wartosc
-# co STAGNATION_LIMIT w experiments.py. Podawana jawnie, bo domyslny prog
-# run_lahc (max_iterations // 20) przy --time-limit z duzym --iterations
-# rosl do milionow krokow i perturbacje nigdy sie nie uruchamialy.
+# Iteracje bez nowego najlepszego wyniku przed perturbacja. Podawane jawnie,
+# bo domyslny prog run_lahc (max_iterations // 20) przy --time-limit z duzym
+# --iterations rosl do milionow krokow i perturbacje nigdy sie nie
+# uruchamialy. DEFAULT_IDLE_LIMIT to STAGNATION_LIMIT z experiments.py,
+# strojony na malych instancjach; przy --idle-limit auto (domyslnie) prog
+# rosnie z liczba zdarzen, bo na instancjach z ~1000 zdarzeniami odrobienie
+# kosztu po perturbacji trwalo dluzej niz 3000 krokow i kolejna perturbacja
+# przychodzila wczesniej (przebiegi 1 h z 18.10.2026).
 DEFAULT_IDLE_LIMIT = 3000
+IDLE_LIMIT_PER_EVENT = 50
+
+
+def resolve_idle_limit(value: str, instance: Instance) -> int:
+    """`--idle-limit`: liczba albo "auto" = max(DEFAULT_IDLE_LIMIT,
+    IDLE_LIMIT_PER_EVENT * liczba zdarzen)."""
+    if value == "auto":
+        return max(DEFAULT_IDLE_LIMIT, IDLE_LIMIT_PER_EVENT * len(instance.events))
+    limit = int(value)
+    if limit <= 0:
+        raise SystemExit(f"--idle-limit musi byc dodatnie albo 'auto', jest {value!r}")
+    return limit
 
 
 @dataclass
@@ -257,10 +273,16 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--sa-t0-factor", type=float, default=0.01,
                         help="SA: temperatura startowa jako ulamek kosztu startowego "
                         "(domyslnie 0.01, dostrojone w issue #82)")
-    parser.add_argument("--idle-limit", type=int, default=DEFAULT_IDLE_LIMIT,
+    parser.add_argument("--idle-limit", type=str, default="auto",
                         help="Iteracje bez nowego najlepszego wyniku przed "
-                        "perturbacja; tercje wyznaczaja stan stagnacji selektora "
-                        f"(domyslnie {DEFAULT_IDLE_LIMIT}, jak w experiments.py)")
+                        "perturbacja; tercje wyznaczaja stan stagnacji selektora. "
+                        f"Domyslnie auto = max({DEFAULT_IDLE_LIMIT}, "
+                        f"{IDLE_LIMIT_PER_EVENT} x liczba zdarzen)")
+    parser.add_argument("--reheat", choices=list(AutoSAAcceptance.REHEAT_MODES),
+                        default="remaining",
+                        help="SA po perturbacji: stygnie przez pozostala czesc "
+                        "budzetu (remaining, domyslnie) albo przez caly budzet od "
+                        "nowa (full, zachowanie sprzed 18.10.2026 i experiments.py)")
     parser.add_argument(
         "--output",
         type=Path,
@@ -313,10 +335,16 @@ def main(argv: list[str] | None = None) -> None:
         # eksperymentach. Z limitem czasu stygnie wedlug zegara, bez niego
         # wedlug numeru kroku -- wtedy przebieg jest powtarzalny z seeda.
         acceptance_obj: AcceptanceCriterion = (
-            AutoSAAcceptance(t0_factor=args.sa_t0_factor, time_budget=args.time_limit)
+            AutoSAAcceptance(
+                t0_factor=args.sa_t0_factor,
+                time_budget=args.time_limit,
+                reheat=args.reheat,
+            )
             if args.time_limit is not None
             else AutoSAAcceptance(
-                t0_factor=args.sa_t0_factor, iteration_budget=args.iterations
+                t0_factor=args.sa_t0_factor,
+                iteration_budget=args.iterations,
+                reheat=args.reheat,
             )
         )
     else:
@@ -358,7 +386,7 @@ def main(argv: list[str] | None = None) -> None:
             time_limit=args.time_limit,
             acceptance=acceptance_obj,
             construct=args.construct,
-            idle_limit=args.idle_limit,
+            idle_limit=resolve_idle_limit(args.idle_limit, instance),
         )
         rate = (
             result.stats.steps_done / result.elapsed_seconds
