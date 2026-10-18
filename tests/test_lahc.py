@@ -327,6 +327,7 @@ def _perturbation_count(min_relative_improvement: float) -> int:
         acceptance=LAHCAcceptance(30),
         selector=RandomSelector(),
         heuristics=[h for h in MANUAL_HEURISTICS if h.id != "repair_clash"],
+        select_perturbations=True,
     )
     events = [json.loads(line)["event"] for line in out.getvalue().splitlines()]
     return events.count("perturbation")
@@ -344,3 +345,38 @@ def test_a_zero_minimum_improvement_keeps_the_original_stagnation_rule():
     # min_relative_improvement existed (every strictly better new best reset
     # the counter); the default 0 must reproduce that trajectory exactly.
     assert _perturbation_count(0.0) == 52
+
+
+class _OfferedSelector(_RecordingSelector):
+    """Records which heuristic ids the solver offers the selector."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.offered: set[str] = set()
+
+    def select(self, heuristics, rng, state=None):  # type: ignore[no-untyped-def]
+        self.offered |= {h.id for h in heuristics}
+        return super().select(heuristics, rng, state=state)
+
+
+def test_the_selector_is_not_offered_the_perturbation_operators_by_default():
+    # The solver fires small/large_perturbation itself on stagnation; as
+    # ordinary arms they only take calls from the useful operators.
+    from src.lahc import PERTURBATION_IDS
+
+    instance = parse_archive(_load("ArtificialSudoku4x4.xml"))[0]
+    initial = build_initial(instance, random.Random(0))
+    default, opted_in = _OfferedSelector(), _OfferedSelector()
+
+    run_lahc(instance, initial, random.Random(1), max_iterations=50, selector=default)
+    run_lahc(
+        instance,
+        initial,
+        random.Random(1),
+        max_iterations=50,
+        selector=opted_in,
+        select_perturbations=True,
+    )
+
+    assert default.offered.isdisjoint(PERTURBATION_IDS)
+    assert PERTURBATION_IDS <= opted_in.offered

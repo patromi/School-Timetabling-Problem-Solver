@@ -21,6 +21,12 @@ VERIFY = "verify"
 
 _BEST_BONUS = 0.1
 
+# Operators the solver itself fires on stagnation (see the idle_limit
+# branch). By default the selector is not offered them as ordinary moves:
+# on their own they almost never improve the current solution, so as
+# arms they only take calls from the useful operators.
+PERTURBATION_IDS = frozenset({"small_perturbation", "large_perturbation"})
+
 
 def _score_candidate(
     instance: Instance,
@@ -89,6 +95,7 @@ def run_lahc(
     acceptance: AcceptanceCriterion | None = None,
     idle_limit: int | None = None,
     min_relative_improvement: float = 0.0,
+    select_perturbations: bool = False,
 ) -> tuple[Solution, int]:
     """Local search loop with a pluggable acceptance criterion.
 
@@ -123,6 +130,11 @@ def run_lahc(
     improvement). With the default 0 every new best is progress; a positive
     value makes a trickle of tiny improvements count as stagnation, so the
     solver also perturbs when its progress has merely slowed down.
+
+    The perturbation operators (PERTURBATION_IDS) are fired by the solver
+    on stagnation; the selector chooses among the rest of `heuristics`
+    unless `select_perturbations` is True (the behaviour before
+    18.10.2026, kept for reproducing older runs).
     """
     if evaluation not in (FULL, INCREMENTAL, VERIFY):
         raise ValueError(f"unknown evaluation mode: {evaluation!r}")
@@ -130,6 +142,11 @@ def run_lahc(
 
     if selector is None:
         selector = UCBSelector()
+    selectable = (
+        pool
+        if select_perturbations
+        else [h for h in pool if h.id not in PERTURBATION_IDS]
+    )
 
     criterion: AcceptanceCriterion = (
         acceptance if acceptance is not None else SimulatedAnnealingAcceptance()
@@ -202,7 +219,7 @@ def run_lahc(
         )
         solver_state: SolverState = (hard_bucket, stagnation_bucket)
 
-        heuristic = selector.select(pool, rng, state=solver_state)
+        heuristic = selector.select(selectable, rng, state=solver_state)
         move_failed = False
         try:
             if evaluator is not None and heuristic.apply_with_evaluator is not None:
