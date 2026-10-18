@@ -9,17 +9,20 @@ Przyklady:
 import argparse
 import functools
 import io
+import os
+import platform
 import random
+import subprocess
 import sys
 import time
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from src.acceptance import AcceptanceCriterion, AutoSAAcceptance, LAHCAcceptance
 from src.construct import build_greedy, build_initial
-from src.evaluator_ref import evaluate_cost_components, resolve_occurrences
+from src.evaluator_ref import evaluate_constraint_costs, resolve_occurrences
 from src.html_report import render_timetable_page
-from src.lahc import run_lahc
+from src.lahc import RunStats, run_lahc
 from src.selectors import EpsilonGreedySelector, RandomSelector, UCBSelector
 from src.solve_log import SolveLogger
 from src.model import Instance, Solution, SolutionGroup
@@ -47,6 +50,52 @@ class SolveResult:
     objective_after: int
     elapsed_seconds: float
     iterations: int
+    stats: RunStats = field(default_factory=RunStats)
+    construct_seconds: float = 0.0
+    cost_by_type_before: dict[str, dict[str, int]] = field(default_factory=dict)
+    cost_by_type_after: dict[str, dict[str, int]] = field(default_factory=dict)
+
+
+CostByType = dict[str, dict[str, int]]
+
+
+def cost_by_type(instance: Instance, solution: Solution) -> CostByType:
+    """Koszt rozbity na typy ograniczen, osobno twarde ("hard") i miekkie
+    ("soft"); pomija typy z zerowym kosztem. Sumy obu czesci to para
+    (infeasibility, objective)."""
+    out: CostByType = {"hard": {}, "soft": {}}
+    costs = evaluate_constraint_costs(instance, solution)
+    for c, cost in zip(instance.constraints, costs, strict=True):
+        if cost:
+            part = out["hard" if c.required else "soft"]
+            part[c.type] = part.get(c.type, 0) + cost
+    return out
+
+
+def run_environment(argv: list[str] | None) -> dict[str, object]:
+    """Wersja kodu i srodowisko przebiegu -- to, czego trzeba do odtworzenia
+    wyniku. Brak gita nie przerywa przebiegu (pola sa wtedy None)."""
+    repo = Path(__file__).parent
+
+    def git(*args: str) -> str | None:
+        try:
+            out = subprocess.run(
+                ["git", *args], cwd=repo, capture_output=True, text=True, timeout=10
+            )
+        except (OSError, subprocess.SubprocessError):
+            return None
+        return out.stdout.strip() if out.returncode == 0 else None
+
+    status = git("status", "--porcelain", "--untracked-files=no")
+    return {
+        "git_commit": git("rev-parse", "HEAD"),
+        "git_branch": git("rev-parse", "--abbrev-ref", "HEAD"),
+        "git_dirty": None if status is None else bool(status),
+        "argv": list(sys.argv[1:] if argv is None else argv),
+        "python": platform.python_version(),
+        "platform": platform.platform(),
+        "cpu_count": os.cpu_count(),
+    }
 
 
 def load_archive(path: Path) -> tuple[str, list[Instance]]:
@@ -105,12 +154,17 @@ def solve(
 ) -> SolveResult:
     """Buduje rozwiazanie poczatkowe i uruchamia solver; zwraca spakowany wynik."""
     build = build_greedy if construct == "greedy" else build_initial
+    t_construct = time.time()
     initial = build(instance, rng)
-    infeasibility_0, objective_0 = evaluate_cost_components(instance, initial)
+    construct_seconds = time.time() - t_construct
+    by_type_0 = cost_by_type(instance, initial)
+    infeasibility_0 = sum(by_type_0["hard"].values())
+    objective_0 = sum(by_type_0["soft"].values())
     print(f"  Rozwiazanie poczatkowe -> infeasibility={infeasibility_0}  objective={objective_0}\n")
 
     t_start = time.time()
     on_progress = functools.partial(_report_progress, total=iterations, t_start=t_start)
+    stats = RunStats()
 
     best, _ = run_lahc(
         instance,
@@ -127,18 +181,23 @@ def solve(
         logger=logger,
         acceptance=acceptance,
         idle_limit=idle_limit,
+        stats=stats,
     )
     elapsed = time.time() - t_start
-    infeasibility_1, objective_1 = evaluate_cost_components(instance, best)
+    by_type_1 = cost_by_type(instance, best)
 
     return SolveResult(
         best=best,
         infeasibility_before=infeasibility_0,
         objective_before=objective_0,
-        infeasibility_after=infeasibility_1,
-        objective_after=objective_1,
+        infeasibility_after=sum(by_type_1["hard"].values()),
+        objective_after=sum(by_type_1["soft"].values()),
         elapsed_seconds=elapsed,
         iterations=iterations,
+        stats=stats,
+        construct_seconds=construct_seconds,
+        cost_by_type_before=by_type_0,
+        cost_by_type_after=by_type_1,
     )
 
 
@@ -281,6 +340,12 @@ def main(argv: list[str] | None = None) -> None:
 
     with open(log_path, "w", encoding="utf-8") as log_file:
         logger = SolveLogger(log_file)
+        logger.log_run_environment(
+            **run_environment(argv),
+            # SA cooled by the clock (--time-limit) depends on machine speed;
+            # cooled by the step number, a run is reproducible from its seed
+            reproducible_from_seed=args.time_limit is None,
+        )
 
         result = solve(
             instance,
@@ -295,6 +360,11 @@ def main(argv: list[str] | None = None) -> None:
             construct=args.construct,
             idle_limit=args.idle_limit,
         )
+        rate = (
+            result.stats.steps_done / result.elapsed_seconds
+            if result.elapsed_seconds > 0
+            else 0.0
+        )
 
         logger.log_run_summary(
             instance_id=instance.id,
@@ -308,11 +378,19 @@ def main(argv: list[str] | None = None) -> None:
             infeasibility_after=result.infeasibility_after,
             objective_after=result.objective_after,
             elapsed_seconds=result.elapsed_seconds,
+            # `iterations` above is the budget; these are what the run did
+            **asdict(result.stats),
+            iterations_per_second=round(rate, 1),
+            construct_seconds=round(result.construct_seconds, 3),
+            cost_by_type_before=result.cost_by_type_before,
+            cost_by_type_after=result.cost_by_type_after,
         )
         logger.flush()
 
-    rate = result.iterations / result.elapsed_seconds
-    print(f"\nZakonczono w {result.elapsed_seconds:.1f}s ({rate:.0f} it/s)")
+    print(
+        f"\nZakonczono w {result.elapsed_seconds:.1f}s "
+        f"({result.stats.steps_done} iteracji, {rate:.0f} it/s)"
+    )
     print(f"  Przed:  infeasibility={result.infeasibility_before:>6}  objective={result.objective_before:>6}")
     print(f"  Po:     infeasibility={result.infeasibility_after:>6}  objective={result.objective_after:>6}")
     print(
