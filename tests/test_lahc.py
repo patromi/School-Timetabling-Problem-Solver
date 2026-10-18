@@ -380,3 +380,25 @@ def test_the_selector_is_not_offered_the_perturbation_operators_by_default():
 
     assert default.offered.isdisjoint(PERTURBATION_IDS)
     assert PERTURBATION_IDS <= opted_in.offered
+
+
+def test_a_time_aware_reward_stays_within_the_binary_reward_range():
+    # Scaling by min(1, mean move time / move time) can only shrink the
+    # binary reward (0, 1 or 1 + bonus), never raise it.
+    from src.lahc import _BEST_BONUS
+
+    instance = parse_archive(_load("ArtificialSudoku4x4.xml"))[0]
+    initial = build_initial(instance, random.Random(0))
+    selector = _RecordingSelector()
+
+    run_lahc(
+        instance,
+        initial,
+        random.Random(3),
+        max_iterations=300,
+        selector=selector,
+        time_aware_reward=True,
+    )
+
+    assert all(0.0 <= r <= 1.0 + _BEST_BONUS for r in selector.rewards)
+    assert any(r > 0 for r in selector.rewards)

@@ -68,6 +68,9 @@ def _make_selector(selector_name: str) -> "HeuristicSelector":
         return UCBSelector(collapse_stagnation=True)
     if selector_name == "ucb-c03":
         return UCBSelector(c=0.3)
+    if selector_name.startswith("ucb-a="):
+        # e.g. "ucb-a=0.08" -- the Q forgetting rate (default 0.02)
+        return UCBSelector(alpha=float(selector_name.removeprefix("ucb-a=")))
     if selector_name.startswith("ucb-c="):
         # e.g. "ucb-c=0.01" -- used to calibrate the exploration constant
         return UCBSelector(c=float(selector_name.removeprefix("ucb-c=")))
@@ -97,6 +100,9 @@ def _run_one(
     time_limit: float,
     log_path: "Path | None",
     construct: str = "naive",
+    select_perturbations: bool = False,
+    time_aware_reward: bool = False,
+    exclude_heuristics: tuple[str, ...] = (),
 ) -> RunResult:
     """Run one solver configuration. Imports inside so ProcessPoolExecutor
     can spawn cleanly without pickling the module-level state."""
@@ -105,6 +111,7 @@ def _run_one(
     from src.construct import build_greedy, build_initial
     from src.cost import cost_by_constraint_type
     from src.evaluator_ref import evaluate_cost_components
+    from src.heuristics import MANUAL_HEURISTICS
     from src.lahc import run_lahc
     from src.parser import parse_archive
     from src.solve_log import SolveLogger
@@ -148,6 +155,9 @@ def _run_one(
             logger=logger,
             idle_limit=STAGNATION_LIMIT,
             min_relative_improvement=MIN_RELATIVE_IMPROVEMENT,
+            select_perturbations=select_perturbations,
+            time_aware_reward=time_aware_reward,
+            heuristics=[h for h in MANUAL_HEURISTICS if h.id not in exclude_heuristics],
         )
     finally:
         if logger is not None:
@@ -171,6 +181,9 @@ def _run_one(
                         "acceptance": acceptance_name,
                         "seed": seed,
                         "construct": construct,
+                        "select_perturbations": select_perturbations,
+                        "time_aware_reward": time_aware_reward,
+                        "exclude_heuristics": list(exclude_heuristics),
                         "infeasibility_before": inf0,
                         "objective_before": obj0,
                         "infeasibility_after": inf1,
@@ -285,6 +298,22 @@ def main() -> None:
         help="Initial solution: naive (build_initial) or greedy (clash-aware)",
     )
     parser.add_argument(
+        "--select-perturbations",
+        action="store_true",
+        help="Offer small/large_perturbation to the selector (pre-step-6)",
+    )
+    parser.add_argument(
+        "--time-aware-reward",
+        action="store_true",
+        help="Scale the selector reward by mean move time / move time",
+    )
+    parser.add_argument(
+        "--exclude-heuristic",
+        action="append",
+        default=[],
+        help="Heuristic id to leave out of the pool (repeatable)",
+    )
+    parser.add_argument(
         "--no-logs",
         action="store_true",
         help="Disable per-run JSONL logging",
@@ -335,6 +364,9 @@ def main() -> None:
                 if log_dir
                 else None,
                 args.construct,
+                args.select_perturbations,
+                args.time_aware_reward,
+                tuple(args.exclude_heuristic),
             ): (inst, sel, acc, seed)
             for inst, sel, acc, seed in jobs
         }
