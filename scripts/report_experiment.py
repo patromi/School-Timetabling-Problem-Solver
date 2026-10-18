@@ -47,7 +47,10 @@ def load_results(path: Path) -> tuple[Results, dict[tuple[str, str], list[int]]]
     iterations: dict[tuple[str, str], list[int]] = defaultdict(list)
     with path.open(encoding="utf-8") as f:
         for row in csv.DictReader(f):
-            key = (row["instance_id"], row["selector"])
+            key = (
+                row["instance_id"],
+                plot_convergence.config_label(row["selector"], row["acceptance"]),
+            )
             results[key][int(row["seed"])] = (
                 int(row["infeasibility_after"]),
                 int(row["objective_after"]),
@@ -83,9 +86,7 @@ def wilcoxon_exact(diffs: list[int]) -> float:
 
 
 def _selectors(results: Results) -> list[str]:
-    present = {sel for _, sel in results}
-    order = [s for s in plot_convergence.SELECTOR_ORDER if s in present]
-    return order + sorted(present - set(order))
+    return plot_convergence.order_labels(sel for _, sel in results)
 
 
 def hard_breakdown_lines(log_dir: Path) -> list[str]:
@@ -102,7 +103,10 @@ def hard_breakdown_lines(log_dir: Path) -> list[str]:
                 record = json.loads(line)
                 if "by_type_after" not in record:
                     continue
-                key = (str(record["instance_id"]), str(record["selector"]))
+                label = plot_convergence.config_label(
+                    str(record["selector"]), str(record.get("acceptance", "lahc"))
+                )
+                key = (str(record["instance_id"]), label)
                 before[key].append(record["by_type_before"]["hard"])
                 after[key].append(record["by_type_after"]["hard"])
     if not after:
@@ -140,8 +144,7 @@ def hard_breakdown_lines(log_dir: Path) -> list[str]:
 
 
 def _selector_order(present: set[str]) -> list[str]:
-    order = [s for s in plot_convergence.SELECTOR_ORDER if s in present]
-    return order + sorted(present - set(order))
+    return plot_convergence.order_labels(present)
 
 
 def write_summary(
@@ -207,6 +210,7 @@ def write_summary(
 def plot_final(results: Results, output: Path) -> None:
     instances = sorted({inst for inst, _ in results})
     selectors = _selectors(results)
+    colors = plot_convergence.label_colors(selectors)
     fig, axes = plt.subplots(
         1,
         len(instances),
@@ -221,9 +225,7 @@ def plot_final(results: Results, output: Path) -> None:
             infs = sorted(v[0] for v in results.get((inst, sel), {}).values())
             if not infs:
                 continue
-            color = plot_convergence.SELECTOR_COLORS.get(
-                sel, plot_convergence.TEXT_SECONDARY
-            )
+            color = colors[sel]
             # deterministic horizontal spread so equal values stay visible
             offsets = [(k - (len(infs) - 1) / 2) * 0.04 for k in range(len(infs))]
             ax.scatter(

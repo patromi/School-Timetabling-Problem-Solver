@@ -16,6 +16,7 @@ import csv
 import json
 import statistics
 from collections import defaultdict
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
@@ -34,11 +35,51 @@ SELECTOR_COLORS = {
     "ucb": "#1baf7a",
 }
 SELECTOR_ORDER = ["random", "epsilon-greedy", "ucb"]
+# The reference categorical palette in its validated order; labels that
+# are not a plain selector take the free slots after the selectors' own.
+CATEGORICAL = [
+    "#2a78d6",
+    "#eb6834",
+    "#1baf7a",
+    "#eda100",
+    "#e87ba4",
+    "#008300",
+    "#6250d6",
+    "#e34948",
+]
 TEXT_PRIMARY = "#0b0b0b"
 TEXT_SECONDARY = "#52514e"
 GRID = "#e4e3df"
 
 Curve = list[int]  # best-so-far infeasibility on the time grid
+
+
+def config_label(selector: str, acceptance: str) -> str:
+    """Name of one solver configuration on plots and in tables: the
+    selector alone under the default acceptance (SA), otherwise selector
+    and acceptance, so that variants of the acceptance criterion (e.g. a
+    temperature sweep) stay apart."""
+    return selector if acceptance == "sa" else f"{selector} · {acceptance}"
+
+
+def order_labels(labels: Iterable[str]) -> list[str]:
+    """Plain selectors first in their fixed order, then the rest sorted."""
+    present = set(labels)
+    first = [s for s in SELECTOR_ORDER if s in present]
+    return first + sorted(present - set(first))
+
+
+def label_colors(labels: Iterable[str]) -> dict[str, str]:
+    """Colour per configuration: a plain selector keeps its fixed colour;
+    any other label takes the next free categorical slot in label order,
+    so the mapping is stable for a given set of configurations."""
+    ordered = order_labels(labels)
+    colors = {lab: SELECTOR_COLORS[lab] for lab in ordered if lab in SELECTOR_COLORS}
+    free = [c for c in CATEGORICAL if c not in colors.values()]
+    for lab in ordered:
+        if lab not in colors:
+            colors[lab] = free.pop(0) if free else TEXT_SECONDARY
+    return colors
 
 
 def _seed_curve(records: list[dict[str, Any]], grid: list[float]) -> Curve:
@@ -66,7 +107,10 @@ def load_curves(log_dir: Path, grid: list[float]) -> dict[tuple[str, str], list[
         summary = next((r for r in records if r["event"] == "run_summary"), None)
         if summary is None:
             continue
-        key = (str(summary["instance_id"]), str(summary["selector"]))
+        label = config_label(
+            str(summary["selector"]), str(summary.get("acceptance", "lahc"))
+        )
+        key = (str(summary["instance_id"]), label)
         curves[key].append(_seed_curve(records, grid))
     return curves
 
@@ -93,13 +137,16 @@ def plot(
     fig, axes = plt.subplots(
         1, len(instances), figsize=(max(6.0, 4.2 * len(instances)), 3.6), squeeze=False
     )
+    colors = label_colors(k[1] for k in curves)
     for ax, inst in zip(axes[0], instances, strict=True):
-        selectors = [s for s in SELECTOR_ORDER if (inst, s) in curves]
+        selectors = [
+            s for s in order_labels(k[1] for k in curves) if (inst, s) in curves
+        ]
         lowest = min(min(run) for sel in selectors for run in curves[(inst, sel)])
         for sel in selectors:
             runs = curves[(inst, sel)]
             stats = [_quantiles([run[k] for run in runs]) for k in range(len(grid))]
-            color = SELECTOR_COLORS.get(sel, TEXT_SECONDARY)
+            color = colors[sel]
             ax.fill_between(
                 grid,
                 [s[0] for s in stats],

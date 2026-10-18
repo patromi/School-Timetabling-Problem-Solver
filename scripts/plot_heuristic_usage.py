@@ -27,6 +27,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
+from plot_convergence import config_label, order_labels
 
 # Heuristic -> group shown on the plot. The two perturbation operators are
 # folded into one group so the pool fits the 8-colour categorical palette.
@@ -55,7 +56,6 @@ GROUP_COLORS = {
     "perturbacje": "#e34948",
 }
 OTHER_COLOR = "#b5b3ad"
-SELECTOR_ORDER = ["random", "epsilon-greedy", "ucb"]
 TEXT_PRIMARY = "#0b0b0b"
 TEXT_SECONDARY = "#52514e"
 SURFACE = "#ffffff"
@@ -75,7 +75,10 @@ def load_usage(log_dir: Path, bins: int) -> Usage:
         if summary is None or not windows:
             continue
         run_length = max(int(w["window_end"]) for w in windows) + 1
-        key = (str(summary["instance_id"]), str(summary["selector"]))
+        label = config_label(
+            str(summary["selector"]), str(summary.get("acceptance", "lahc"))
+        )
+        key = (str(summary["instance_id"]), label)
         for w in windows:
             middle = (int(w["window_start"]) + int(w["window_end"])) / 2
             b = min(bins - 1, int(bins * middle / run_length))
@@ -92,8 +95,7 @@ def _groups_present(usage: Usage) -> list[str]:
 
 def plot(usage: Usage, bins: int, output: Path) -> None:
     instances = sorted({inst for inst, _ in usage})
-    selectors = [s for s in SELECTOR_ORDER if any(k[1] == s for k in usage)]
-    selectors += sorted({k[1] for k in usage} - set(selectors))
+    selectors = order_labels(k[1] for k in usage)
     groups = _groups_present(usage)
 
     fig, axes = plt.subplots(
