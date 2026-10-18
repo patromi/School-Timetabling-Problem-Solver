@@ -208,6 +208,7 @@ class _RecordingSelector:
 
     def __init__(self) -> None:
         self.calls: list[tuple[str, str, object]] = []
+        self.rewards: list[float] = []
 
     def select(self, heuristics, rng, state=None):  # type: ignore[no-untyped-def]
         chosen = rng.choice(heuristics)
@@ -216,6 +217,7 @@ class _RecordingSelector:
 
     def update(self, heuristic, reward, state=None):  # type: ignore[no-untyped-def]
         self.calls.append(("update", heuristic.id, state))
+        self.rewards.append(reward)
 
 
 def _always_fails(solution, instance, rng):  # type: ignore[no-untyped-def]
@@ -274,3 +276,29 @@ def test_an_explicit_idle_limit_sets_the_stagnation_buckets():
     assert states[0] is not None and states[0][1] == 0
     assert any(s is not None and s[1] == 1 for s in states)
     assert any(s is not None and s[1] == 2 for s in states)
+
+
+def test_the_selector_reward_is_binary_improvement_plus_a_new_best_bonus():
+    # A reward relative to the flattened cost vanishes (~1e-6) for soft
+    # improvements while hard violations remain, leaving every Q ~0; the
+    # reward is therefore 1 for any candidate better than the current
+    # solution, plus a bonus when it is also a new global best.
+    from src.lahc import _BEST_BONUS
+
+    instance = parse_archive(_load("ArtificialSudoku4x4.xml"))[0]
+    initial = build_initial(instance, random.Random(0))
+    move_random = next(h for h in MANUAL_HEURISTICS if h.id == "move_random")
+    selector = _RecordingSelector()
+
+    run_lahc(
+        instance,
+        initial,
+        random.Random(3),
+        max_iterations=300,
+        heuristics=[move_random],
+        selector=selector,
+    )
+
+    assert set(selector.rewards) <= {0.0, 1.0, 1.0 + _BEST_BONUS}
+    assert 1.0 + _BEST_BONUS in selector.rewards
+    assert 0.0 in selector.rewards
