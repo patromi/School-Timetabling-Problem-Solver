@@ -563,3 +563,37 @@ def test_repair_clash_never_increases_clashes_on_a_real_instance() -> None:
     for seed in range(10):
         after = clashes(repair_clash(solution, instance, random.Random(seed)))
         assert after < before, f"seed={seed}: clashes {before} -> {after}"
+
+
+@pytest.mark.parametrize(
+    "heuristic",
+    [h for h in MANUAL_HEURISTICS if h.apply_with_evaluator is not None],
+    ids=lambda h: h.id,
+)
+def test_evaluator_path_matches_apply_and_leaves_the_evaluator_unchanged(
+    heuristic: Heuristic,
+) -> None:
+    # The solver uses apply_with_evaluator whenever it has an incremental
+    # evaluator; it must return what apply() returns for the same rng state,
+    # or the incremental and full evaluation modes would diverge.
+    from src.incremental import IncrementalEvaluator
+
+    instance = parse_archive(_load("BrazilInstance1.xml"))[0]
+    solution = build_initial(instance, random.Random(0))
+    evaluator = IncrementalEvaluator(instance, solution)
+    cost_before = evaluator.cost
+
+    checked = 0
+    for seed in range(10):
+        try:
+            expected = heuristic.apply(solution, instance, random.Random(seed))
+        except ValueError:
+            continue
+        assert heuristic.apply_with_evaluator is not None
+        got = heuristic.apply_with_evaluator(
+            solution, instance, random.Random(seed), evaluator
+        )
+        assert _snapshot(got) == _snapshot(expected), f"seed={seed}"
+        assert evaluator.cost == cost_before, f"seed={seed}: evaluator moved"
+        checked += 1
+    assert checked > 0
