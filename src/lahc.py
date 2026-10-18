@@ -135,6 +135,7 @@ def run_lahc(
     time_aware_reward: bool = False,
     snapshot_every: int = 5000,
     stats: RunStats | None = None,
+    perturbations: bool = True,
 ) -> tuple[Solution, int]:
     """Local search loop with a pluggable acceptance criterion.
 
@@ -171,7 +172,10 @@ def run_lahc(
     solver also perturbs when its progress has merely slowed down.
 
     The perturbation operators (PERTURBATION_IDS) are fired by the solver
-    on stagnation; the selector chooses among the rest of `heuristics`
+    on stagnation -- unless `perturbations` is False, which turns the
+    restarts off altogether (on the large instances plain SA did best,
+    18.10.2026); `idle_limit` then only sets the stagnation buckets. The
+    selector chooses among the rest of `heuristics`
     unless `select_perturbations` is True (the behaviour before
     18.10.2026, kept for reproducing older runs).
 
@@ -291,7 +295,9 @@ def run_lahc(
             acceptance=getattr(criterion, "name", type(criterion).__name__),
             selector=_snapshot(selector),
             pool=[h.id for h in selectable],
-            fired_on_stagnation=sorted(h.id for h in pool if h.id in PERTURBATION_IDS),
+            fired_on_stagnation=sorted(h.id for h in pool if h.id in PERTURBATION_IDS)
+            if perturbations
+            else [],
             idle_limit=idle_limit,
             stagnation_thresholds=[_stag_low, _stag_med],
             min_relative_improvement=min_relative_improvement,
@@ -308,7 +314,7 @@ def run_lahc(
     for step in range(max_iterations):
         if max_seconds is not None and time.monotonic() - t_start >= max_seconds:
             break
-        if stagnant_iterations > idle_limit:
+        if perturbations and stagnant_iterations > idle_limit:
             p_name = (
                 "small_perturbation" if perturbation_tier == 0 else "large_perturbation"
             )
