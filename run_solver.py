@@ -15,12 +15,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from src.acceptance import (
-    AcceptanceCriterion,
-    AutoSAAcceptance,
-    LAHCAcceptance,
-    SimulatedAnnealingAcceptance,
-)
+from src.acceptance import AcceptanceCriterion, AutoSAAcceptance, LAHCAcceptance
 from src.construct import build_greedy, build_initial
 from src.evaluator_ref import evaluate_cost_components, resolve_occurrences
 from src.html_report import render_timetable_page
@@ -192,12 +187,9 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     )
     parser.add_argument("--history", type=int, default=30,
                         help="Dlugosc historii LAHC (ignorowane dla --acceptance sa)")
-    parser.add_argument("--sa-t-start", type=float, default=10_000.0,
-                        help="SA: temperatura poczatkowa (domyslnie 10000)")
-    parser.add_argument("--sa-t-end", type=float, default=1.0,
-                        help="SA: temperatura koncowa (domyslnie 1.0)")
-    parser.add_argument("--sa-cooling", type=float, default=0.9999,
-                        help="SA: wspolczynnik chlodzenia geometrycznego (domyslnie 0.9999)")
+    parser.add_argument("--sa-t0-factor", type=float, default=0.01,
+                        help="SA: temperatura startowa jako ulamek kosztu startowego "
+                        "(domyslnie 0.01, dostrojone w issue #82)")
     parser.add_argument(
         "--output",
         type=Path,
@@ -245,17 +237,16 @@ def main(argv: list[str] | None = None) -> None:
         f"Zasoby={len(instance.resources)}  Ograniczenia={len(instance.constraints)}\n"
     )
 
-    if args.acceptance == "sa" and args.time_limit is not None:
-        # przy limicie czasu: SA z temperatura wzgledem kosztu startowego,
-        # jak w eksperymentach (T0 = 1e-2 kosztu startowego)
-        acceptance_obj: AcceptanceCriterion = AutoSAAcceptance(
-            time_budget=args.time_limit
-        )
-    elif args.acceptance == "sa":
-        acceptance_obj = SimulatedAnnealingAcceptance(
-            t_start=args.sa_t_start,
-            t_end=args.sa_t_end,
-            cooling_rate=args.sa_cooling,
+    if args.acceptance == "sa":
+        # SA z temperatura startowa wzgledem kosztu startowego, jak w
+        # eksperymentach. Z limitem czasu stygnie wedlug zegara, bez niego
+        # wedlug numeru kroku -- wtedy przebieg jest powtarzalny z seeda.
+        acceptance_obj: AcceptanceCriterion = (
+            AutoSAAcceptance(t0_factor=args.sa_t0_factor, time_budget=args.time_limit)
+            if args.time_limit is not None
+            else AutoSAAcceptance(
+                t0_factor=args.sa_t0_factor, iteration_budget=args.iterations
+            )
         )
     else:
         acceptance_obj = LAHCAcceptance(history_length=args.history)

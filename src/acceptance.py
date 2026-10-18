@@ -129,8 +129,14 @@ class AutoSAAcceptance:
     (many iterations in 120 s) and a slow one (few iterations) both see T₀ at
     the start and t_end at the end of the budget.
 
+    With `iteration_budget` set, the same decay is keyed to the step number
+    instead of the clock -- T(step) = T₀ * (t_end / T₀) ** (steps since the
+    last reset / iteration_budget) -- so a run is reproducible from its
+    seed. That is the mode for iteration-bounded runs (run_solver.py
+    without --time-limit); `time_budget` is then ignored.
+
     After perturbation restarts the criterion re-heats to T₀ and resets its
-    internal clock, matching the behaviour of LAHCAcceptance.reset().
+    internal clock (or step counter), matching LAHCAcceptance.reset().
     """
 
     def __init__(
@@ -138,6 +144,7 @@ class AutoSAAcceptance:
         t0_factor: float = 0.01,
         t_end: float = 1.0,
         time_budget: float = 120.0,
+        iteration_budget: int | None = None,
     ) -> None:
         if t0_factor <= 0:
             raise ValueError(f"t0_factor must be positive, got {t0_factor}")
@@ -145,39 +152,70 @@ class AutoSAAcceptance:
             raise ValueError(f"t_end must be positive, got {t_end}")
         if time_budget <= 0:
             raise ValueError(f"time_budget must be positive, got {time_budget}")
+        if iteration_budget is not None and iteration_budget <= 0:
+            raise ValueError(
+                f"iteration_budget must be positive, got {iteration_budget}"
+            )
         self._t0_factor = t0_factor
         self._t_end = t_end
         self._time_budget = time_budget
         self._t0: float = max(t_end, 1.0)
         self._start: float = time.monotonic()
+        self._iteration_budget = iteration_budget
+        self._last_step = -1  # last step seen by after_step()
+        self._start_step = 0  # step at which the last reset() happened
 
     @property
     def name(self) -> str:
-        return (
-            f"sa_auto(t0_factor={self._t0_factor},"
-            f"t_end={self._t_end},budget={self._time_budget:.0f}s)"
+        budget = (
+            f"{self._iteration_budget}it"
+            if self._iteration_budget is not None
+            else f"{self._time_budget:.0f}s"
         )
+        return (
+            f"sa_auto(t0_factor={self._t0_factor},t_end={self._t_end},budget={budget})"
+        )
+
+    def temperature_for(self, step: int) -> float:
+        """Current temperature in either mode -- the step is used only in
+        iteration-budget mode."""
+        if self._iteration_budget is not None:
+            return self.temperature_at(step)
+        return self.temperature
+
+    def temperature_at(self, step: int) -> float:
+        """Temperature for `step` in iteration-budget mode."""
+        assert self._iteration_budget is not None
+        ratio = min(1.0, (step - self._start_step) / self._iteration_budget)
+        return float(self._t0 * (self._t_end / self._t0) ** ratio)
 
     @property
     def temperature(self) -> float:
         elapsed = time.monotonic() - self._start
         ratio = min(1.0, elapsed / self._time_budget)
-        return self._t0 * (self._t_end / self._t0) ** ratio
+        return float(self._t0 * (self._t_end / self._t0) ** ratio)
 
     def accepts(
         self, current_cost: int, candidate_cost: int, rng: random.Random, step: int
     ) -> bool:
         if candidate_cost <= current_cost:
             return True
-        T = self.temperature
+        T = (
+            self.temperature_at(step)
+            if self._iteration_budget is not None
+            else self.temperature
+        )
         if T <= 0.0:
             return False
         delta = candidate_cost - current_cost
         return rng.random() < math.exp(-delta / T)
 
     def after_step(self, current_cost: int, step: int) -> None:
-        pass  # temperature is derived from wall time, no per-step update
+        # temperature comes from the clock or the step number; only the
+        # step is remembered, so reset() knows where a new schedule starts
+        self._last_step = step
 
     def reset(self, current_cost: int) -> None:
         self._t0 = max(self._t_end, current_cost * self._t0_factor)
         self._start = time.monotonic()
+        self._start_step = self._last_step + 1

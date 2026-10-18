@@ -105,9 +105,10 @@ Pracuj etapami. Przed rozpoczęciem etapu przedstaw krótki plan plików i inter
 > nagroda binarna, perturbacje poza pulą selektora), SA z temperaturą startową 1e-2 kosztu startowego
 > (`AutoSAAcceptance`), heurystyka `repair_clash` w puli, start zachłanny `build_greedy`. W eksperymencie
 > na 10 seedach dała 25/30 planów wykonalnych na BR-SA-00, GR-H1-97 i GR-PA-08 (bazowo 13/30).
-> Wyniki i wykresy: `data/results/report_final/`. Stare ustawienia są dostępne przez flagi
-> `experiments.py` (`--acceptance sa-t0=1e-3`, `--construct naive`, `--select-perturbations`,
-> `--selectors ucb-a=0.08`, `--exclude-heuristic repair_clash`).
+> Wyniki i wykresy: `data/results/report_final/`. Konfigurację sprzed tej pracy przywraca jedna flaga
+> `experiments.py --preset bazowy` (SA 1e-3, start losowy, perturbacje w puli selektora, UCB alpha 0.08,
+> bez `repair_clash`); każdy z tych elementów ma też osobną flagę. Skrót `sa` w kolumnie `acceptance`
+> oznaczał przed 18.10.2026 T0 = 1e-3 — nowe pliki mają jednoznaczną kolumnę `acceptance_detail`.
 
 Obecnie zaimplementowany pipeline to construct + Late Acceptance Hill Climbing (LAHC), czyli **etap
 przejściowy sprzed powyższej specyfikacji** — nie ma jeszcze selektora RL (Etap 6) ani generatora LLM
