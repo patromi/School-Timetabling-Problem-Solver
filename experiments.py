@@ -96,12 +96,13 @@ def _run_one(
     seed: int,
     time_limit: float,
     log_path: "Path | None",
+    construct: str = "naive",
 ) -> RunResult:
     """Run one solver configuration. Imports inside so ProcessPoolExecutor
     can spawn cleanly without pickling the module-level state."""
     from pathlib import Path as _Path
 
-    from src.construct import build_initial
+    from src.construct import build_greedy, build_initial
     from src.cost import cost_by_constraint_type
     from src.evaluator_ref import evaluate_cost_components
     from src.lahc import run_lahc
@@ -113,7 +114,8 @@ def _run_one(
     instance = next(i for i in instances if i.id == instance_id)
 
     rng = random.Random(seed)
-    initial = build_initial(instance, rng)
+    build = build_greedy if construct == "greedy" else build_initial
+    initial = build(instance, rng)
     inf0, obj0 = evaluate_cost_components(instance, initial)
 
     selector = _make_selector(selector_name)
@@ -168,6 +170,7 @@ def _run_one(
                         "selector": selector_name,
                         "acceptance": acceptance_name,
                         "seed": seed,
+                        "construct": construct,
                         "infeasibility_before": inf0,
                         "objective_before": obj0,
                         "infeasibility_after": inf1,
@@ -276,6 +279,12 @@ def main() -> None:
         help="Directory for per-run JSONL logs (default: data/logs)",
     )
     parser.add_argument(
+        "--construct",
+        choices=["naive", "greedy"],
+        default="naive",
+        help="Initial solution: naive (build_initial) or greedy (clash-aware)",
+    )
+    parser.add_argument(
         "--no-logs",
         action="store_true",
         help="Disable per-run JSONL logging",
@@ -325,6 +334,7 @@ def main() -> None:
                 log_dir / f"{inst}_{sel}_{acc}_seed{seed:02d}.jsonl"
                 if log_dir
                 else None,
+                args.construct,
             ): (inst, sel, acc, seed)
             for inst, sel, acc, seed in jobs
         }
