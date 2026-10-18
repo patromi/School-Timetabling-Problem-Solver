@@ -7,11 +7,12 @@ from src.evaluator_ref import (
     _events_in_applies_to,
     _resources_in_applies_to,
     evaluate_constraint,
+    resolve_occurrence,
     resolve_occurrences,
     valid_start_time_ids,
 )
 from src.incremental import IncrementalEvaluator
-from src.model import Instance, Solution
+from src.model import Instance, Solution, SolutionEvent
 from src.moves import (
     kempe_chain_move,
     large_perturbation_move,
@@ -311,6 +312,125 @@ def repair_hard_violation(
     )
 
 
+class _ClashTable:
+    """Resource-time occupancy for the resources watched by Required
+    AvoidClashesConstraints: how many events use each (resource, time)
+    cell. Fixed (preassigned) events are counted too, since they block a
+    slot just like movable ones."""
+
+    def __init__(self, instance: Instance, solution: Solution) -> None:
+        self.watched: set[str] = set()
+        for constraint in instance.constraints:
+            if constraint.required and constraint.type == "AvoidClashesConstraint":
+                self.watched |= _resources_in_applies_to(
+                    instance, constraint.applies_to
+                )
+        self._position = {t.id: k for k, t in enumerate(instance.times)}
+        self._event_defs = {e.id: e for e in instance.events}
+        self._busy: dict[tuple[str, int], int] = {}
+        for occurrence in resolve_occurrences(instance, solution):
+            if occurrence.time_ref is None:
+                continue
+            for resource in self._watched_of(_assigned_resource_ids(occurrence)):
+                for p in self.span(occurrence.time_ref, occurrence.duration):
+                    self._busy[(resource, p)] = self._busy.get((resource, p), 0) + 1
+
+    def _watched_of(self, resources: list[str | None]) -> list[str]:
+        return [r for r in resources if r is not None and r in self.watched]
+
+    def span(self, time_ref: str, duration: int) -> range:
+        start = self._position[time_ref]
+        return range(start, start + duration)
+
+    def resources(self, event: SolutionEvent) -> list[str]:
+        occurrence = resolve_occurrence(self._event_defs[event.event_ref], event)
+        return self._watched_of(_assigned_resource_ids(occurrence))
+
+    def clashes(self, event: SolutionEvent) -> bool:
+        if event.time_ref is None or event.duration is None:
+            return False
+        own = self.span(event.time_ref, event.duration)
+        return any(
+            self._busy.get((r, p), 0) > 1 for r in self.resources(event) for p in own
+        )
+
+    def overlaps(self, event: SolutionEvent, time_ref: str, duration: int) -> int:
+        """Other events sharing a watched resource with `event` if it started
+        at `time_ref` -- its own current booking is discounted."""
+        own = (
+            set(self.span(event.time_ref, duration))
+            if event.time_ref is not None
+            else set()
+        )
+        return sum(
+            self._busy.get((r, p), 0) - (1 if p in own else 0)
+            for r in self.resources(event)
+            for p in self.span(time_ref, duration)
+        )
+
+
+def _cheapest_time(
+    instance: Instance, solution: Solution, index: int, times: list[str]
+) -> Solution:
+    """The solution with solution.events[index] moved to whichever of
+    `times` gives the lowest total cost."""
+    event = solution.events[index]
+    scorer = IncrementalEvaluator(instance, solution)
+    best_solution: Solution | None = None
+    best_cost: int | None = None
+    for time_ref in times:
+        new_events = list(solution.events)
+        new_events[index] = replace(event, time_ref=time_ref)
+        candidate = replace(solution, events=new_events)
+        cost = scorer.probe(candidate).as_scalar()
+        if best_cost is None or cost < best_cost:
+            best_cost, best_solution = cost, candidate
+    assert best_solution is not None
+    return best_solution
+
+
+def repair_clash(
+    solution: Solution,
+    instance: Instance,
+    rng: random.Random,
+    max_probe: int | None = None,
+) -> Solution:
+    """Targets the hard violation that dominates every in-scope instance:
+    a resource (teacher, class, room) booked into two events at once, as
+    watched by a Required AvoidClashesConstraint.
+
+    Picks one movable event that takes part in such a clash and moves it to
+    the start time where its watched resources overlap the fewest other
+    events -- a free slot when one exists. Unlike repair_hard_violation,
+    which samples `max_probe` random times and compares total costs, this
+    counts overlaps for *every* valid start time from a resource-time
+    occupancy table, so it never misses a free slot. Total cost only breaks
+    ties between the least-clashing times (sampled down to `max_probe`), so
+    the move also respects the other constraints where it can.
+
+    Raises ValueError if no Required AvoidClashesConstraint exists or no
+    movable event takes part in a clash."""
+    table = _ClashTable(instance, solution)
+    if not table.watched:
+        raise ValueError("the instance has no Required AvoidClashesConstraint")
+    clashing = [i for i, se in enumerate(solution.events) if table.clashes(se)]
+    if not clashing:
+        raise ValueError("no movable event takes part in a clash")
+
+    index = rng.choice(clashing)
+    event = solution.events[index]
+    assert event.duration is not None  # table.clashes() checked it
+    candidates = list(valid_start_time_ids(instance, event.duration))
+    if not candidates:
+        raise ValueError(f"event {event.event_ref!r} has no valid start time")
+    counts = {t: table.overlaps(event, t, event.duration) for t in candidates}
+    fewest = min(counts.values())
+    best_times = [t for t in candidates if counts[t] == fewest]
+    if max_probe is not None and len(best_times) > max_probe:
+        best_times = rng.sample(best_times, max_probe)
+    return _cheapest_time(instance, solution, index, best_times)
+
+
 # Probe cap used for the "fast" variants of exhaustive-search heuristics.
 # Reducing the number of candidate times probed per call trades some per-call
 # quality for more iterations within a fixed time budget -- particularly useful
@@ -346,6 +466,15 @@ MANUAL_HEURISTICS: list[Heuristic] = [
         name=f"Repair a hard constraint violation (sample {_FAST_MAX_PROBE})",
         protected=True,
         apply=lambda sol, inst, rng: repair_hard_violation(
+            sol, inst, rng, max_probe=_FAST_MAX_PROBE
+        ),
+        incremental_safe=True,
+    ),
+    Heuristic(
+        id="repair_clash",
+        name=f"Move a clashing event to a free time (sample {_FAST_MAX_PROBE})",
+        protected=True,
+        apply=lambda sol, inst, rng: repair_clash(
             sol, inst, rng, max_probe=_FAST_MAX_PROBE
         ),
         incremental_safe=True,

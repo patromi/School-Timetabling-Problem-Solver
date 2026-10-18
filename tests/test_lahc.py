@@ -326,6 +326,7 @@ def _perturbation_count(min_relative_improvement: float) -> int:
         # pinned to the configuration the reference count (52) was taken with
         acceptance=LAHCAcceptance(30),
         selector=RandomSelector(),
+        heuristics=[h for h in MANUAL_HEURISTICS if h.id != "repair_clash"],
     )
     events = [json.loads(line)["event"] for line in out.getvalue().splitlines()]
     return events.count("perturbation")
