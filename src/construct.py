@@ -1,6 +1,14 @@
 import random
+from dataclasses import replace
 
-from src.evaluator_ref import _events_in_applies_to, _preferred_time_ids, valid_start_time_ids
+from src.evaluator_ref import (
+    Occurrence,
+    _events_in_applies_to,
+    _preferred_time_ids,
+    resolve_occurrence,
+    resolve_occurrences,
+    valid_start_time_ids,
+)
 from src.model import (
     Event,
     Instance,
@@ -134,3 +142,85 @@ def build_initial(instance: Instance, rng: random.Random) -> Solution:
             )
 
     return Solution(instance_ref=instance.id, events=events)
+
+
+def build_greedy(instance: Instance, rng: random.Random) -> Solution:
+    """Clash-aware constructor: the same event pieces and resources as
+    `build_initial`, but each piece is re-timed to avoid clashes.
+
+    Starts from `build_initial` (so splitting and resource choices stay
+    identical), then places the pieces one by one, hardest first -- longest
+    duration, then most resources, the classic largest-degree-first order of
+    graph colouring -- each on the valid start time where its resources
+    overlap the fewest pieces already placed (ties broken at random).
+    Events with a preassigned time are in the occupancy table from the
+    start, since they block their slots for everyone else.
+
+    Only clashes guide the choice: diagnostics on the in-scope instances
+    show AvoidClashesConstraint as the dominant hard violation, and every
+    other constraint is left to local search."""
+    base = build_initial(instance, rng)
+    position = {t.id: k for k, t in enumerate(instance.times)}
+    event_defs = {e.id: e for e in instance.events}
+
+    movable = [
+        i
+        for i, se in enumerate(base.events)
+        if se.time_ref is not None and se.duration is not None
+    ]
+    movable_refs = {base.events[i].event_ref for i in movable}
+
+    busy: dict[tuple[str, int], int] = {}
+
+    def book(resources: list[str], time_ref: str, duration: int) -> None:
+        start = position[time_ref]
+        for r in resources:
+            for p in range(start, start + duration):
+                busy[(r, p)] = busy.get((r, p), 0) + 1
+
+    def resources_of(occurrence: Occurrence) -> list[str]:
+        return [r for _, r in occurrence.resource_assignments if r is not None]
+
+    for occurrence in resolve_occurrences(instance, base):
+        if occurrence.event_ref not in movable_refs and occurrence.time_ref:
+            book(resources_of(occurrence), occurrence.time_ref, occurrence.duration)
+
+    def difficulty(i: int) -> tuple[int, int]:
+        se = base.events[i]
+        occurrence = resolve_occurrence(event_defs[se.event_ref], se)
+        return (se.duration or 0, len(resources_of(occurrence)))
+
+    order = list(movable)
+    rng.shuffle(order)  # random order among equally hard pieces
+    order.sort(key=difficulty, reverse=True)
+
+    events = list(base.events)
+    for i in order:
+        se = events[i]
+        assert se.duration is not None and se.time_ref is not None
+        resources = resources_of(resolve_occurrence(event_defs[se.event_ref], se))
+        candidates = list(valid_start_time_ids(instance, se.duration))
+        if candidates:
+            counts = {
+                t: _overlaps(busy, resources, position[t], se.duration)
+                for t in candidates
+            }
+            fewest = min(counts.values())
+            se = replace(
+                se, time_ref=rng.choice([t for t in candidates if counts[t] == fewest])
+            )
+            events[i] = se
+        assert se.time_ref is not None and se.duration is not None
+        book(resources, se.time_ref, se.duration)
+
+    return replace(base, events=events)
+
+
+def _overlaps(
+    busy: dict[tuple[str, int], int], resources: list[str], start: int, duration: int
+) -> int:
+    """Pieces already booked on any of `resources` during [start, start +
+    duration) -- the clashes a new piece placed there would cause."""
+    return sum(
+        busy.get((r, p), 0) for r in resources for p in range(start, start + duration)
+    )
