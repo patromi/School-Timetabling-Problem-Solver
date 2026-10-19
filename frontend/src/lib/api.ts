@@ -61,3 +61,49 @@ export async function deleteInstance(id: string): Promise<{ status: string; mess
   }
   return res.json();
 }
+
+export async function startSolver(req: import("./types").SolveRequest): Promise<{ status: string; instance_id: string }> {
+  const res = await fetch(`${BASE_URL}/api/solver/start`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(req),
+  });
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(errorData.detail || `Błąd uruchamiania solvera: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function stopSolver(): Promise<{ status: string }> {
+  const res = await fetch(`${BASE_URL}/api/solver/stop`, {
+    method: "POST",
+  });
+  if (!res.ok) {
+    throw new Error(`Błąd zatrzymywania solvera: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function getSolverStatus(): Promise<import("./types").SolverStatus> {
+  const res = await fetch(`${BASE_URL}/api/solver/status`);
+  if (!res.ok) {
+    throw new Error(`Błąd pobierania statusu solvera: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function getSolverResult(): Promise<import("./types").TimetableResult> {
+  const res = await fetch(`${BASE_URL}/api/solver/result`);
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(errorData.detail || `Błąd pobierania wyniku rozwiązania: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export function getDownloadSolutionUrl(): string {
+  return `${BASE_URL}/api/solver/download`;
+}

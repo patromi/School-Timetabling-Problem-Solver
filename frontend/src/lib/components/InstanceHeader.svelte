@@ -8,9 +8,10 @@
     activeTab: string;
     onTabChange: (tab: string) => void;
     onEdit?: () => void;
+    onSolve?: () => void;
   }
 
-  let { instance, activeTab, onTabChange, onEdit }: Props = $props();
+  let { instance, activeTab, onTabChange, onEdit, onSolve }: Props = $props();
 
   let daysCount = $derived(
     instance.time_groups.filter((g) => g.kind.toLowerCase() === "day").length ||
@@ -60,6 +61,16 @@
     </div>
 
     <div class="flex items-center gap-2">
+      {#if onSolve}
+        <button
+          type="button"
+          onclick={onSolve}
+          class="flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg transition-all cursor-pointer shadow-xs active:scale-[0.99]"
+          title="Uruchom optymalizację planu dla tej szkoły"
+        >
+          <span>⚡ Generuj plan lekcji</span>
+        </button>
+      {/if}
       {#if onEdit}
         <button
           type="button"

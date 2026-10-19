@@ -10,6 +10,8 @@
   import ConstraintsTab from "../lib/components/ConstraintsTab.svelte";
   import TechnicalTab from "../lib/components/TechnicalTab.svelte";
   import InstanceEditor from "../lib/components/editor/InstanceEditor.svelte";
+  import SolverView from "../lib/components/SolverView.svelte";
+  import TimetableView from "../lib/components/TimetableView.svelte";
 
   let instances = $state<InstanceListItem[]>([]);
   let selectedInstanceId = $state<string | null>(null);
@@ -20,8 +22,8 @@
   let activeTab = $state<string>("overview");
   let selectedResourceFilter = $state<string>("");
 
-  // Main View: "explorer" | "editor"
-  let mainView = $state<"explorer" | "editor">("explorer");
+  // Main View: "explorer" | "editor" | "solver" | "timetable"
+  let mainView = $state<"explorer" | "editor" | "solver" | "timetable">("explorer");
   let editorInitialInstance = $state<InstanceDetail | null>(null);
 
   async function loadInstancesList() {
@@ -31,8 +33,11 @@
       const data = await fetchInstances();
       instances = data;
       if (data.length > 0 && !selectedInstanceId) {
-        // Prefer AU-BG-98 or first
-        const defaultInst = data.find((i: InstanceListItem) => i.id === "AU-BG-98") || data[0];
+        // Prefer custom LO_14_Poznan if available, otherwise AU-BG-98 or first
+        const defaultInst =
+          data.find((i: InstanceListItem) => i.id === "LO_14_Poznan") ||
+          data.find((i: InstanceListItem) => i.id === "AU-BG-98") ||
+          data[0];
         selectInstance(defaultInst.id);
       }
     } catch (err: any) {
@@ -81,6 +86,10 @@
     mainView = "editor";
   }
 
+  function handleSolveCurrentSchool() {
+    mainView = "solver";
+  }
+
   function handleSchoolSaved(savedId: string) {
     loadInstancesList().then(() => {
       selectInstance(savedId);
@@ -101,14 +110,18 @@
   <title>
     {mainView === "editor"
       ? "Kreator Szkoły — Plan Lekcji"
+      : mainView === "solver"
+      ? "Generator Planu (Solver) — Plan Lekcji"
+      : mainView === "timetable"
+      ? "Gotowy Plan Lekcji — Plan Lekcji"
       : instanceDetail
-        ? `${instanceDetail.name || instanceDetail.id} — Plan Lekcji`
-        : "Eksplorator Planów Lekcji"}
+      ? `${instanceDetail.name || instanceDetail.id} — Plan Lekcji`
+      : "Eksplorator Planów Lekcji"}
   </title>
 </svelte:head>
 
 <div class="h-screen w-screen overflow-hidden flex flex-col bg-slate-50 font-sans text-slate-800 antialiased">
-  <!-- Top Navigation Bar (Clean, Dignified, Human-friendly) -->
+  <!-- Top Navigation Bar -->
   <header class="h-14 border-b border-slate-200/90 bg-white px-6 flex items-center justify-between shrink-0 select-none shadow-2xs">
     <div class="flex items-center gap-4">
       <div class="flex items-center gap-3">
@@ -127,7 +140,7 @@
 
       <span class="text-slate-300">/</span>
 
-      <!-- View Switcher -->
+      <!-- View Switcher (4 Clean Views) -->
       <div class="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg text-xs font-semibold text-slate-600">
         <button
           type="button"
@@ -152,13 +165,37 @@
         >
           <span>✏️ Kreator / Edytor</span>
         </button>
+
+        <button
+          type="button"
+          onclick={() => (mainView = "solver")}
+          class={`px-3 py-1.5 rounded-md transition-all cursor-pointer flex items-center gap-1.5 ${
+            mainView === "solver"
+              ? "bg-white text-blue-600 shadow-xs font-bold"
+              : "hover:text-slate-900"
+          }`}
+        >
+          <span>⚡ Generuj plan (Solver)</span>
+        </button>
+
+        <button
+          type="button"
+          onclick={() => (mainView = "timetable")}
+          class={`px-3 py-1.5 rounded-md transition-all cursor-pointer flex items-center gap-1.5 ${
+            mainView === "timetable"
+              ? "bg-white text-emerald-700 shadow-xs font-bold"
+              : "hover:text-slate-900"
+          }`}
+        >
+          <span>📅 Gotowy plan lekcji</span>
+        </button>
       </div>
     </div>
 
     <!-- Status -->
     <div class="flex items-center gap-2 text-xs text-slate-500 font-medium">
       <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
-      <span>Silnik solvera gotowy (:8000)</span>
+      <span>Silnik solvera aktywny (:8000)</span>
     </div>
   </header>
 
@@ -169,6 +206,19 @@
         initialInstance={editorInitialInstance}
         onSaved={handleSchoolSaved}
         onCancel={handleCancelEditor}
+      />
+    </div>
+  {:else if mainView === "solver"}
+    <div class="flex-1 overflow-y-auto">
+      <SolverView
+        selectedInstanceId={selectedInstanceId}
+        onViewTimetable={() => (mainView = "timetable")}
+      />
+    </div>
+  {:else if mainView === "timetable"}
+    <div class="flex-1 overflow-y-auto">
+      <TimetableView
+        onGoToSolver={() => (mainView = "solver")}
       />
     </div>
   {:else}
@@ -211,6 +261,7 @@
             {activeTab}
             onTabChange={(tab) => (activeTab = tab)}
             onEdit={handleEditCurrentSchool}
+            onSolve={handleSolveCurrentSchool}
           />
 
           <!-- Tab Content Body (Scrollable) -->
