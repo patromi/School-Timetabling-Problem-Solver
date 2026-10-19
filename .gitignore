@@ -58,11 +58,18 @@ data/processed/*
 !data/processed/.gitkeep
 data/results/*
 !data/results/.gitkeep
+data/custom_instances/*
+!data/custom_instances/.gitkeep
 generated/*
 !generated/.gitkeep
 output/*
 !data/results/summary.csv
 !data/results/summary.md
+
+# Frontend dependencies and build caches
+node_modules/
+.svelte-kit/
+frontend/dist/
 
 # IDEs and Editors
 .vscode/*

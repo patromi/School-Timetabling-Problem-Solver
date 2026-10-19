@@ -1,5 +1,10 @@
 <script lang="ts">
   import type { InstanceDetail } from "../types";
+  import {
+    computeResourceWorkloads,
+    CONSTRAINT_FRIENDLY_MAP,
+    getResourceCategory,
+  } from "../school_helpers";
 
   interface Props {
     instance: InstanceDetail;
@@ -8,175 +13,223 @@
 
   let { instance, onGoToTab }: Props = $props();
 
-  // Constraints breakdown by type
-  let constraintTypesMap = $derived.by(() => {
-    const map: Record<string, { total: number; hard: number; soft: number; weightSum: number }> = {};
-    for (const c of instance.constraints) {
-      if (!map[c.type]) {
-        map[c.type] = { total: 0, hard: 0, soft: 0, weightSum: 0 };
-      }
-      map[c.type].total += 1;
-      if (c.required) map[c.type].hard += 1;
-      else map[c.type].soft += 1;
-      map[c.type].weightSum += c.weight;
-    }
-    return Object.entries(map).sort((a, b) => b[1].total - a[1].total);
-  });
+  let daysCount = $derived(
+    instance.time_groups.filter((g) => g.kind.toLowerCase() === "day").length ||
+      instance.time_groups.length || 5
+  );
 
-  // Duration distribution
-  let durationDist = $derived.by(() => {
-    const dist: Record<number, number> = {};
-    for (const e of instance.events) {
-      dist[e.duration] = (dist[e.duration] || 0) + 1;
-    }
-    return Object.entries(dist).sort((a, b) => Number(a[0]) - Number(b[0]));
-  });
+  let totalDuration = $derived(
+    instance.events.reduce((sum, e) => sum + (e.duration || 1), 0)
+  );
 
-  // Preassigned vs unassigned
-  let preassignedTimes = $derived(
-    instance.events.filter((e) => e.time_ref !== null).length
+  let teachers = $derived(
+    instance.resources.filter((r) => getResourceCategory(r, instance) === "teacher")
+  );
+
+  let classes = $derived(
+    instance.resources.filter((r) => getResourceCategory(r, instance) === "class")
+  );
+
+  let rooms = $derived(
+    instance.resources.filter((r) => getResourceCategory(r, instance) === "room")
+  );
+
+  let workloads = $derived(computeResourceWorkloads(instance));
+
+  let avgTeacherLoad = $derived(
+    teachers.length > 0 ? Math.round(totalDuration / teachers.length) : 0
+  );
+
+  let avgClassLoad = $derived(
+    classes.length > 0 ? Math.round(totalDuration / classes.length) : 0
+  );
+
+  let hardConstraints = $derived(
+    instance.constraints.filter((c) => c.required).length
+  );
+
+  let softConstraints = $derived(
+    instance.constraints.filter((c) => !c.required).length
+  );
+
+  // Główne typy reguł występujące w tej szkole
+  let uniqueConstraintTypes = $derived(
+    Array.from(new Set(instance.constraints.map((c) => c.type)))
   );
 </script>
 
-<div class="p-6 flex flex-col gap-6 max-w-7xl mx-auto text-zinc-200">
-  <!-- Informational Banner -->
-  <div class="bg-zinc-900 border border-zinc-800 rounded-lg p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-    <div>
-      <h2 class="text-sm font-bold text-white uppercase tracking-wider font-mono">
-        Status instancji: {instance.id}
+<div class="p-6 max-w-6xl mx-auto flex flex-col gap-6 text-slate-800">
+  <!-- Welcome / School Introduction Banner -->
+  <div class="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+    <div class="flex flex-col gap-1.5 max-w-2xl">
+      <div class="flex items-center gap-2">
+        <span class="text-xs font-semibold px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full border border-blue-100">
+          Gotowy do układania planu
+        </span>
+        <span class="text-xs text-slate-400">•</span>
+        <span class="text-xs text-slate-500">Arkusz zweryfikowany</span>
+      </div>
+      <h2 class="text-lg font-bold text-slate-900 tracking-tight">
+        Podsumowanie organizacyjne: {instance.name || instance.id}
       </h2>
-      <p class="text-xs text-zinc-400 mt-0.5">
-        Instancja gotowa do przeszukiwania przez solver. Wszystkie referencje poprawnie zindeksowane.
+      <p class="text-xs text-slate-600 leading-relaxed">
+        Poniżej przedstawiono główne parametry planu lekcji. Tydzień szkolny obejmuje <strong>{daysCount} dni</strong> oraz łącznie <strong>{instance.times.length} godzin lekcyjnych</strong> w siatce. Wszystkie zajęcia wymagają optymalnego rozłożenia w czasie i przestrzeni.
       </p>
     </div>
-    <div class="flex items-center gap-2 font-mono text-xs">
-      <span class="px-2 py-1 bg-zinc-800 rounded border border-zinc-700">
-        Prealokacje czasu: <strong class="text-amber-400">{preassignedTimes}</strong> / {instance.events.length}
-      </span>
-      <span class="px-2 py-1 bg-zinc-800 rounded border border-zinc-700">
-        Typy zasobów: <strong class="text-amber-400">{instance.resource_types.length}</strong>
-      </span>
+
+    <!-- Quick action links -->
+    <div class="flex flex-row md:flex-col gap-2 shrink-0 w-full md:w-auto">
+      <button
+        onclick={() => onGoToTab("resources")}
+        class="flex-1 md:flex-initial px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-lg transition-all cursor-pointer text-center"
+      >
+        👥 Przejdź do kadry i klas
+      </button>
+      <button
+        onclick={() => onGoToTab("events")}
+        class="flex-1 md:flex-initial px-4 py-2 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-lg border border-slate-200 transition-all cursor-pointer text-center"
+      >
+        📚 Zobacz wykaz lekcji
+      </button>
     </div>
   </div>
 
-  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-    <!-- Constraints Profile Table -->
-    <div class="bg-zinc-900 border border-zinc-800 rounded-lg p-4 flex flex-col gap-3">
-      <div class="flex items-center justify-between">
-        <h3 class="text-xs font-bold text-zinc-300 uppercase tracking-wider font-mono">
-          Rozkład ograniczeń (16 typów XHSTT)
-        </h3>
-        <button
-          onclick={() => onGoToTab("constraints")}
-          class="text-xs text-amber-400 hover:text-amber-300 font-mono underline cursor-pointer"
-        >
-          Przejdź do reguł →
-        </button>
+  <!-- 3 Organization Cards -->
+  <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
+    <!-- Card 1: Kadra i Uczniowie -->
+    <div class="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs flex flex-col justify-between">
+      <div>
+        <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+          <span class="text-xs font-bold uppercase tracking-wider text-slate-500">👥 Społeczność szkolna</span>
+          <button type="button" class="text-xs font-semibold text-blue-600 cursor-pointer hover:underline bg-transparent border-0 p-0" onclick={() => onGoToTab("resources")}>Szczegóły →</button>
+        </div>
+        <div class="mt-4 flex flex-col gap-3">
+          <div class="flex items-center justify-between text-xs">
+            <span class="text-slate-600">Nauczyciele prowadzący:</span>
+            <span class="font-bold text-slate-900">{teachers.length || 0} osób</span>
+          </div>
+          <div class="flex items-center justify-between text-xs">
+            <span class="text-slate-600">Średnie pensum nauczyciela:</span>
+            <span class="font-semibold text-slate-900">{avgTeacherLoad} godz./tydz.</span>
+          </div>
+          <div class="flex items-center justify-between text-xs">
+            <span class="text-slate-600">Oddziały klasowe:</span>
+            <span class="font-bold text-slate-900">{classes.length || instance.resources.length} oddziałów</span>
+          </div>
+          <div class="flex items-center justify-between text-xs">
+            <span class="text-slate-600">Średni wymiar lekcji klasy:</span>
+            <span class="font-semibold text-slate-900">{avgClassLoad} godz./tydz.</span>
+          </div>
+        </div>
       </div>
-
-      <div class="overflow-x-auto">
-        <table class="w-full text-left text-xs font-mono">
-          <thead class="text-zinc-500 border-b border-zinc-800 text-[11px]">
-            <tr>
-              <th class="pb-2">Typ reguły</th>
-              <th class="pb-2 text-right">Liczba</th>
-              <th class="pb-2 text-right">Twarde</th>
-              <th class="pb-2 text-right">Miękkie</th>
-              <th class="pb-2 text-right">Wagi</th>
-            </tr>
-          </thead>
-          <tbody class="divide-y divide-zinc-800/60">
-            {#each constraintTypesMap as [type, stats]}
-              <tr class="hover:bg-zinc-800/40">
-                <td class="py-1.5 font-medium text-zinc-200">{type}</td>
-                <td class="py-1.5 text-right font-bold">{stats.total}</td>
-                <td class="py-1.5 text-right">
-                  {#if stats.hard > 0}
-                    <span class="text-rose-400 font-semibold">{stats.hard}</span>
-                  {:else}
-                    <span class="text-zinc-600">0</span>
-                  {/if}
-                </td>
-                <td class="py-1.5 text-right">
-                  {#if stats.soft > 0}
-                    <span class="text-amber-400 font-semibold">{stats.soft}</span>
-                  {:else}
-                    <span class="text-zinc-600">0</span>
-                  {/if}
-                </td>
-                <td class="py-1.5 text-right text-zinc-400">{stats.weightSum}</td>
-              </tr>
-            {/each}
-          </tbody>
-        </table>
+      <div class="mt-4 pt-3 border-t border-slate-100 text-[11px] text-slate-400">
+        Łącznie {instance.resources.length} zdefiniowanych podmiotów
       </div>
     </div>
 
-    <!-- Events & Resources Breakdown -->
-    <div class="flex flex-col gap-6">
-      <!-- Duration Breakdown -->
-      <div class="bg-zinc-900 border border-zinc-800 rounded-lg p-4 flex flex-col gap-3">
-        <div class="flex items-center justify-between">
-          <h3 class="text-xs font-bold text-zinc-300 uppercase tracking-wider font-mono">
-            Rozkład długości lekcji (Duration)
-          </h3>
-          <button
-            onclick={() => onGoToTab("events")}
-            class="text-xs text-amber-400 hover:text-amber-300 font-mono underline cursor-pointer"
-          >
-            Zobacz lekcje →
-          </button>
+    <!-- Card 2: Baza lokalowa i Tydzień -->
+    <div class="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs flex flex-col justify-between">
+      <div>
+        <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+          <span class="text-xs font-bold uppercase tracking-wider text-slate-500">🚪 Sale i Harmonogram</span>
+          <span class="text-xs font-semibold text-slate-400 font-mono">{instance.times.length} slotów</span>
         </div>
-
-        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
-          {#each durationDist as [dur, count]}
-            <div class="bg-zinc-950 p-2.5 rounded border border-zinc-800 flex flex-col items-center">
-              <span class="text-[11px] text-zinc-400 font-mono">{dur} {Number(dur) === 1 ? "godzina" : "godziny"}</span>
-              <span class="text-lg font-bold font-mono text-zinc-100 mt-0.5">{count}</span>
-              <span class="text-[10px] text-zinc-500 font-mono">
-                {Math.round((count / instance.events.length) * 100)}% zdarzeń
-              </span>
-            </div>
-          {/each}
+        <div class="mt-4 flex flex-col gap-3">
+          <div class="flex items-center justify-between text-xs">
+            <span class="text-slate-600">Sale i pracownie dydaktyczne:</span>
+            <span class="font-bold text-slate-900">{rooms.length || 0} sal</span>
+          </div>
+          <div class="flex items-center justify-between text-xs">
+            <span class="text-slate-600">Dni pracy w tygodniu:</span>
+            <span class="font-bold text-slate-900">{daysCount} dni (Pon-Pt)</span>
+          </div>
+          <div class="flex items-center justify-between text-xs">
+            <span class="text-slate-600">Lekcji dziennie w siatce:</span>
+            <span class="font-semibold text-slate-900">ok. {Math.round(instance.times.length / daysCount)} godzin</span>
+          </div>
+          <div class="flex items-center justify-between text-xs">
+            <span class="text-slate-600">Tygodniowy wolumen lekcji:</span>
+            <span class="font-bold text-slate-900">{totalDuration} godzin</span>
+          </div>
         </div>
       </div>
+      <div class="mt-4 pt-3 border-t border-slate-100 text-[11px] text-slate-400">
+        Średnie obciążenie sal: {rooms.length > 0 ? Math.round(totalDuration / rooms.length) : 0} godz./tydz.
+      </div>
+    </div>
 
-      <!-- Quick Exploration Cards -->
-      <div class="bg-zinc-900 border border-zinc-800 rounded-lg p-4 flex flex-col gap-3">
-        <h3 class="text-xs font-bold text-zinc-300 uppercase tracking-wider font-mono">
-          Struktura danych
+    <!-- Card 3: Reguły Jakościowe i Wymogi -->
+    <div class="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs flex flex-col justify-between">
+      <div>
+        <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+          <span class="text-xs font-bold uppercase tracking-wider text-slate-500">⚖️ Standardy planu</span>
+          <button type="button" class="text-xs font-semibold text-blue-600 cursor-pointer hover:underline bg-transparent border-0 p-0" onclick={() => onGoToTab("constraints")}>Zobacz reguły →</button>
+        </div>
+        <div class="mt-4 flex flex-col gap-3">
+          <div class="flex items-center justify-between text-xs">
+            <span class="text-slate-600">Wymogi bezwzględne (konieczne):</span>
+            <span class="font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded-full">{hardConstraints} warunków</span>
+          </div>
+          <div class="flex items-center justify-between text-xs">
+            <span class="text-slate-600">Preferencje (wygoda uczniów i kadry):</span>
+            <span class="font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded-full">{softConstraints} reguł</span>
+          </div>
+          <div class="flex items-center justify-between text-xs">
+            <span class="text-slate-600">Główne rodzaje kryteriów:</span>
+            <span class="font-semibold text-slate-900">{uniqueConstraintTypes.length} standardów</span>
+          </div>
+        </div>
+      </div>
+      <div class="mt-4 pt-3 border-t border-slate-100 text-[11px] text-slate-400">
+        Solver automatycznie optymalizuje spełnienie obu kryteriów
+      </div>
+    </div>
+  </div>
+
+  <!-- Friendly Rules Section (Przejrzyste zasady dla człowieka) -->
+  <div class="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-xs flex flex-col gap-4">
+    <div class="flex items-center justify-between">
+      <div>
+        <h3 class="text-sm font-bold text-slate-900">
+          Zasady i cele organizacji planu lekcji w tej szkole
         </h3>
-        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs font-mono">
-          <button
-            onclick={() => onGoToTab("times")}
-            class="p-2.5 bg-zinc-950 hover:bg-zinc-800/80 rounded border border-zinc-800 text-left transition-colors cursor-pointer flex flex-col justify-between"
-          >
-            <span class="text-zinc-400 text-[11px]">Dni i sloty</span>
-            <span class="text-amber-400 font-bold text-sm mt-1">{instance.times.length} slotów</span>
-            <span class="text-zinc-500 text-[10px] mt-1">{instance.time_groups.length} grup czasowych</span>
-          </button>
-
-          <button
-            onclick={() => onGoToTab("resources")}
-            class="p-2.5 bg-zinc-950 hover:bg-zinc-800/80 rounded border border-zinc-800 text-left transition-colors cursor-pointer flex flex-col justify-between"
-          >
-            <span class="text-zinc-400 text-[11px]">Zasoby</span>
-            <span class="text-amber-400 font-bold text-sm mt-1">{instance.resources.length} zasobów</span>
-            <span class="text-zinc-500 text-[10px] mt-1">{instance.resource_types.length} typów zasobów</span>
-          </button>
-
-          <button
-            onclick={() => onGoToTab("groups")}
-            class="p-2.5 bg-zinc-950 hover:bg-zinc-800/80 rounded border border-zinc-800 text-left transition-colors cursor-pointer flex flex-col justify-between"
-          >
-            <span class="text-zinc-400 text-[11px]">Grupy obiektów</span>
-            <span class="text-amber-400 font-bold text-sm mt-1">
-              {instance.time_groups.length + instance.resource_groups.length + instance.event_groups.length} grup
-            </span>
-            <span class="text-zinc-500 text-[10px] mt-1">Czas / Zasób / Kurs</span>
-          </button>
-        </div>
+        <p class="text-xs text-slate-500 mt-0.5">
+          Algorytm optymalizacyjny uwzględnia następujące standardy dydaktyczne i higieny nauki:
+        </p>
       </div>
+      <button
+        onclick={() => onGoToTab("constraints")}
+        class="text-xs font-semibold text-blue-600 hover:text-blue-700 cursor-pointer"
+      >
+        Pełna lista ({instance.constraints.length}) →
+      </button>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-1">
+      {#each uniqueConstraintTypes.slice(0, 6) as type}
+        {@const info = CONSTRAINT_FRIENDLY_MAP[type] || { title: type, description: "Zasada organizacji zajęć w placówce.", isHardByDefault: true }}
+        <div class="p-3.5 bg-slate-50/80 rounded-xl border border-slate-200/70 flex items-start gap-3">
+          <div class="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center shrink-0 text-sm shadow-2xs">
+            {#if type.includes("Clash")}
+              🛡️
+            {:else if type.includes("Time")}
+              ⏱️
+            {:else if type.includes("Gap")}
+              ☕
+            {:else if type.includes("Day") || type.includes("Busy")}
+              ⚖️
+            {:else if type.includes("Spread")}
+              🗓️
+            {:else}
+              📋
+            {/if}
+          </div>
+          <div class="flex flex-col gap-1">
+            <span class="text-xs font-bold text-slate-900">{info.title}</span>
+            <p class="text-[11px] text-slate-600 leading-snug">{info.description}</p>
+          </div>
+        </div>
+      {/each}
     </div>
   </div>
 </div>

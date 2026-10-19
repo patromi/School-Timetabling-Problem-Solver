@@ -5,11 +5,11 @@
   import InstanceSidebar from "../lib/components/InstanceSidebar.svelte";
   import InstanceHeader from "../lib/components/InstanceHeader.svelte";
   import OverviewTab from "../lib/components/OverviewTab.svelte";
-  import TimesTab from "../lib/components/TimesTab.svelte";
   import ResourcesTab from "../lib/components/ResourcesTab.svelte";
   import EventsTab from "../lib/components/EventsTab.svelte";
   import ConstraintsTab from "../lib/components/ConstraintsTab.svelte";
-  import GroupsTab from "../lib/components/GroupsTab.svelte";
+  import TechnicalTab from "../lib/components/TechnicalTab.svelte";
+  import InstanceEditor from "../lib/components/editor/InstanceEditor.svelte";
 
   let instances = $state<InstanceListItem[]>([]);
   let selectedInstanceId = $state<string | null>(null);
@@ -20,6 +20,10 @@
   let activeTab = $state<string>("overview");
   let selectedResourceFilter = $state<string>("");
 
+  // Main View: "explorer" | "editor"
+  let mainView = $state<"explorer" | "editor">("explorer");
+  let editorInitialInstance = $state<InstanceDetail | null>(null);
+
   async function loadInstancesList() {
     loadingList = true;
     errorMessage = null;
@@ -27,12 +31,12 @@
       const data = await fetchInstances();
       instances = data;
       if (data.length > 0 && !selectedInstanceId) {
-        // Prefer AU-BG-98 if present, otherwise first instance
+        // Prefer AU-BG-98 or first
         const defaultInst = data.find((i: InstanceListItem) => i.id === "AU-BG-98") || data[0];
         selectInstance(defaultInst.id);
       }
     } catch (err: any) {
-      errorMessage = err.message || "Błąd wczytywania listy instancji";
+      errorMessage = err.message || "Błąd wczytywania listy szkół";
     } finally {
       loadingList = false;
     }
@@ -47,7 +51,7 @@
       const detail = await fetchInstanceDetails(id);
       instanceDetail = detail;
     } catch (err: any) {
-      errorMessage = err.message || `Błąd wczytywania instancji ${id}`;
+      errorMessage = err.message || `Błąd wczytywania szczegółów szkoły ${id}`;
       instanceDetail = null;
     } finally {
       loadingDetail = false;
@@ -67,6 +71,27 @@
     activeTab = "events";
   }
 
+  function handleNewSchool() {
+    editorInitialInstance = null;
+    mainView = "editor";
+  }
+
+  function handleEditCurrentSchool() {
+    editorInitialInstance = instanceDetail;
+    mainView = "editor";
+  }
+
+  function handleSchoolSaved(savedId: string) {
+    loadInstancesList().then(() => {
+      selectInstance(savedId);
+      mainView = "explorer";
+    });
+  }
+
+  function handleCancelEditor() {
+    mainView = "explorer";
+  }
+
   onMount(() => {
     loadInstancesList();
   });
@@ -74,103 +99,149 @@
 
 <svelte:head>
   <title>
-    {instanceDetail ? `${instanceDetail.id} — XHSTT Solver` : "XHSTT Solver Studio"}
+    {mainView === "editor"
+      ? "Kreator Szkoły — Plan Lekcji"
+      : instanceDetail
+        ? `${instanceDetail.name || instanceDetail.id} — Plan Lekcji`
+        : "Eksplorator Planów Lekcji"}
   </title>
 </svelte:head>
 
-<div class="h-screen w-screen overflow-hidden flex flex-col bg-zinc-950 font-sans text-zinc-100">
-  <!-- Top Navigation Bar -->
-  <header class="h-12 border-b border-zinc-800 bg-zinc-900/90 px-4 flex items-center justify-between shrink-0 select-none">
-    <div class="flex items-center gap-3">
-      <div class="flex items-center gap-2">
-        <span class="w-3 h-3 rounded-full bg-amber-500 animate-pulse"></span>
-        <span class="font-mono font-bold text-sm tracking-tight text-white">XHSTT Solver Studio</span>
+<div class="h-screen w-screen overflow-hidden flex flex-col bg-slate-50 font-sans text-slate-800 antialiased">
+  <!-- Top Navigation Bar (Clean, Dignified, Human-friendly) -->
+  <header class="h-14 border-b border-slate-200/90 bg-white px-6 flex items-center justify-between shrink-0 select-none shadow-2xs">
+    <div class="flex items-center gap-4">
+      <div class="flex items-center gap-3">
+        <div class="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center font-bold text-base shadow-xs">
+          📅
+        </div>
+        <div>
+          <h1 class="text-sm font-bold text-slate-900 leading-none">
+            Eksplorator Planów Lekcji
+          </h1>
+          <p class="text-[11px] text-slate-400 mt-0.5">
+            System analizy i optymalizacji tygodniowych planów zajęć szkolnych
+          </p>
+        </div>
       </div>
-      <span class="text-zinc-600">/</span>
-      <div class="flex items-center gap-1 font-mono text-xs">
-        <span class="px-2 py-0.5 bg-zinc-800 text-amber-400 font-semibold rounded border border-zinc-700">
-          Eksplorator Instancji
-        </span>
+
+      <span class="text-slate-300">/</span>
+
+      <!-- View Switcher -->
+      <div class="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg text-xs font-semibold text-slate-600">
+        <button
+          type="button"
+          onclick={() => (mainView = "explorer")}
+          class={`px-3 py-1.5 rounded-md transition-all cursor-pointer flex items-center gap-1.5 ${
+            mainView === "explorer"
+              ? "bg-white text-slate-900 shadow-xs font-bold"
+              : "hover:text-slate-900"
+          }`}
+        >
+          <span>🔍 Przeglądarka szkół</span>
+        </button>
+
+        <button
+          type="button"
+          onclick={handleNewSchool}
+          class={`px-3 py-1.5 rounded-md transition-all cursor-pointer flex items-center gap-1.5 ${
+            mainView === "editor"
+              ? "bg-white text-blue-600 shadow-xs font-bold"
+              : "hover:text-slate-900"
+          }`}
+        >
+          <span>✏️ Kreator / Edytor</span>
+        </button>
       </div>
     </div>
 
-    <div class="flex items-center gap-4 text-xs font-mono">
-      <div class="flex items-center gap-2 text-zinc-400">
-        <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
-        <span>Backend API aktywny (:8000)</span>
-      </div>
+    <!-- Status -->
+    <div class="flex items-center gap-2 text-xs text-slate-500 font-medium">
+      <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+      <span>Silnik solvera gotowy (:8000)</span>
     </div>
   </header>
 
   <!-- Main Content Layout -->
-  <div class="flex-1 flex overflow-hidden">
-    <!-- Left Sidebar: Instance Selection & Upload -->
-    <InstanceSidebar
-      {instances}
-      selectedId={selectedInstanceId}
-      loading={loadingList}
-      onSelect={selectInstance}
-      onUploaded={handleUploaded}
-    />
+  {#if mainView === "editor"}
+    <div class="flex-1 overflow-hidden">
+      <InstanceEditor
+        initialInstance={editorInitialInstance}
+        onSaved={handleSchoolSaved}
+        onCancel={handleCancelEditor}
+      />
+    </div>
+  {:else}
+    <div class="flex-1 flex overflow-hidden">
+      <!-- Left Sidebar: Instance Selection & Upload -->
+      <InstanceSidebar
+        {instances}
+        selectedId={selectedInstanceId}
+        loading={loadingList}
+        onSelect={selectInstance}
+        onUploaded={handleUploaded}
+        onNewInstance={handleNewSchool}
+      />
 
-    <!-- Right Workspace -->
-    <main class="flex-1 flex flex-col overflow-hidden bg-zinc-950">
-      {#if loadingDetail}
-        <div class="flex-1 flex flex-col items-center justify-center gap-3 text-zinc-400 font-mono text-sm">
-          <div class="w-6 h-6 border-2 border-amber-500 border-t-transparent rounded-full animate-spin"></div>
-          <span>Wczytywanie szczegółów instancji {selectedInstanceId}...</span>
-        </div>
-      {:else if errorMessage}
-        <div class="flex-1 flex flex-col items-center justify-center p-8 text-center">
-          <div class="bg-rose-950/40 border border-rose-800 p-6 rounded-lg max-w-md flex flex-col gap-3 font-mono text-xs">
-            <span class="text-rose-400 font-bold text-sm">Wystąpił błąd</span>
-            <p class="text-zinc-300">{errorMessage}</p>
-            <button
-              onclick={() => selectedInstanceId && selectInstance(selectedInstanceId)}
-              class="mt-2 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-white rounded transition-colors cursor-pointer border border-zinc-700"
-            >
-              Spróbuj ponownie
-            </button>
+      <!-- Right Workspace -->
+      <main class="flex-1 flex flex-col overflow-hidden bg-slate-50">
+        {#if loadingDetail}
+          <div class="flex-1 flex flex-col items-center justify-center gap-3 text-slate-400 text-sm">
+            <div class="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+            <span>Wczytywanie arkusza organizacyjnego...</span>
           </div>
-        </div>
-      {:else if instanceDetail}
-        <!-- Instance Header with KPIs & Navigation Tabs -->
-        <InstanceHeader
-          instance={instanceDetail}
-          {activeTab}
-          onTabChange={(tab) => (activeTab = tab)}
-        />
+        {:else if errorMessage}
+          <div class="flex-1 flex flex-col items-center justify-center p-8 text-center">
+            <div class="bg-rose-50 border border-rose-200 p-6 rounded-2xl max-w-md flex flex-col gap-3 text-xs shadow-xs">
+              <span class="text-rose-700 font-bold text-sm">Wystąpił problem z wczytaniem danych</span>
+              <p class="text-slate-600">{errorMessage}</p>
+              <button
+                type="button"
+                onclick={() => selectedInstanceId && selectInstance(selectedInstanceId)}
+                class="mt-2 px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white font-semibold rounded-lg transition-all cursor-pointer"
+              >
+                Spróbuj ponownie
+              </button>
+            </div>
+          </div>
+        {:else if instanceDetail}
+          <!-- Instance Header with KPIs & Clean Tabs -->
+          <InstanceHeader
+            instance={instanceDetail}
+            {activeTab}
+            onTabChange={(tab) => (activeTab = tab)}
+            onEdit={handleEditCurrentSchool}
+          />
 
-        <!-- Tab Content Body (Scrollable) -->
-        <div class="flex-1 overflow-y-auto">
-          {#if activeTab === "overview"}
-            <OverviewTab
-              instance={instanceDetail}
-              onGoToTab={(tab) => (activeTab = tab)}
-            />
-          {:else if activeTab === "times"}
-            <TimesTab instance={instanceDetail} />
-          {:else if activeTab === "resources"}
-            <ResourcesTab
-              instance={instanceDetail}
-              onSelectResourceForEvents={handleResourceSelectedForEvents}
-            />
-          {:else if activeTab === "events"}
-            <EventsTab
-              instance={instanceDetail}
-              {selectedResourceFilter}
-            />
-          {:else if activeTab === "constraints"}
-            <ConstraintsTab instance={instanceDetail} />
-          {:else if activeTab === "groups"}
-            <GroupsTab instance={instanceDetail} />
-          {/if}
-        </div>
-      {:else}
-        <div class="flex-1 flex items-center justify-center text-zinc-500 font-mono text-sm">
-          Wybierz instancję z listy po lewej stronie, aby rozpocząć przeglądanie.
-        </div>
-      {/if}
-    </main>
-  </div>
+          <!-- Tab Content Body (Scrollable) -->
+          <div class="flex-1 overflow-y-auto">
+            {#if activeTab === "overview"}
+              <OverviewTab
+                instance={instanceDetail}
+                onGoToTab={(tab) => (activeTab = tab)}
+              />
+            {:else if activeTab === "resources"}
+              <ResourcesTab
+                instance={instanceDetail}
+                onSelectResourceForEvents={handleResourceSelectedForEvents}
+              />
+            {:else if activeTab === "events"}
+              <EventsTab
+                instance={instanceDetail}
+                {selectedResourceFilter}
+              />
+            {:else if activeTab === "constraints"}
+              <ConstraintsTab instance={instanceDetail} />
+            {:else if activeTab === "technical"}
+              <TechnicalTab instance={instanceDetail} />
+            {/if}
+          </div>
+        {:else}
+          <div class="flex-1 flex items-center justify-center text-slate-400 text-sm">
+            Wybierz szkołę z listy po lewej stronie, aby wyświetlić jej arkusz organizacyjny.
+          </div>
+        {/if}
+      </main>
+    </div>
+  {/if}
 </div>

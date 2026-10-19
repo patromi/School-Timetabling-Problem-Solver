@@ -8,9 +8,10 @@
     loading: boolean;
     onSelect: (id: string) => void;
     onUploaded: (ids: string[]) => void;
+    onNewInstance?: () => void;
   }
 
-  let { instances, selectedId, loading, onSelect, onUploaded }: Props = $props();
+  let { instances, selectedId, loading, onSelect, onUploaded, onNewInstance }: Props = $props();
 
   let searchQuery = $state("");
   let filterType = $state<"all" | "benchmark" | "custom">("all");
@@ -41,27 +42,40 @@
       onUploaded(res.imported_ids);
       if (fileInputRef) fileInputRef.value = "";
     } catch (err: any) {
-      uploadError = err.message || "Błąd podczas wgrywania pliku";
+      uploadError = err.message || "Błąd podczas wgrywania pliku XML";
     } finally {
       isUploading = false;
     }
   }
 </script>
 
-<aside class="w-80 shrink-0 bg-zinc-900 border-r border-zinc-800 flex flex-col h-full select-none text-zinc-100">
+<aside class="w-80 shrink-0 bg-white border-r border-slate-200/80 flex flex-col h-full select-none text-slate-800 shadow-xs">
   <!-- Sidebar Header -->
-  <div class="p-3 border-b border-zinc-800 bg-zinc-900/90 flex flex-col gap-2">
+  <div class="p-4 border-b border-slate-100 flex flex-col gap-3 bg-white">
     <div class="flex items-center justify-between">
-      <span class="text-xs font-semibold uppercase tracking-wider text-zinc-400">Instancje XHSTT</span>
-      <span class="text-xs bg-zinc-800 text-zinc-300 px-2 py-0.5 rounded font-mono">
-        {filteredInstances.length} / {instances.length}
+      <span class="text-xs font-bold uppercase tracking-wider text-slate-500">
+        Wybór placówki
+      </span>
+      <span class="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-medium">
+        {filteredInstances.length} {filteredInstances.length === 1 ? "szkoła" : "szkół"}
       </span>
     </div>
 
-    <!-- Upload Button & File Input -->
-    <div>
-      <input
-        type="file"
+    <!-- Actions (New School + Upload) -->
+    <div class="flex flex-col gap-1.5">
+      {#if onNewInstance}
+        <button
+          type="button"
+          onclick={onNewInstance}
+          class="w-full flex items-center justify-center gap-2 py-2 px-3 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg transition-all cursor-pointer shadow-xs active:scale-[0.99]"
+        >
+          <span>+ Utwórz nową szkołę</span>
+        </button>
+      {/if}
+
+      <div>
+        <input
+          type="file"
         accept=".xml"
         bind:this={fileInputRef}
         onchange={handleFileUpload}
@@ -70,50 +84,52 @@
       />
       <label
         for="xml-upload-input"
-        class="w-full flex items-center justify-center gap-2 py-1.5 px-3 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-medium rounded border border-zinc-700 cursor-pointer transition-colors"
+        class="w-full flex items-center justify-center gap-2 py-2 px-3 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-semibold rounded-lg border border-slate-200 cursor-pointer transition-all active:scale-[0.99]"
       >
-        <span>+ Wgraj instancję XML</span>
+        <span>📁 Wgraj plik XML szkoły</span>
         {#if isUploading}
-          <span class="text-amber-400 animate-spin">⏳</span>
+          <span class="text-blue-600 animate-spin">⏳</span>
         {/if}
       </label>
       {#if uploadError}
-        <p class="mt-1 text-[11px] text-red-400 font-mono leading-tight">{uploadError}</p>
+        <p class="mt-1.5 text-xs text-rose-600 leading-tight bg-rose-50 p-2 rounded border border-rose-100">{uploadError}</p>
       {/if}
+    </div>
     </div>
 
     <!-- Search Input -->
-    <div>
+    <div class="relative">
       <input
         type="text"
         bind:value={searchQuery}
-        placeholder="Filtruj instancje (ID lub nazwa)..."
-        class="w-full px-2.5 py-1.5 text-xs bg-zinc-950 border border-zinc-800 rounded text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-zinc-500 font-mono"
+        placeholder="Szukaj po nazwie lub symbolu..."
+        class="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
       />
+      <span class="absolute left-2.5 top-2 text-slate-400 text-xs">🔍</span>
     </div>
 
     <!-- Category Filters -->
-    <div class="grid grid-cols-3 gap-1 text-[11px]">
+    <div class="grid grid-cols-3 gap-1 bg-slate-100 p-0.5 rounded-lg text-xs font-medium text-slate-600">
       <button
         onclick={() => (filterType = "all")}
-        class={`py-1 rounded text-center transition-colors ${
-          filterType === "all" ? "bg-zinc-700 text-white font-medium" : "bg-zinc-800/60 text-zinc-400 hover:text-zinc-200"
+        class={`py-1 rounded-md text-center transition-all cursor-pointer ${
+          filterType === "all" ? "bg-white text-slate-900 shadow-xs font-semibold" : "hover:text-slate-900"
         }`}
       >
         Wszystkie
       </button>
       <button
         onclick={() => (filterType = "benchmark")}
-        class={`py-1 rounded text-center transition-colors ${
-          filterType === "benchmark" ? "bg-zinc-700 text-white font-medium" : "bg-zinc-800/60 text-zinc-400 hover:text-zinc-200"
+        class={`py-1 rounded-md text-center transition-all cursor-pointer ${
+          filterType === "benchmark" ? "bg-white text-slate-900 shadow-xs font-semibold" : "hover:text-slate-900"
         }`}
       >
-        Benchmark
+        Wzorcowe
       </button>
       <button
         onclick={() => (filterType = "custom")}
-        class={`py-1 rounded text-center transition-colors ${
-          filterType === "custom" ? "bg-zinc-700 text-white font-medium" : "bg-zinc-800/60 text-zinc-400 hover:text-zinc-200"
+        class={`py-1 rounded-md text-center transition-all cursor-pointer ${
+          filterType === "custom" ? "bg-white text-slate-900 shadow-xs font-semibold" : "hover:text-slate-900"
         }`}
       >
         Własne
@@ -122,48 +138,42 @@
   </div>
 
   <!-- Instances List -->
-  <div class="flex-1 overflow-y-auto divide-y divide-zinc-800/60 font-sans">
+  <div class="flex-1 overflow-y-auto divide-y divide-slate-100 font-sans">
     {#if loading && instances.length === 0}
-      <div class="p-4 text-center text-xs text-zinc-500">Wczytywanie instancji...</div>
+      <div class="p-6 text-center text-xs text-slate-400">Wczytywanie listy szkół...</div>
     {:else if filteredInstances.length === 0}
-      <div class="p-4 text-center text-xs text-zinc-500">Brak pasujących instancji</div>
+      <div class="p-6 text-center text-xs text-slate-400">Brak szkół spełniających kryteria</div>
     {:else}
       {#each filteredInstances as inst (inst.id)}
         <button
           onclick={() => onSelect(inst.id)}
-          class={`w-full text-left p-2.5 transition-colors cursor-pointer flex flex-col gap-1 border-l-2 ${
+          class={`w-full text-left p-3.5 transition-all cursor-pointer flex flex-col gap-1 border-l-4 ${
             selectedId === inst.id
-              ? "bg-zinc-800 border-amber-500 text-white"
-              : "hover:bg-zinc-800/50 border-transparent text-zinc-300"
+              ? "bg-blue-50/70 border-blue-600 text-slate-900 shadow-2xs"
+              : "hover:bg-slate-50/80 border-transparent text-slate-700"
           }`}
         >
           <div class="flex items-center justify-between gap-1">
-            <span class="font-mono text-xs font-bold text-amber-400 tracking-tight">{inst.id}</span>
+            <span class="text-sm font-semibold text-slate-900 truncate" title={inst.name || inst.id}>
+              {inst.name || inst.id}
+            </span>
             {#if inst.is_custom}
-              <span class="text-[9px] uppercase px-1 py-0.2 bg-emerald-950 text-emerald-400 border border-emerald-800 rounded">
+              <span class="text-[10px] font-medium px-1.5 py-0.5 bg-emerald-100 text-emerald-800 rounded-full">
                 Własna
               </span>
             {/if}
           </div>
 
-          <div class="text-xs truncate text-zinc-200 font-medium" title={inst.name}>
-            {inst.name || inst.id}
+          <!-- Human-friendly description line -->
+          <div class="flex items-center gap-2 text-xs text-slate-500 font-normal">
+            <span>📚 {inst.events_count} lekcji</span>
+            <span>•</span>
+            <span>👥 {inst.resources_count} zasobów</span>
           </div>
 
-          <!-- Metrics Pills -->
-          <div class="flex items-center gap-1.5 text-[10px] font-mono text-zinc-400 mt-0.5">
-            <span title="Zdarzenia (Events)" class="bg-zinc-950 px-1.5 py-0.5 rounded border border-zinc-800">
-              E: <strong class="text-zinc-200">{inst.events_count}</strong>
-            </span>
-            <span title="Zasoby (Resources)" class="bg-zinc-950 px-1.5 py-0.5 rounded border border-zinc-800">
-              R: <strong class="text-zinc-200">{inst.resources_count}</strong>
-            </span>
-            <span title="Czasy (Times)" class="bg-zinc-950 px-1.5 py-0.5 rounded border border-zinc-800">
-              T: <strong class="text-zinc-200">{inst.times_count}</strong>
-            </span>
-            <span title="Ograniczenia (Constraints)" class="bg-zinc-950 px-1.5 py-0.5 rounded border border-zinc-800">
-              C: <strong class="text-zinc-200">{inst.constraints_count}</strong>
-            </span>
+          <!-- Technical ID sub-tag (discrete) -->
+          <div class="text-[10px] text-slate-400 font-mono mt-0.5">
+            Identyfikator: {inst.id}
           </div>
         </button>
       {/each}

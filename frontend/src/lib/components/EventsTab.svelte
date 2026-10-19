@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { EventItem, InstanceDetail } from "../types";
+  import { getResourceCategory } from "../school_helpers";
 
   interface Props {
     instance: InstanceDetail;
@@ -11,7 +12,6 @@
   let searchQuery = $state("");
   let resourceFilter = $state("");
   let durationFilter = $state<string>("all");
-  let preassignedFilter = $state<string>("all");
 
   // Keep in sync if parent updates resource filter
   $effect(() => {
@@ -20,39 +20,29 @@
     }
   });
 
-  // Resource map for fast lookup of names
+  // Resource map for fast lookup of names and types
   let resourceMap = $derived.by(() => {
-    const map = new Map<string, string>();
+    const map = new Map<string, { name: string; category: string }>();
     for (const r of instance.resources) {
-      map.set(r.id, r.name || r.id);
+      map.set(r.id, {
+        name: r.name || r.id,
+        category: getResourceCategory(r, instance),
+      });
     }
     return map;
   });
 
   let filteredEvents = $derived.by(() => {
-    const rMap = resourceMap;
     return instance.events.filter((e) => {
-      // Search text
       const matchesSearch =
         e.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
         e.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         (e.course_ref && e.course_ref.toLowerCase().includes(searchQuery.toLowerCase()));
       if (!matchesSearch) return false;
 
-      // Duration filter
-      if (durationFilter !== "all" && e.duration !== Number(durationFilter)) {
-        return false;
-      }
+      if (durationFilter === "single" && e.duration !== 1) return false;
+      if (durationFilter === "block" && e.duration <= 1) return false;
 
-      // Preassigned time filter
-      if (preassignedFilter === "preassigned" && e.time_ref === null) {
-        return false;
-      }
-      if (preassignedFilter === "unassigned" && e.time_ref !== null) {
-        return false;
-      }
-
-      // Resource filter
       if (resourceFilter) {
         const hasResource = e.resources.some((er) => er.resource_ref === resourceFilter);
         if (!hasResource) return false;
@@ -61,153 +51,149 @@
       return true;
     });
   });
+
+  function getResourcesForEvent(event: EventItem) {
+    const rMap = resourceMap;
+    let teacher: string | null = null;
+    let classroom: string | null = null;
+    let studentClass: string | null = null;
+    const others: string[] = [];
+
+    for (const er of event.resources) {
+      if (!er.resource_ref) continue;
+      const meta = rMap.get(er.resource_ref);
+      const label = meta ? meta.name : er.resource_ref;
+      const cat = meta ? meta.category : "other";
+
+      if (cat === "teacher" && !teacher) teacher = label;
+      else if (cat === "class" && !studentClass) studentClass = label;
+      else if (cat === "room" && !classroom) classroom = label;
+      else others.push(label);
+    }
+
+    return { teacher, studentClass, classroom, others };
+  }
 </script>
 
-<div class="p-6 flex flex-col gap-6 max-w-7xl mx-auto text-zinc-200">
-  <div class="bg-zinc-900 border border-zinc-800 rounded-lg p-4 flex flex-col gap-4">
-    <!-- Header & Filters -->
-    <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
-      <div>
-        <h3 class="text-xs font-bold text-zinc-300 uppercase tracking-wider font-mono">
-          Lekcje i Zajęcia (Events)
-        </h3>
-        <p class="text-xs text-zinc-500 font-mono mt-0.5">
-          Wyświetlanie {filteredEvents.length} z {instance.events.length} lekcji
-        </p>
-      </div>
-
-      <!-- Filters -->
-      <div class="flex flex-wrap items-center gap-2 w-full md:w-auto">
-        <!-- Resource filter -->
-        <select
-          bind:value={resourceFilter}
-          class="px-2 py-1 text-xs bg-zinc-950 border border-zinc-800 rounded text-zinc-200 font-mono focus:outline-none focus:border-zinc-500 max-w-xs"
-        >
-          <option value="">Wszystkie zasoby</option>
-          {#each instance.resources as r}
-            <option value={r.id}>
-              {r.resource_type_ref}: {r.name ? `${r.name} (${r.id})` : r.id}
-            </option>
-          {/each}
-        </select>
-
-        <!-- Duration filter -->
-        <select
-          bind:value={durationFilter}
-          class="px-2 py-1 text-xs bg-zinc-950 border border-zinc-800 rounded text-zinc-200 font-mono focus:outline-none focus:border-zinc-500"
-        >
-          <option value="all">Wszystkie długości</option>
-          <option value="1">1 godzina</option>
-          <option value="2">2 godziny</option>
-          <option value="3">3 godziny</option>
-          <option value="4">4 godziny</option>
-        </select>
-
-        <!-- Time preassignment filter -->
-        <select
-          bind:value={preassignedFilter}
-          class="px-2 py-1 text-xs bg-zinc-950 border border-zinc-800 rounded text-zinc-200 font-mono focus:outline-none focus:border-zinc-500"
-        >
-          <option value="all">Wszystkie czasy</option>
-          <option value="preassigned">Tylko prealokowane</option>
-          <option value="unassigned">Tylko do wyznaczenia</option>
-        </select>
-
-        <!-- Search Input -->
+<div class="p-6 max-w-6xl mx-auto flex flex-col gap-6 text-slate-800">
+  <!-- Controls Bar -->
+  <div class="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
+    <div class="flex flex-wrap items-center gap-3">
+      <!-- Search Input -->
+      <div class="relative w-full sm:w-64">
         <input
           type="text"
           bind:value={searchQuery}
-          placeholder="Szukaj lekcji (ID, nazwa, kurs)..."
-          class="px-2.5 py-1 text-xs bg-zinc-950 border border-zinc-800 rounded text-zinc-200 placeholder-zinc-500 font-mono focus:outline-none focus:border-zinc-500"
+          placeholder="Szukaj przedmiotu lub lekcji..."
+          class="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
         />
-
-        {#if resourceFilter}
-          <button
-            onclick={() => (resourceFilter = "")}
-            class="px-2 py-1 bg-zinc-800 hover:bg-zinc-700 text-amber-400 text-xs rounded border border-zinc-700 font-mono cursor-pointer"
-          >
-            ✕ Reset filtra zasobu
-          </button>
-        {/if}
+        <span class="absolute left-2.5 top-2 text-slate-400 text-xs">🔍</span>
       </div>
+
+      <!-- Resource Filter -->
+      <select
+        bind:value={resourceFilter}
+        class="px-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all cursor-pointer"
+      >
+        <option value="">Wszyscy nauczyciele i klasy</option>
+        {#each instance.resources as r}
+          <option value={r.id}>
+            {r.name || r.id} ({r.id})
+          </option>
+        {/each}
+      </select>
+
+      <!-- Duration Filter -->
+      <select
+        bind:value={durationFilter}
+        class="px-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all cursor-pointer"
+      >
+        <option value="all">Każda długość zajęć</option>
+        <option value="single">Tylko lekcje pojedyncze (1 godz.)</option>
+        <option value="block">Tylko bloki (2+ godz.)</option>
+      </select>
     </div>
 
-    <!-- Table of Events -->
-    <div class="overflow-x-auto">
-      <table class="w-full text-left text-xs font-mono">
-        <thead class="text-zinc-500 border-b border-zinc-800 text-[11px]">
-          <tr>
-            <th class="pb-2 w-20">ID</th>
-            <th class="pb-2">Nazwa zajęć</th>
-            <th class="pb-2 w-20 text-center">Długość</th>
-            <th class="pb-2">Kurs / Przedmiot</th>
-            <th class="pb-2">Obsada ról i zasobów (Resources)</th>
-            <th class="pb-2 w-24">Czas prealokowany</th>
-            <th class="pb-2">Grupy zdarzeń</th>
-          </tr>
-        </thead>
-        <tbody class="divide-y divide-zinc-800/60">
-          {#each filteredEvents as e}
-            <tr class="hover:bg-zinc-800/40">
-              <td class="py-2.5 font-bold text-amber-400">{e.id}</td>
-              <td class="py-2.5 text-zinc-200 font-sans font-medium">{e.name || e.id}</td>
-              <td class="py-2.5 text-center">
-                <span class="px-2 py-0.5 bg-zinc-800 text-zinc-200 rounded border border-zinc-700 font-bold">
-                  {e.duration} h
-                </span>
-              </td>
-              <td class="py-2.5">
-                {#if e.course_ref}
-                  <span class="text-indigo-300 font-medium">{e.course_ref}</span>
-                {:else}
-                  <span class="text-zinc-600">—</span>
-                {/if}
-              </td>
-              <td class="py-2.5">
-                <div class="flex flex-wrap gap-1.5">
-                  {#each e.resources as er}
-                    {#if er.resource_ref}
-                      <span class="px-1.5 py-0.5 bg-zinc-950 text-zinc-200 rounded border border-zinc-800 text-[11px] flex items-center gap-1">
-                        <span class="text-zinc-500 text-[10px]">{er.role}:</span>
-                        <strong class="text-amber-300">
-                          {resourceMap.get(er.resource_ref) || er.resource_ref}
-                        </strong>
-                      </span>
-                    {:else}
-                      <span class="px-1.5 py-0.5 bg-amber-950/40 text-amber-400 rounded border border-amber-800/60 text-[11px] flex items-center gap-1">
-                        <span class="text-amber-500 text-[10px]">{er.role}:</span>
-                        <span>[Dowolny {er.resource_type_ref}]</span>
-                      </span>
-                    {/if}
-                  {/each}
-                </div>
-              </td>
-              <td class="py-2.5">
-                {#if e.time_ref}
-                  <span class="px-1.5 py-0.5 bg-zinc-800 text-emerald-400 rounded border border-emerald-900 font-semibold text-[10px]">
-                    {e.time_ref}
-                  </span>
-                {:else}
-                  <span class="text-zinc-600 text-[10px]">Do ustalenia</span>
-                {/if}
-              </td>
-              <td class="py-2.5">
-                <div class="flex flex-wrap gap-1">
-                  {#if e.group_refs.length === 0}
-                    <span class="text-zinc-600">—</span>
-                  {:else}
-                    {#each e.group_refs as gr}
-                      <span class="px-1 py-0.2 bg-zinc-950 text-zinc-400 rounded border border-zinc-800 text-[10px]">
-                        {gr}
-                      </span>
-                    {/each}
-                  {/if}
-                </div>
-              </td>
-            </tr>
-          {/each}
-        </tbody>
-      </table>
+    <div class="text-xs text-slate-500 font-medium shrink-0">
+      Pokazano <strong>{filteredEvents.length}</strong> z {instance.events.length} pozycji
     </div>
   </div>
+
+  <!-- Events List -->
+  {#if filteredEvents.length === 0}
+    <div class="bg-white border border-slate-200/90 rounded-2xl p-12 text-center text-slate-400 text-xs shadow-xs">
+      Nie znaleziono żadnych pozycji zajęć spełniających kryteria.
+    </div>
+  {:else}
+    <div class="bg-white border border-slate-200/90 rounded-2xl shadow-xs overflow-hidden divide-y divide-slate-100">
+      {#each filteredEvents as event (event.id)}
+        {@const res = getResourcesForEvent(event)}
+        <div class="p-4 hover:bg-slate-50/80 transition-all flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <!-- Left: Event Name & Course -->
+          <div class="flex items-start gap-3.5">
+            <div class="w-10 h-10 rounded-xl bg-blue-50 text-blue-700 border border-blue-100 flex items-center justify-center font-bold text-sm shrink-0 shadow-2xs">
+              📚
+            </div>
+            <div>
+              <div class="flex items-center gap-2">
+                <h4 class="text-sm font-bold text-slate-900 leading-tight">
+                  {event.name || event.course_ref || event.id}
+                </h4>
+                <span class="text-[10px] px-2 py-0.5 rounded-full font-medium
+                  {event.duration > 1 ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-600'}">
+                  {event.duration} {event.duration === 1 ? 'godzina' : 'godziny (blok)'}
+                </span>
+              </div>
+              <p class="text-xs text-slate-400 font-mono mt-0.5">
+                Identyfikator: {event.id}
+              </p>
+            </div>
+          </div>
+
+          <!-- Middle: Assigned Participants (Human friendly pills) -->
+          <div class="flex flex-wrap items-center gap-2 text-xs">
+            {#if res.studentClass}
+              <span class="px-2.5 py-1 bg-emerald-50 text-emerald-800 border border-emerald-200/60 rounded-lg flex items-center gap-1 font-medium">
+                <span>👥</span>
+                <span>Klasa: <strong>{res.studentClass}</strong></span>
+              </span>
+            {/if}
+
+            {#if res.teacher}
+              <span class="px-2.5 py-1 bg-indigo-50 text-indigo-800 border border-indigo-200/60 rounded-lg flex items-center gap-1 font-medium">
+                <span>👨‍🏫</span>
+                <span>Nauczyciel: <strong>{res.teacher}</strong></span>
+              </span>
+            {/if}
+
+            {#if res.classroom}
+              <span class="px-2.5 py-1 bg-amber-50 text-amber-800 border border-amber-200/60 rounded-lg flex items-center gap-1 font-medium">
+                <span>🚪</span>
+                <span>Sala: <strong>{res.classroom}</strong></span>
+              </span>
+            {/if}
+
+            {#each res.others as other}
+              <span class="px-2.5 py-1 bg-slate-100 text-slate-700 border border-slate-200/60 rounded-lg font-medium">
+                {other}
+              </span>
+            {/each}
+          </div>
+
+          <!-- Right: Preassigned status -->
+          <div class="text-xs text-right shrink-0">
+            {#if event.time_ref}
+              <span class="text-emerald-700 font-semibold bg-emerald-50 px-2 py-1 rounded-md border border-emerald-200/60">
+                Termin stały: {event.time_ref}
+              </span>
+            {:else}
+              <span class="text-slate-400 text-[11px]">
+                Termin wyznacza solver
+              </span>
+            {/if}
+          </div>
+        </div>
+      {/each}
+    </div>
+  {/if}
 </div>

@@ -265,6 +265,19 @@ def export_instance_xml(instance_id: str) -> Response:
     )
 
 
+@app.delete("/api/instances/{instance_id}")
+def delete_custom_instance(instance_id: str) -> dict[str, Any]:
+    file_path = CUSTOM_INSTANCES_DIR / f"{instance_id}.xml"
+    if not file_path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=f"Instancja {instance_id} nie istnieje lub jest instancją benchmarku chronioną przed usunięciem.",
+        )
+    file_path.unlink()
+    return {"status": "ok", "message": f"Instancja {instance_id} została usunięta."}
+
+
+
 class SolveRequest(BaseModel):
     instance_id: str
     iterations: int = 20_000
