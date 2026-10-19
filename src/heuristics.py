@@ -7,16 +7,17 @@ from src.evaluator_ref import (
     _events_in_applies_to,
     _resources_in_applies_to,
     evaluate_constraint,
+    resolve_occurrence,
     resolve_occurrences,
     valid_start_time_ids,
 )
 from src.incremental import IncrementalEvaluator
-from src.model import Instance, Solution
+from src.model import Instance, Solution, SolutionEvent
 from src.moves import (
     kempe_chain_move,
     large_perturbation_move,
-    small_perturbation_move,
     resource_reassign_move,
+    small_perturbation_move,
     split_resize_move,
     time_reassign_move,
     time_swap_move,
@@ -42,6 +43,16 @@ class Heuristic:
     protected: bool
     apply: Callable[[Solution, Instance, random.Random], Solution]
     incremental_safe: bool = False
+    # Optional faster path: the same operator, given the solver's
+    # IncrementalEvaluator positioned on `solution`, so it can score its
+    # candidate times with probe() instead of building an evaluator from
+    # scratch on every call (~25% of run time in profiling). It must give
+    # exactly what apply() gives for the same rng state and must leave
+    # the evaluator where it found it -- probe() only, never commit().
+    apply_with_evaluator: (
+        Callable[[Solution, Instance, random.Random, IncrementalEvaluator], Solution]
+        | None
+    ) = None
 
 
 def move_random(solution: Solution, instance: Instance, rng: random.Random) -> Solution:
@@ -57,6 +68,8 @@ def _best_time_for_event(
     solution: Solution,
     index: int,
     evaluator: IncrementalEvaluator | None = None,
+    rng: random.Random | None = None,
+    max_probe: int | None = None,
 ) -> Solution:
     """Returns the solution obtained by moving solution.events[index] to
     whichever valid start time (INCLUDING its current one) yields the
@@ -69,7 +82,11 @@ def _best_time_for_event(
     the state, then one delta per candidate, instead of one full evaluation
     per candidate. `evaluator` lets a caller that already holds state for
     `solution` (ruin_and_recreate, repair_hard_violation) skip even that
-    seed; it must be positioned on `solution`."""
+    seed; it must be positioned on `solution`.
+
+    When `max_probe` is set and `rng` is provided, only a random sample of
+    `max_probe` candidates is evaluated. This trades exhaustive search for
+    speed on large instances with many valid times per event."""
     event = solution.events[index]
     # construct.build_initial only ever leaves duration=None paired with
     # time_ref=None (a resources-only SolutionEvent that never needed a
@@ -80,9 +97,12 @@ def _best_time_for_event(
     # --strict, and turns a latent None into a clear error instead of a
     # TypeError inside valid_start_time_ids if it's ever violated.
     assert event.duration is not None, f"event {event.event_ref!r} has no duration"
-    candidates = valid_start_time_ids(instance, event.duration)
+    candidates = list(valid_start_time_ids(instance, event.duration))
     if not candidates:
         raise ValueError(f"event {event.event_ref!r} has no valid start time")
+
+    if max_probe is not None and rng is not None and len(candidates) > max_probe:
+        candidates = rng.sample(candidates, max_probe)
 
     scorer = (
         evaluator if evaluator is not None else IncrementalEvaluator(instance, solution)
@@ -101,7 +121,13 @@ def _best_time_for_event(
     return best_solution
 
 
-def move_best(solution: Solution, instance: Instance, rng: random.Random) -> Solution:
+def move_best(
+    solution: Solution,
+    instance: Instance,
+    rng: random.Random,
+    max_probe: int | None = None,
+    evaluator: IncrementalEvaluator | None = None,
+) -> Solution:
     """Picks one solution event with a time to reassign at random, then
     moves it to the valid start time that minimizes total_cost (see
     _best_time_for_event). Raises ValueError if no solution event has a
@@ -114,7 +140,9 @@ def move_best(solution: Solution, instance: Instance, rng: random.Random) -> Sol
             "cannot apply a move: no solution event has a time to reassign"
         )
     index = rng.choice(candidates)
-    return _best_time_for_event(instance, solution, index)
+    return _best_time_for_event(
+        instance, solution, index, evaluator, rng=rng, max_probe=max_probe
+    )
 
 
 def swap(solution: Solution, instance: Instance, rng: random.Random) -> Solution:
@@ -169,7 +197,10 @@ _RUIN_MAX_EVENTS = 6
 
 
 def ruin_and_recreate(
-    solution: Solution, instance: Instance, rng: random.Random
+    solution: Solution,
+    instance: Instance,
+    rng: random.Random,
+    max_probe: int | None = None,
 ) -> Solution:
     """ "Ruin-and-recreate" perturbation (Schrimpf et al. 1998): "ruins" a
     small random slice of the solution -- about _RUIN_FRACTION of its
@@ -215,7 +246,9 @@ def ruin_and_recreate(
     # those candidates.
     evaluator = IncrementalEvaluator(instance, current)
     for i in recreate_order:
-        current = _best_time_for_event(instance, current, i, evaluator)
+        current = _best_time_for_event(
+            instance, current, i, evaluator, rng=rng, max_probe=max_probe
+        )
         evaluator.commit(current)
     return current
 
@@ -273,19 +306,158 @@ def _movable_violating_indices(
 
 
 def repair_hard_violation(
-    solution: Solution, instance: Instance, rng: random.Random
+    solution: Solution,
+    instance: Instance,
+    rng: random.Random,
+    max_probe: int | None = None,
+    evaluator: IncrementalEvaluator | None = None,
 ) -> Solution:
     """Picks one (movable) event involved in a violated Required
     constraint at random and moves it to its best available time (see
     _best_time_for_event) -- never a purely random move, so the operator
     actually tends to repair rather than just perturb."""
-    evaluator = IncrementalEvaluator(instance, solution)
+    if evaluator is None:
+        evaluator = IncrementalEvaluator(instance, solution)
     candidates = _movable_violating_indices(instance, solution, evaluator)
     if not candidates:
         raise ValueError("no movable event participates in a hard constraint violation")
     index = rng.choice(candidates)
-    return _best_time_for_event(instance, solution, index, evaluator)
+    return _best_time_for_event(
+        instance, solution, index, evaluator, rng=rng, max_probe=max_probe
+    )
 
+
+class _ClashTable:
+    """Resource-time occupancy for the resources watched by Required
+    AvoidClashesConstraints: how many events use each (resource, time)
+    cell. Fixed (preassigned) events are counted too, since they block a
+    slot just like movable ones."""
+
+    def __init__(self, instance: Instance, solution: Solution) -> None:
+        self.watched: set[str] = set()
+        for constraint in instance.constraints:
+            if constraint.required and constraint.type == "AvoidClashesConstraint":
+                self.watched |= _resources_in_applies_to(
+                    instance, constraint.applies_to
+                )
+        self._position = {t.id: k for k, t in enumerate(instance.times)}
+        self._event_defs = {e.id: e for e in instance.events}
+        self._busy: dict[tuple[str, int], int] = {}
+        for occurrence in resolve_occurrences(instance, solution):
+            if occurrence.time_ref is None:
+                continue
+            for resource in self._watched_of(_assigned_resource_ids(occurrence)):
+                for p in self.span(occurrence.time_ref, occurrence.duration):
+                    self._busy[(resource, p)] = self._busy.get((resource, p), 0) + 1
+
+    def _watched_of(self, resources: list[str | None]) -> list[str]:
+        return [r for r in resources if r is not None and r in self.watched]
+
+    def span(self, time_ref: str, duration: int) -> range:
+        start = self._position[time_ref]
+        return range(start, start + duration)
+
+    def resources(self, event: SolutionEvent) -> list[str]:
+        occurrence = resolve_occurrence(self._event_defs[event.event_ref], event)
+        return self._watched_of(_assigned_resource_ids(occurrence))
+
+    def clashes(self, event: SolutionEvent) -> bool:
+        if event.time_ref is None or event.duration is None:
+            return False
+        own = self.span(event.time_ref, event.duration)
+        return any(
+            self._busy.get((r, p), 0) > 1 for r in self.resources(event) for p in own
+        )
+
+    def overlaps(self, event: SolutionEvent, time_ref: str, duration: int) -> int:
+        """Other events sharing a watched resource with `event` if it started
+        at `time_ref` -- its own current booking is discounted."""
+        own = (
+            set(self.span(event.time_ref, duration))
+            if event.time_ref is not None
+            else set()
+        )
+        return sum(
+            self._busy.get((r, p), 0) - (1 if p in own else 0)
+            for r in self.resources(event)
+            for p in self.span(time_ref, duration)
+        )
+
+
+def _cheapest_time(
+    instance: Instance,
+    solution: Solution,
+    index: int,
+    times: list[str],
+    evaluator: IncrementalEvaluator | None = None,
+) -> Solution:
+    """The solution with solution.events[index] moved to whichever of
+    `times` gives the lowest total cost."""
+    event = solution.events[index]
+    scorer = (
+        evaluator if evaluator is not None else IncrementalEvaluator(instance, solution)
+    )
+    best_solution: Solution | None = None
+    best_cost: int | None = None
+    for time_ref in times:
+        new_events = list(solution.events)
+        new_events[index] = replace(event, time_ref=time_ref)
+        candidate = replace(solution, events=new_events)
+        cost = scorer.probe(candidate).as_scalar()
+        if best_cost is None or cost < best_cost:
+            best_cost, best_solution = cost, candidate
+    assert best_solution is not None
+    return best_solution
+
+
+def repair_clash(
+    solution: Solution,
+    instance: Instance,
+    rng: random.Random,
+    max_probe: int | None = None,
+    evaluator: IncrementalEvaluator | None = None,
+) -> Solution:
+    """Targets the hard violation that dominates every in-scope instance:
+    a resource (teacher, class, room) booked into two events at once, as
+    watched by a Required AvoidClashesConstraint.
+
+    Picks one movable event that takes part in such a clash and moves it to
+    the start time where its watched resources overlap the fewest other
+    events -- a free slot when one exists. Unlike repair_hard_violation,
+    which samples `max_probe` random times and compares total costs, this
+    counts overlaps for *every* valid start time from a resource-time
+    occupancy table, so it never misses a free slot. Total cost only breaks
+    ties between the least-clashing times (sampled down to `max_probe`), so
+    the move also respects the other constraints where it can.
+
+    Raises ValueError if no Required AvoidClashesConstraint exists or no
+    movable event takes part in a clash."""
+    table = _ClashTable(instance, solution)
+    if not table.watched:
+        raise ValueError("the instance has no Required AvoidClashesConstraint")
+    clashing = [i for i, se in enumerate(solution.events) if table.clashes(se)]
+    if not clashing:
+        raise ValueError("no movable event takes part in a clash")
+
+    index = rng.choice(clashing)
+    event = solution.events[index]
+    assert event.duration is not None  # table.clashes() checked it
+    candidates = list(valid_start_time_ids(instance, event.duration))
+    if not candidates:
+        raise ValueError(f"event {event.event_ref!r} has no valid start time")
+    counts = {t: table.overlaps(event, t, event.duration) for t in candidates}
+    fewest = min(counts.values())
+    best_times = [t for t in candidates if counts[t] == fewest]
+    if max_probe is not None and len(best_times) > max_probe:
+        best_times = rng.sample(best_times, max_probe)
+    return _cheapest_time(instance, solution, index, best_times, evaluator)
+
+
+# Probe cap used for the "fast" variants of exhaustive-search heuristics.
+# Reducing the number of candidate times probed per call trades some per-call
+# quality for more iterations within a fixed time budget -- particularly useful
+# on large instances where valid_start_time_ids returns 50-60 candidates.
+_FAST_MAX_PROBE = 20
 
 MANUAL_HEURISTICS: list[Heuristic] = [
     Heuristic(
@@ -297,10 +469,15 @@ MANUAL_HEURISTICS: list[Heuristic] = [
     ),
     Heuristic(
         id="move_best",
-        name="Best-slot time reassignment",
+        name=f"Best-slot time reassignment (sample {_FAST_MAX_PROBE})",
         protected=True,
-        apply=move_best,
+        apply=lambda sol, inst, rng: move_best(
+            sol, inst, rng, max_probe=_FAST_MAX_PROBE
+        ),
         incremental_safe=True,
+        apply_with_evaluator=lambda sol, inst, rng, ev: move_best(
+            sol, inst, rng, max_probe=_FAST_MAX_PROBE, evaluator=ev
+        ),
     ),
     Heuristic(
         id="swap",
@@ -311,10 +488,27 @@ MANUAL_HEURISTICS: list[Heuristic] = [
     ),
     Heuristic(
         id="repair_hard_violation",
-        name="Repair a hard constraint violation",
+        name=f"Repair a hard constraint violation (sample {_FAST_MAX_PROBE})",
         protected=True,
-        apply=repair_hard_violation,
+        apply=lambda sol, inst, rng: repair_hard_violation(
+            sol, inst, rng, max_probe=_FAST_MAX_PROBE
+        ),
         incremental_safe=True,
+        apply_with_evaluator=lambda sol, inst, rng, ev: repair_hard_violation(
+            sol, inst, rng, max_probe=_FAST_MAX_PROBE, evaluator=ev
+        ),
+    ),
+    Heuristic(
+        id="repair_clash",
+        name=f"Move a clashing event to a free time (sample {_FAST_MAX_PROBE})",
+        protected=True,
+        apply=lambda sol, inst, rng: repair_clash(
+            sol, inst, rng, max_probe=_FAST_MAX_PROBE
+        ),
+        incremental_safe=True,
+        apply_with_evaluator=lambda sol, inst, rng, ev: repair_clash(
+            sol, inst, rng, max_probe=_FAST_MAX_PROBE, evaluator=ev
+        ),
     ),
     Heuristic(
         id="resource_reassign",
@@ -332,9 +526,11 @@ MANUAL_HEURISTICS: list[Heuristic] = [
     ),
     Heuristic(
         id="ruin_and_recreate",
-        name="Ruin a small portion of the solution and greedily rebuild it",
+        name=f"Ruin-and-recreate (sample {_FAST_MAX_PROBE} per event)",
         protected=True,
-        apply=ruin_and_recreate,
+        apply=lambda sol, inst, rng: ruin_and_recreate(
+            sol, inst, rng, max_probe=_FAST_MAX_PROBE
+        ),
         incremental_safe=True,
     ),
     Heuristic(

@@ -6,6 +6,9 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "snakemake>=9.23.1",
+    "matplotlib>=3.9",
+    "numpy>=2.0",
+    "lxml>=5.2",
 ]
 
 [dependency-groups]

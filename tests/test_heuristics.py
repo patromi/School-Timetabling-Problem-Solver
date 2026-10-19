@@ -68,8 +68,12 @@ def test_heuristic_preserves_events_and_does_not_mutate_input(
     )
 
     assert _snapshot(solution) == before, f"{heuristic.id} mutated its input solution"
-    assert new_solution is not solution, f"{heuristic.id} returned the exact same Solution object (no deep copy/immutability)"
-    assert new_solution.events is not solution.events, f"{heuristic.id} did not copy the events list/tuple"
+    assert new_solution is not solution, (
+        f"{heuristic.id} returned the exact same Solution object (no deep copy/immutability)"
+    )
+    assert new_solution.events is not solution.events, (
+        f"{heuristic.id} did not copy the events list/tuple"
+    )
     assert isinstance(new_solution, Solution), (
         f"{heuristic.id} did not return a Solution"
     )
@@ -79,15 +83,18 @@ def test_heuristic_preserves_events_and_does_not_mutate_input(
 
     for old_se, new_se in zip(
         sorted(solution.events, key=lambda e: e.event_ref),
-        sorted(new_solution.events, key=lambda e: e.event_ref)
+        sorted(new_solution.events, key=lambda e: e.event_ref),
     ):
-        assert old_se.duration == new_se.duration, f"{heuristic.id} changed duration of event {old_se.event_ref}"
+        assert old_se.duration == new_se.duration, (
+            f"{heuristic.id} changed duration of event {old_se.event_ref}"
+        )
 
 
 def test_split_resize_returns_valid_solution_with_correct_total_duration() -> None:
     """split_resize is structural (incremental_safe=False): changes piece count.
     Uses BrazilInstance1 which has multi-duration split events."""
     from src.heuristics import MANUAL_HEURISTICS
+
     split_h = next(h for h in MANUAL_HEURISTICS if h.id == "split_resize")
 
     instance = parse_archive(_load("BrazilInstance1.xml"))[0]
@@ -98,7 +105,9 @@ def test_split_resize_returns_valid_solution_with_correct_total_duration() -> No
     total_dur_before: dict[str, int] = {}
     for se in solution.events:
         if se.duration is not None:
-            total_dur_before[se.event_ref] = total_dur_before.get(se.event_ref, 0) + se.duration
+            total_dur_before[se.event_ref] = (
+                total_dur_before.get(se.event_ref, 0) + se.duration
+            )
 
     new_solution = None
     for seed in range(20):
@@ -107,7 +116,9 @@ def test_split_resize_returns_valid_solution_with_correct_total_duration() -> No
             break
         except ValueError:
             continue
-    assert new_solution is not None, "split_resize: no seed produced applicable move on BrazilInstance1"
+    assert new_solution is not None, (
+        "split_resize: no seed produced applicable move on BrazilInstance1"
+    )
 
     # Input must not be mutated
     assert _snapshot(solution) == before_snapshot, "split_resize mutated input"
@@ -117,8 +128,12 @@ def test_split_resize_returns_valid_solution_with_correct_total_duration() -> No
     total_dur_after: dict[str, int] = {}
     for se in new_solution.events:
         if se.duration is not None:
-            total_dur_after[se.event_ref] = total_dur_after.get(se.event_ref, 0) + se.duration
-    assert total_dur_after == total_dur_before, "split_resize changed total event duration"
+            total_dur_after[se.event_ref] = (
+                total_dur_after.get(se.event_ref, 0) + se.duration
+            )
+    assert total_dur_after == total_dur_before, (
+        "split_resize changed total event duration"
+    )
 
     # Every sub-event must have a valid time_ref and duration > 0
     for se in new_solution.events:
@@ -389,35 +404,196 @@ def test_ruin_and_recreate_touches_at_most_the_ruin_budget() -> None:
             f"seed={seed}: touched {len(diffs)} events, expected at most 6"
         )
 
+
 from src.cost import evaluate_cost
 from src.incremental import IncrementalEvaluator, StructuralChangeError
 
-@pytest.mark.parametrize("heuristic", [h for h in MANUAL_HEURISTICS if h.incremental_safe], ids=lambda h: h.id)
+
+@pytest.mark.parametrize(
+    "heuristic",
+    [h for h in MANUAL_HEURISTICS if h.incremental_safe],
+    ids=lambda h: h.id,
+)
 def test_heuristic_incremental_safety(heuristic: Heuristic) -> None:
     instance, solution = _sudoku_solution()
-    
+
     changed = False
     for seed in range(50):
         try:
             new_solution = heuristic.apply(solution, instance, random.Random(seed))
         except ValueError:
             continue
-            
+
         if _snapshot(new_solution) != _snapshot(solution):
             changed = True
-            
+
             evaluator = IncrementalEvaluator(instance, solution)
             try:
                 transaction = evaluator.evaluate(new_solution)
             except StructuralChangeError:
-                pytest.fail(f"{heuristic.id} is marked incremental_safe but caused StructuralChangeError")
-                
+                pytest.fail(
+                    f"{heuristic.id} is marked incremental_safe but caused StructuralChangeError"
+                )
+
             incremental_cost = transaction.cost.as_scalar()
             full_cost = evaluate_cost(instance, new_solution).as_scalar()
-            
+
             assert incremental_cost == full_cost, (
                 f"{heuristic.id} failed incremental safety check! "
                 f"Incremental cost: {incremental_cost}, Full cost: {full_cost}"
             )
-            
-    assert changed, f"{heuristic.id} did not make any structural change to the solution across 50 seeds"
+
+    assert changed, (
+        f"{heuristic.id} did not make any structural change to the solution across 50 seeds"
+    )
+
+
+_CLASH_INSTANCE = """<HighSchoolTimetableArchive>
+  <Instances>
+    <Instance Id="I1">
+      <MetaData><Name>Test</Name></MetaData>
+      <Times>
+        <TimeGroups></TimeGroups>
+        <Time Id="T1"><Name>T1</Name></Time>
+        <Time Id="T2"><Name>T2</Name></Time>
+        <Time Id="T3"><Name>T3</Name></Time>
+      </Times>
+      <Resources>
+        <ResourceTypes>
+          <ResourceType Id="Teacher"><Name>Teacher</Name></ResourceType>
+        </ResourceTypes>
+        <ResourceGroups></ResourceGroups>
+        <Resource Id="R1"><Name>R1</Name><ResourceType Reference="Teacher"/></Resource>
+        <Resource Id="R2"><Name>R2</Name><ResourceType Reference="Teacher"/></Resource>
+      </Resources>
+      <Events>
+        <EventGroups></EventGroups>
+        <Event Id="E1">
+          <Name>E1</Name><Duration>1</Duration>
+          <Resources><Resource Reference="R1"><Role>T</Role></Resource></Resources>
+        </Event>
+        <Event Id="E2">
+          <Name>E2</Name><Duration>1</Duration>
+          <Resources><Resource Reference="R1"><Role>T</Role></Resource></Resources>
+        </Event>
+        <Event Id="E3">
+          <Name>E3</Name><Duration>1</Duration>
+          <Resources><Resource Reference="R2"><Role>T</Role></Resource></Resources>
+        </Event>
+      </Events>
+      <Constraints>
+        <AvoidClashesConstraint Id="C1">
+          <Name>NoClashes</Name>
+          <Required>true</Required>
+          <Weight>1</Weight>
+          <CostFunction>Linear</CostFunction>
+          <AppliesTo>
+            <Resources><Resource Reference="R1"/><Resource Reference="R2"/></Resources>
+          </AppliesTo>
+        </AvoidClashesConstraint>
+      </Constraints>
+    </Instance>
+  </Instances>
+</HighSchoolTimetableArchive>"""
+
+
+def test_repair_clash_moves_a_clashing_event_to_a_free_time() -> None:
+    # E1 and E2 share teacher R1 at T1; T2 and T3 are free for R1. Every
+    # seed must leave the plan without a clash and touch only E1 or E2.
+    from src.heuristics import repair_clash
+
+    instance = parse_archive(_CLASH_INSTANCE)[0]
+    solution = Solution(
+        instance_ref=instance.id,
+        events=[
+            SolutionEvent(event_ref="E1", time_ref="T1", duration=1),
+            SolutionEvent(event_ref="E2", time_ref="T1", duration=1),
+            SolutionEvent(event_ref="E3", time_ref="T2", duration=1),
+        ],
+    )
+    assert _infeasibility(instance, solution) > 0
+
+    for seed in range(20):
+        new_solution = repair_clash(solution, instance, random.Random(seed))
+        assert _infeasibility(instance, new_solution) == 0, f"seed={seed}"
+        moved = [
+            new.event_ref
+            for old, new in zip(solution.events, new_solution.events, strict=True)
+            if old.time_ref != new.time_ref
+        ]
+        assert len(moved) == 1 and moved[0] in {"E1", "E2"}, f"seed={seed}: {moved}"
+
+
+def test_repair_clash_raises_without_a_clash() -> None:
+    from src.heuristics import repair_clash
+
+    instance = parse_archive(_CLASH_INSTANCE)[0]
+    solution = Solution(
+        instance_ref=instance.id,
+        events=[
+            SolutionEvent(event_ref="E1", time_ref="T1", duration=1),
+            SolutionEvent(event_ref="E2", time_ref="T2", duration=1),
+            SolutionEvent(event_ref="E3", time_ref="T1", duration=1),
+        ],
+    )
+
+    with pytest.raises(ValueError):
+        repair_clash(solution, instance, random.Random(0))
+
+
+def test_repair_clash_never_increases_clashes_on_a_real_instance() -> None:
+    from src.heuristics import repair_clash
+
+    instance = parse_archive(_load("BrazilInstance1.xml"))[0]
+    solution = build_initial(instance, random.Random(0))
+    clash_ids = {
+        c.id for c in instance.constraints if c.type == "AvoidClashesConstraint"
+    }
+
+    def clashes(sol: Solution) -> int:
+        occurrences = resolve_occurrences(instance, sol)
+        return sum(
+            evaluate_constraint(instance, occurrences, c)
+            for c in instance.constraints
+            if c.id in clash_ids
+        )
+
+    before = clashes(solution)
+    assert before > 0, "fixture must start with clashes for this test to matter"
+    for seed in range(10):
+        after = clashes(repair_clash(solution, instance, random.Random(seed)))
+        assert after < before, f"seed={seed}: clashes {before} -> {after}"
+
+
+@pytest.mark.parametrize(
+    "heuristic",
+    [h for h in MANUAL_HEURISTICS if h.apply_with_evaluator is not None],
+    ids=lambda h: h.id,
+)
+def test_evaluator_path_matches_apply_and_leaves_the_evaluator_unchanged(
+    heuristic: Heuristic,
+) -> None:
+    # The solver uses apply_with_evaluator whenever it has an incremental
+    # evaluator; it must return what apply() returns for the same rng state,
+    # or the incremental and full evaluation modes would diverge.
+    from src.incremental import IncrementalEvaluator
+
+    instance = parse_archive(_load("BrazilInstance1.xml"))[0]
+    solution = build_initial(instance, random.Random(0))
+    evaluator = IncrementalEvaluator(instance, solution)
+    cost_before = evaluator.cost
+
+    checked = 0
+    for seed in range(10):
+        try:
+            expected = heuristic.apply(solution, instance, random.Random(seed))
+        except ValueError:
+            continue
+        assert heuristic.apply_with_evaluator is not None
+        got = heuristic.apply_with_evaluator(
+            solution, instance, random.Random(seed), evaluator
+        )
+        assert _snapshot(got) == _snapshot(expected), f"seed={seed}"
+        assert evaluator.cost == cost_before, f"seed={seed}: evaluator moved"
+        checked += 1
+    assert checked > 0
