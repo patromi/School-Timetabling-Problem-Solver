@@ -62,23 +62,45 @@ def _make_selector(selector_name: str) -> "HeuristicSelector":
 
     if selector_name == "epsilon-greedy":
         return EpsilonGreedySelector()
+    if selector_name == "epsilon-greedy-e02":
+        return EpsilonGreedySelector(epsilon=0.2)
     if selector_name == "ucb":
         return UCBSelector()
     if selector_name == "ucb-2state":
         return UCBSelector(collapse_stagnation=True)
     if selector_name == "ucb-c03":
         return UCBSelector(c=0.3)
+    if selector_name == "ucb-c2":
+        return UCBSelector(c=2.0)
+    if selector_name == "ucb-alpha005":
+        return UCBSelector(alpha=0.05)
+    if selector_name == "ucb-alpha015":
+        return UCBSelector(alpha=0.15)
+    if selector_name == "ucb-2state-c03":
+        return UCBSelector(c=0.3, collapse_stagnation=True)
     if selector_name.startswith("ucb-c="):
         # e.g. "ucb-c=0.01" -- used to calibrate the exploration constant
         return UCBSelector(c=float(selector_name.removeprefix("ucb-c=")))
+    if selector_name.startswith("ucb-alpha="):
+        return UCBSelector(alpha=float(selector_name.removeprefix("ucb-alpha=")))
     return RandomSelector()
 
 
 def _make_acceptance(acceptance_name: str, time_limit: float) -> "AcceptanceCriterion":
     from src.acceptance import AutoSAAcceptance, LAHCAcceptance
 
+    if acceptance_name == "lahc-L10":
+        return LAHCAcceptance(10)
+    if acceptance_name == "lahc-L100":
+        return LAHCAcceptance(100)
+    if acceptance_name == "lahc-L300":
+        return LAHCAcceptance(300)
     if acceptance_name == "sa":
         return AutoSAAcceptance(time_budget=time_limit)
+    if acceptance_name == "sa-t0005":
+        return AutoSAAcceptance(t0_factor=0.0005, time_budget=time_limit)
+    if acceptance_name == "sa-t005":
+        return AutoSAAcceptance(t0_factor=0.005, time_budget=time_limit)
     return LAHCAcceptance(HISTORY_LENGTH)
 
 
