@@ -53,6 +53,8 @@
     unavailableTimes?: string[];
     unavailableSoft?: boolean;
     unavailableWeight?: number;
+    minDailyLessons?: number | null;
+    maxDailyLessons?: number | null;
   }
   let classes = $state<SimpleClass[]>([
     { id: "1A", name: "Klasa 1A (Mat-Fiz)" },
@@ -73,18 +75,22 @@
     unavailableTimes?: string[];
     unavailableSoft?: boolean;
     unavailableWeight?: number;
+    maxDaysPerWeek?: number | null;
+    minDaysPerWeek?: number | null;
+    maxDailyLessons?: number | null;
+    maxGapsPerWeek?: number | null;
   }
   let teachers = $state<SimpleTeacher[]>([
     { id: "Kowalski_J", name: "Jan Kowalski", subject: "Matematyka", workload: 18 },
     { id: "Nowak_A", name: "Anna Nowak", subject: "Język polski", workload: 18 },
     { id: "Wisniewski_P", name: "Piotr Wiśniewski", subject: "Wychowanie Fizyczne", workload: 18 },
     { id: "Wojcik_M", name: "Marta Wójcik", subject: "Język angielski", workload: 16 },
-    { id: "Kaminski_T", name: "Tomasz Kamiński", subject: "Historia", workload: 15 },
-    { id: "Lewandowska_E", name: "Ewa Lewandowska", subject: "Biologia", workload: 14 },
-    { id: "Zieliński_K", name: "Krzysztof Zieliński", subject: "Fizyka", workload: 14 },
-    { id: "Szymanska_B", name: "Beata Szymańska", subject: "Chemia", workload: 14 },
-    { id: "Dabrowski_R", name: "Robert Dąbrowski", subject: "Informatyka", workload: 14 },
-    { id: "Kozlowska_M", name: "Magdalena Kozłowska", subject: "Geografia", workload: 14 },
+    { id: "Kaminski_T", name: "Tomasz Kamiński", subject: "Historia", workload: 15, maxDaysPerWeek: 4 },
+    { id: "Lewandowska_E", name: "Ewa Lewandowska", subject: "Biologia", workload: 14, maxDaysPerWeek: 3 },
+    { id: "Zieliński_K", name: "Krzysztof Zieliński", subject: "Fizyka", workload: 14, maxDaysPerWeek: 3 },
+    { id: "Szymanska_B", name: "Beata Szymańska", subject: "Chemia", workload: 14, maxDailyLessons: 5 },
+    { id: "Dabrowski_R", name: "Robert Dąbrowski", subject: "Informatyka", workload: 14, maxGapsPerWeek: 1 },
+    { id: "Kozlowska_M", name: "Magdalena Kozłowska", subject: "Geografia", workload: 14, maxGapsPerWeek: 1 },
   ]);
 
   // Krok 3: Sale lekcyjne
@@ -123,10 +129,21 @@
   // Krok 5: Reguły szkoły (Zasady dydaktyczne)
   let ruleAvoidClashes = $state(true); // Wymóg bezwzględny
   let ruleAssignAllTimes = $state(true); // Wymóg bezwzględny
-  let ruleStudentNoGaps = $state(true); // Brak okienek dla klas
-  let ruleTeacherMaxGaps = $state(true); // Ograniczenie okienek dla kadry
-  let ruleMaxLessonsDaily = $state(true); // Max lekcji dziennie
-  let maxDailyLimit = $state(7);
+  let ruleStudentNoGaps = $state(true); // Brak okienek dla klas (LimitIdleTimesConstraint)
+  let ruleStudentNoGapsSoft = $state(false); // Domyślnie HARD
+  let studentGapsWeight = $state(10);
+  let ruleTeacherMaxGaps = $state(true); // Ograniczenie okienek dla kadry (LimitIdleTimesConstraint)
+  let teacherMaxGapsLimit = $state(2); // Domyślnie maks. 2 okienka
+  let teacherGapsWeight = $state(5); // Waga kary
+  let ruleMaxLessonsDaily = $state(true); // Ramy lekcji dziennie dla klas (LimitBusyTimesConstraint)
+  let studentMinDailyLimit = $state(3); // Min lekcji dziennie
+  let studentMaxDailyLimit = $state(7); // Max lekcji dziennie
+  let studentDailyWeight = $state(5); // Waga kary
+  let ruleTeacherMaxDaily = $state(true); // Max lekcji dziennie dla nauczycieli (LimitBusyTimesConstraint)
+  let teacherMaxDailyLimit = $state(6); // Domyślnie maks. 6 lekcji
+  let teacherDailyWeight = $state(4); // Waga kary
+  let ruleTeacherClusterDays = $state(true); // Kompaktowy tydzień pracy (ClusterBusyTimesConstraint)
+  let teacherClusterWeight = $state(6); // Waga kary
   let ruleSpreadSubjects = $state(true); // Równomierny rozkład w tygodniu
   let ruleContinuousBlocks = $state(true); // Ciągłość bloków 2h
 
@@ -152,7 +169,7 @@
   let saveError = $state<string | null>(null);
   let saveSuccess = $state<string | null>(null);
 
-  // Modal availability state (Phase 1)
+  // Modal availability state (Phase 1 & 2)
   let activeAvailabilityTarget = $state<{
     id: string;
     name: string;
@@ -160,6 +177,11 @@
     unavailableTimes: string[];
     isSoft?: boolean;
     weight?: number;
+    maxDaysPerWeek?: number | null;
+    minDaysPerWeek?: number | null;
+    maxDailyLessons?: number | null;
+    maxGapsPerWeek?: number | null;
+    minDailyLessons?: number | null;
   } | null>(null);
 
   function openAvailabilityModal(id: string, name: string, type: "teacher" | "room" | "class") {
@@ -173,6 +195,10 @@
         unavailableTimes: t.unavailableTimes || [],
         isSoft: t.unavailableSoft || false,
         weight: t.unavailableWeight || 10,
+        maxDaysPerWeek: t.maxDaysPerWeek ?? null,
+        minDaysPerWeek: t.minDaysPerWeek ?? null,
+        maxDailyLessons: t.maxDailyLessons ?? null,
+        maxGapsPerWeek: t.maxGapsPerWeek ?? null,
       };
     } else if (type === "room") {
       const r = rooms.find((x) => x.id === id);
@@ -195,18 +221,40 @@
         unavailableTimes: c.unavailableTimes || [],
         isSoft: c.unavailableSoft || false,
         weight: c.unavailableWeight || 10,
+        minDailyLessons: c.minDailyLessons ?? null,
+        maxDailyLessons: c.maxDailyLessons ?? null,
       };
     }
   }
 
-  function handleSaveAvailability(times: string[], isSoft: boolean, weight: number) {
+  function handleSaveAvailability(
+    times: string[],
+    isSoft: boolean,
+    weight: number,
+    extra?: {
+      maxDaysPerWeek?: number | null;
+      minDaysPerWeek?: number | null;
+      maxDailyLessons?: number | null;
+      maxGapsPerWeek?: number | null;
+      minDailyLessons?: number | null;
+    }
+  ) {
     if (!activeAvailabilityTarget) return;
     const { id, type } = activeAvailabilityTarget;
 
     if (type === "teacher") {
       teachers = teachers.map((t) =>
         t.id === id
-          ? { ...t, unavailableTimes: times, unavailableSoft: isSoft, unavailableWeight: weight }
+          ? {
+              ...t,
+              unavailableTimes: times,
+              unavailableSoft: isSoft,
+              unavailableWeight: weight,
+              maxDaysPerWeek: extra?.maxDaysPerWeek ?? null,
+              minDaysPerWeek: extra?.minDaysPerWeek ?? null,
+              maxDailyLessons: extra?.maxDailyLessons ?? null,
+              maxGapsPerWeek: extra?.maxGapsPerWeek ?? null,
+            }
           : t
       );
     } else if (type === "room") {
@@ -218,7 +266,14 @@
     } else if (type === "class") {
       classes = classes.map((c) =>
         c.id === id
-          ? { ...c, unavailableTimes: times, unavailableSoft: isSoft, unavailableWeight: weight }
+          ? {
+              ...c,
+              unavailableTimes: times,
+              unavailableSoft: isSoft,
+              unavailableWeight: weight,
+              minDailyLessons: extra?.minDailyLessons ?? null,
+              maxDailyLessons: extra?.maxDailyLessons ?? null,
+            }
           : c
       );
     }
@@ -234,6 +289,26 @@
   let resourcesWithUnavailability = $derived(
     [...teachers, ...classes, ...rooms].filter(
       (r) => (r.unavailableTimes?.length || 0) > 0
+    )
+  );
+
+  let teachersWithCustomDays = $derived(
+    teachers.filter((t) => t.maxDaysPerWeek && t.maxDaysPerWeek < selectedDays.length)
+  );
+
+  let teachersWithCustomDailyLimit = $derived(
+    teachers.filter((t) => t.maxDailyLessons !== null && t.maxDailyLessons !== undefined)
+  );
+
+  let teachersWithCustomGaps = $derived(
+    teachers.filter((t) => t.maxGapsPerWeek !== null && t.maxGapsPerWeek !== undefined)
+  );
+
+  let classesWithCustomDailyLimit = $derived(
+    classes.filter(
+      (c) =>
+        (c.minDailyLessons !== null && c.minDailyLessons !== undefined) ||
+        (c.maxDailyLessons !== null && c.maxDailyLessons !== undefined)
     )
   );
 
@@ -257,8 +332,12 @@
       periodsPerDay = Math.max(5, Math.round(inst.times.length / days.length));
     }
 
-    // Extract any existing AvoidUnavailableTimesConstraint into maps
+    // Extract any existing constraints into maps
     const unavailMap: Record<string, { times: string[]; isSoft: boolean; weight: number }> = {};
+    const clusterDaysMap: Record<string, { minDays: number | null; maxDays: number | null }> = {};
+    const busyLimitMap: Record<string, { minDaily: number | null; maxDaily: number | null }> = {};
+    const gapsLimitMap: Record<string, number | null> = {};
+
     (inst.constraints || []).forEach((c) => {
       if (c.type === "AvoidUnavailableTimesConstraint") {
         const times = Array.isArray(c.params.Times)
@@ -271,6 +350,38 @@
             weight: c.weight || 10,
           };
         });
+      } else if (c.type === "ClusterBusyTimesConstraint") {
+        const maxDays = c.params.Maximum !== undefined ? Number(c.params.Maximum) : null;
+        const minDays = c.params.Minimum !== undefined ? Number(c.params.Minimum) : null;
+        (c.applies_to?.resources || []).forEach((rId) => {
+          clusterDaysMap[rId] = { minDays, maxDays };
+        });
+        if (c.weight) teacherClusterWeight = c.weight;
+        ruleTeacherClusterDays = true;
+      } else if (c.type === "LimitBusyTimesConstraint") {
+        const minVal = c.params.Minimum !== undefined ? Number(c.params.Minimum) : null;
+        const maxVal = c.params.Maximum !== undefined ? Number(c.params.Maximum) : null;
+        (c.applies_to?.resources || []).forEach((rId) => {
+          busyLimitMap[rId] = { minDaily: minVal, maxDaily: maxVal };
+        });
+        if (minVal !== null && minVal > 0) studentMinDailyLimit = minVal;
+        if (maxVal !== null && maxVal > 0) studentMaxDailyLimit = maxVal;
+        if (c.weight) studentDailyWeight = c.weight;
+        ruleMaxLessonsDaily = true;
+      } else if (c.type === "LimitIdleTimesConstraint") {
+        const maxGaps = c.params.Maximum !== undefined ? Number(c.params.Maximum) : 0;
+        (c.applies_to?.resources || []).forEach((rId) => {
+          gapsLimitMap[rId] = maxGaps;
+        });
+        if (maxGaps === 0) {
+          ruleStudentNoGaps = true;
+          ruleStudentNoGapsSoft = !c.required;
+          if (c.weight) studentGapsWeight = c.weight;
+        } else {
+          ruleTeacherMaxGaps = true;
+          teacherMaxGapsLimit = maxGaps;
+          if (c.weight) teacherGapsWeight = c.weight;
+        }
       }
     });
 
@@ -283,6 +394,8 @@
         unavailableTimes: unavailMap[r.id]?.times || [],
         unavailableSoft: unavailMap[r.id]?.isSoft || false,
         unavailableWeight: unavailMap[r.id]?.weight || 10,
+        minDailyLessons: busyLimitMap[r.id]?.minDaily ?? null,
+        maxDailyLessons: busyLimitMap[r.id]?.maxDaily ?? null,
       }));
     if (foundClasses.length > 0) classes = foundClasses;
 
@@ -297,6 +410,10 @@
         unavailableTimes: unavailMap[r.id]?.times || [],
         unavailableSoft: unavailMap[r.id]?.isSoft || false,
         unavailableWeight: unavailMap[r.id]?.weight || 10,
+        maxDaysPerWeek: clusterDaysMap[r.id]?.maxDays ?? null,
+        minDaysPerWeek: clusterDaysMap[r.id]?.minDays ?? null,
+        maxDailyLessons: busyLimitMap[r.id]?.maxDaily ?? null,
+        maxGapsPerWeek: gapsLimitMap[r.id] ?? null,
       }));
     if (foundTeachers.length > 0) teachers = foundTeachers;
 
@@ -339,12 +456,12 @@
       { id: "Nowak_A", name: "Anna Nowak", subject: "Język polski", workload: 18 },
       { id: "Wisniewski_P", name: "Piotr Wiśniewski", subject: "Wychowanie Fizyczne", workload: 18 },
       { id: "Wojcik_M", name: "Marta Wójcik", subject: "Język angielski", workload: 18 },
-      { id: "Kaminski_T", name: "Tomasz Kamiński", subject: "Historia", workload: 12 },
-      { id: "Lewandowska_E", name: "Ewa Lewandowska", subject: "Biologia", workload: 12 },
-      { id: "Zielinski_K", name: "Krzysztof Zieliński", subject: "Fizyka", workload: 12 },
-      { id: "Szymanska_B", name: "Beata Szymańska", subject: "Chemia", workload: 12 },
-      { id: "Dabrowski_R", name: "Robert Dąbrowski", subject: "Informatyka", workload: 12 },
-      { id: "Kozlowska_M", name: "Magdalena Kozłowska", subject: "Geografia", workload: 12 },
+      { id: "Kaminski_T", name: "Tomasz Kamiński", subject: "Historia", workload: 12, maxDaysPerWeek: 3 },
+      { id: "Lewandowska_E", name: "Ewa Lewandowska", subject: "Biologia", workload: 12, maxDaysPerWeek: 3 },
+      { id: "Zielinski_K", name: "Krzysztof Zieliński", subject: "Fizyka", workload: 12, maxDaysPerWeek: 3 },
+      { id: "Szymanska_B", name: "Beata Szymańska", subject: "Chemia", workload: 12, maxDailyLessons: 5 },
+      { id: "Dabrowski_R", name: "Robert Dąbrowski", subject: "Informatyka", workload: 12, maxGapsPerWeek: 0 },
+      { id: "Kozlowska_M", name: "Magdalena Kozłowska", subject: "Geografia", workload: 12, maxGapsPerWeek: 1 },
     ];
 
     rooms = [
@@ -673,13 +790,13 @@
     const dayGroupRefs = time_groups.map((tg) => tg.id);
 
     // Reguła 3: Brak okienek dla klas (XHSTT LimitIdleTimesConstraint)
-    if (ruleStudentNoGaps) {
+    if (ruleStudentNoGaps && classes.length > 0) {
       constraints.push({
         type: "LimitIdleTimesConstraint",
         id: "Regula_KlasyBezOkienek",
         name: "Brak pustych godzin (okienek) w planie uczniów",
-        required: true,
-        weight: 10,
+        required: !ruleStudentNoGapsSoft,
+        weight: studentGapsWeight,
         cost_function: "Linear",
         applies_to: {
           event_groups: [],
@@ -691,7 +808,7 @@
           event_pairs: [],
         },
         params: {
-          TimeGroups: dayGroupRefs,
+          TimeGroups: dayGroupRefs.map((d) => ({ reference: d })),
           Minimum: 0,
           Maximum: 0,
         },
@@ -699,54 +816,211 @@
     }
 
     // Reguła 4: Ograniczenie okienek dla nauczycieli (XHSTT LimitIdleTimesConstraint)
-    if (ruleTeacherMaxGaps) {
+    // 4a. Indywidualne limity okienek
+    teachers.forEach((t) => {
+      if (t.maxGapsPerWeek !== null && t.maxGapsPerWeek !== undefined) {
+        constraints.push({
+          type: "LimitIdleTimesConstraint",
+          id: `LimitOkienek_${t.id}`,
+          name: `Limit okienek dla ${t.name}: maks. ${t.maxGapsPerWeek}`,
+          required: false,
+          weight: teacherGapsWeight,
+          cost_function: "Linear",
+          applies_to: {
+            event_groups: [],
+            events: [],
+            resource_groups: [],
+            resources: [t.id],
+            time_groups: [],
+            times: [],
+            event_pairs: [],
+          },
+          params: {
+            TimeGroups: dayGroupRefs.map((d) => ({ reference: d })),
+            Minimum: 0,
+            Maximum: t.maxGapsPerWeek,
+          },
+        });
+      }
+    });
+
+    // 4b. Domyślny limit okienek dla pozostałych nauczycieli
+    const teachersDefaultGaps = teachers.filter(
+      (t) => t.maxGapsPerWeek === null || t.maxGapsPerWeek === undefined
+    );
+    if (ruleTeacherMaxGaps && teachersDefaultGaps.length > 0) {
       constraints.push({
         type: "LimitIdleTimesConstraint",
         id: "Regula_KomfortNauczycieli",
         name: "Minimalizacja okienek dla kadry pedagogicznej",
         required: false,
-        weight: 5,
+        weight: teacherGapsWeight,
         cost_function: "Linear",
         applies_to: {
           event_groups: [],
           events: [],
           resource_groups: [],
-          resources: teachers.map((t) => t.id),
+          resources: teachersDefaultGaps.map((t) => t.id),
           time_groups: [],
           times: [],
           event_pairs: [],
         },
         params: {
-          TimeGroups: dayGroupRefs,
+          TimeGroups: dayGroupRefs.map((d) => ({ reference: d })),
           Minimum: 0,
-          Maximum: 2,
+          Maximum: teacherMaxGapsLimit,
         },
       });
     }
 
-    // Reguła 5: Limit lekcji dziennie (XHSTT LimitBusyTimesConstraint)
-    if (ruleMaxLessonsDaily) {
-      constraints.push({
-        type: "LimitBusyTimesConstraint",
-        id: "Regula_HigienaNauki",
-        name: "Maksymalna dopuszczalna liczba lekcji dziennie",
-        required: false,
-        weight: 5,
-        cost_function: "Linear",
-        applies_to: {
-          event_groups: [],
-          events: [],
-          resource_groups: [],
-          resources: classes.map((c) => c.id),
-          time_groups: [],
-          times: [],
-          event_pairs: [],
-        },
-        params: {
-          TimeGroups: dayGroupRefs,
-          Minimum: 0,
-          Maximum: maxDailyLimit,
-        },
+    // Reguła 5: Limit lekcji dziennie dla klas (XHSTT LimitBusyTimesConstraint)
+    if (ruleMaxLessonsDaily && classes.length > 0) {
+      const defaultDailyClasses = classes.filter(
+        (c) =>
+          (c.minDailyLessons === null || c.minDailyLessons === undefined) &&
+          (c.maxDailyLessons === null || c.maxDailyLessons === undefined)
+      );
+      if (defaultDailyClasses.length > 0) {
+        constraints.push({
+          type: "LimitBusyTimesConstraint",
+          id: "Regula_HigienaNauki",
+          name: "Maksymalna dopuszczalna liczba lekcji dziennie dla klas",
+          required: false,
+          weight: studentDailyWeight,
+          cost_function: "Linear",
+          applies_to: {
+            event_groups: [],
+            events: [],
+            resource_groups: [],
+            resources: defaultDailyClasses.map((c) => c.id),
+            time_groups: [],
+            times: [],
+            event_pairs: [],
+          },
+          params: {
+            TimeGroups: dayGroupRefs.map((d) => ({ reference: d })),
+            Minimum: studentMinDailyLimit,
+            Maximum: studentMaxDailyLimit,
+          },
+        });
+      }
+
+      classes.forEach((c) => {
+        if (
+          (c.minDailyLessons !== null && c.minDailyLessons !== undefined) ||
+          (c.maxDailyLessons !== null && c.maxDailyLessons !== undefined)
+        ) {
+          constraints.push({
+            type: "LimitBusyTimesConstraint",
+            id: `LimitLekcji_${c.id}`,
+            name: `Dzienne ramy lekcyjne dla oddziału ${c.name}`,
+            required: false,
+            weight: studentDailyWeight,
+            cost_function: "Linear",
+            applies_to: {
+              event_groups: [],
+              events: [],
+              resource_groups: [],
+              resources: [c.id],
+              time_groups: [],
+              times: [],
+              event_pairs: [],
+            },
+            params: {
+              TimeGroups: dayGroupRefs.map((d) => ({ reference: d })),
+              Minimum: c.minDailyLessons ?? studentMinDailyLimit,
+              Maximum: c.maxDailyLessons ?? studentMaxDailyLimit,
+            },
+          });
+        }
+      });
+    }
+
+    // Reguła 5b: Maksymalne obciążenie dzienne nauczycieli (XHSTT LimitBusyTimesConstraint)
+    if (ruleTeacherMaxDaily && teachers.length > 0) {
+      const defaultDailyTeachers = teachers.filter(
+        (t) => t.maxDailyLessons === null || t.maxDailyLessons === undefined
+      );
+      if (defaultDailyTeachers.length > 0) {
+        constraints.push({
+          type: "LimitBusyTimesConstraint",
+          id: "Regula_MaxLekcjiNauczycieli",
+          name: "Maksymalna liczba lekcji dziennie dla kadry",
+          required: false,
+          weight: teacherDailyWeight,
+          cost_function: "Linear",
+          applies_to: {
+            event_groups: [],
+            events: [],
+            resource_groups: [],
+            resources: defaultDailyTeachers.map((t) => t.id),
+            time_groups: [],
+            times: [],
+            event_pairs: [],
+          },
+          params: {
+            TimeGroups: dayGroupRefs.map((d) => ({ reference: d })),
+            Minimum: 0,
+            Maximum: teacherMaxDailyLimit,
+          },
+        });
+      }
+
+      teachers.forEach((t) => {
+        if (t.maxDailyLessons !== null && t.maxDailyLessons !== undefined) {
+          constraints.push({
+            type: "LimitBusyTimesConstraint",
+            id: `MaxLekcji_${t.id}`,
+            name: `Maks. liczba lekcji dziennie dla ${t.name}: ${t.maxDailyLessons}`,
+            required: false,
+            weight: teacherDailyWeight,
+            cost_function: "Linear",
+            applies_to: {
+              event_groups: [],
+              events: [],
+              resource_groups: [],
+              resources: [t.id],
+              time_groups: [],
+              times: [],
+              event_pairs: [],
+            },
+            params: {
+              TimeGroups: dayGroupRefs.map((d) => ({ reference: d })),
+              Minimum: 0,
+              Maximum: t.maxDailyLessons,
+            },
+          });
+        }
+      });
+    }
+
+    // Reguła 5c: Kompaktowy tydzień pracy kadry (XHSTT ClusterBusyTimesConstraint)
+    if (ruleTeacherClusterDays) {
+      teachers.forEach((t) => {
+        if (t.maxDaysPerWeek && t.maxDaysPerWeek < selectedDays.length) {
+          constraints.push({
+            type: "ClusterBusyTimesConstraint",
+            id: `ClusterDni_${t.id}`,
+            name: `Kompaktowy tydzień pracy: ${t.name} (maks. ${t.maxDaysPerWeek} dni)`,
+            required: false,
+            weight: teacherClusterWeight,
+            cost_function: "Linear",
+            applies_to: {
+              event_groups: [],
+              events: [],
+              resource_groups: [],
+              resources: [t.id],
+              time_groups: [],
+              times: [],
+              event_pairs: [],
+            },
+            params: {
+              TimeGroups: dayGroupRefs.map((d) => ({ reference: d })),
+              Minimum: t.minDaysPerWeek ?? 1,
+              Maximum: t.maxDaysPerWeek,
+            },
+          });
+        }
       });
     }
 
@@ -1158,17 +1432,26 @@
             <div class="mt-3 flex flex-col gap-1.5 max-h-72 overflow-y-auto">
               {#each classes as cls}
                 <div class="p-2.5 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-between text-xs">
-                  <span class="font-bold text-slate-800">👥 {cls.name}</span>
+                  <div class="flex flex-col">
+                    <span class="font-bold text-slate-800">👥 {cls.name}</span>
+                    {#if (cls.minDailyLessons !== null && cls.minDailyLessons !== undefined) || (cls.maxDailyLessons !== null && cls.maxDailyLessons !== undefined)}
+                      <div class="flex items-center gap-1.5 mt-0.5">
+                        <span class="text-[10px] px-1.5 py-0.2 bg-blue-50 text-blue-700 rounded border border-blue-200 font-medium">
+                          ⚖️ {cls.minDailyLessons ?? "min"}-{cls.maxDailyLessons ?? "max"} lekcji/dzień
+                        </span>
+                      </div>
+                    {/if}
+                  </div>
                   <div class="flex items-center gap-1.5">
                     <button
                       type="button"
                       onclick={() => openAvailabilityModal(cls.id, cls.name, "class")}
                       class={`text-[11px] px-2.5 py-1 rounded-lg border flex items-center gap-1 transition-all cursor-pointer ${
-                        (cls.unavailableTimes?.length || 0) > 0
+                        (cls.unavailableTimes?.length || 0) > 0 || cls.minDailyLessons || cls.maxDailyLessons
                           ? "bg-rose-50 text-rose-700 border-rose-200 font-semibold"
                           : "bg-white text-slate-600 border-slate-200 hover:border-slate-300"
                       }`}
-                      title="Ustal dostępność klasy (AvoidUnavailableTimesConstraint)"
+                      title="Ustal dostępność klasy i ramy lekcyjne"
                     >
                       <span>🗓️</span>
                       <span>{cls.unavailableTimes?.length ? `${cls.unavailableTimes.length} wykl.` : "Dostępność"}</span>
@@ -1232,17 +1515,36 @@
                   <div class="flex flex-col">
                     <span class="font-bold text-slate-800">👨‍🏫 {t.name}</span>
                     <span class="text-[11px] text-slate-500">{t.subject} • pensum: {t.workload}h</span>
+                    {#if t.maxDaysPerWeek || t.maxDailyLessons || (t.maxGapsPerWeek !== null && t.maxGapsPerWeek !== undefined)}
+                      <div class="flex flex-wrap items-center gap-1 mt-1">
+                        {#if t.maxDaysPerWeek}
+                          <span class="text-[10px] px-1.5 py-0.2 bg-purple-50 text-purple-700 rounded border border-purple-200 font-medium">
+                            📅 maks. {t.maxDaysPerWeek} {t.maxDaysPerWeek === 1 ? "dzień" : "dni"}
+                          </span>
+                        {/if}
+                        {#if t.maxDailyLessons}
+                          <span class="text-[10px] px-1.5 py-0.2 bg-amber-50 text-amber-700 rounded border border-amber-200 font-medium">
+                            ⏱️ maks. {t.maxDailyLessons} lekcji/dzień
+                          </span>
+                        {/if}
+                        {#if t.maxGapsPerWeek !== null && t.maxGapsPerWeek !== undefined}
+                          <span class="text-[10px] px-1.5 py-0.2 bg-cyan-50 text-cyan-700 rounded border border-cyan-200 font-medium">
+                            ☕ maks. {t.maxGapsPerWeek} okienek
+                          </span>
+                        {/if}
+                      </div>
+                    {/if}
                   </div>
                   <div class="flex items-center gap-1.5">
                     <button
                       type="button"
                       onclick={() => openAvailabilityModal(t.id, t.name, "teacher")}
                       class={`text-[11px] px-2.5 py-1 rounded-lg border flex items-center gap-1 transition-all cursor-pointer ${
-                        (t.unavailableTimes?.length || 0) > 0
+                        (t.unavailableTimes?.length || 0) > 0 || t.maxDaysPerWeek || t.maxDailyLessons || (t.maxGapsPerWeek !== null && t.maxGapsPerWeek !== undefined)
                           ? "bg-rose-50 text-rose-700 border-rose-200 font-semibold"
                           : "bg-white text-slate-600 border-slate-200 hover:border-slate-300"
                       }`}
-                      title="Ustal godziny pracy i wykluczenia (AvoidUnavailableTimesConstraint)"
+                      title="Ustal godziny pracy, dni i wykluczenia"
                     >
                       <span>🗓️</span>
                       <span>{t.unavailableTimes?.length ? `${t.unavailableTimes.length} wykl.` : "Dostępność"}</span>
@@ -1547,47 +1849,233 @@
             </span>
           </div>
 
-          <!-- Reguła 3: Okienka uczniów -->
-          <label class="p-4 bg-white rounded-xl border border-slate-200 flex items-start justify-between gap-4 cursor-pointer hover:border-slate-300 transition-all">
-            <div class="flex items-start gap-3">
-              <span class="text-xl">☕</span>
-              <div>
-                <span class="text-xs font-bold text-slate-900">Brak okienek dla uczniów</span>
-                <p class="text-xs text-slate-500 mt-0.5 leading-snug">
-                  Uczniowie mają zajęcia ciągiem od pierwszej do ostatniej lekcji, bez pustych przerw w środku dnia.
-                </p>
+          <!-- Reguła 3: Okienka uczniów (LimitIdleTimesConstraint) -->
+          <div class="p-4 bg-white rounded-xl border border-slate-200 flex flex-col gap-3">
+            <div class="flex items-start justify-between gap-4">
+              <div class="flex items-start gap-3">
+                <span class="text-xl">☕</span>
+                <div>
+                  <div class="flex items-center gap-2">
+                    <span class="text-xs font-bold text-slate-900">Brak okienek dla uczniów (LimitIdleTimesConstraint)</span>
+                    <span class={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
+                      !ruleStudentNoGapsSoft ? "bg-rose-50 text-rose-700 border-rose-200" : "bg-amber-50 text-amber-700 border-amber-200"
+                    }`}>
+                      {!ruleStudentNoGapsSoft ? "Wymóg HARD" : `SOFT (waga ${studentGapsWeight})`}
+                    </span>
+                  </div>
+                  <p class="text-xs text-slate-500 mt-0.5 leading-snug">
+                    Uczniowie mają zajęcia ciągiem od pierwszej do ostatniej lekcji, bez pustych przerw w środku dnia.
+                  </p>
+                </div>
               </div>
+              <input type="checkbox" bind:checked={ruleStudentNoGaps} class="w-4 h-4 accent-blue-600 cursor-pointer mt-1" />
             </div>
-            <input type="checkbox" bind:checked={ruleStudentNoGaps} class="w-4 h-4 accent-blue-600 cursor-pointer mt-1" />
-          </label>
 
-          <!-- Reguła 4: Okienka nauczycieli -->
-          <label class="p-4 bg-white rounded-xl border border-slate-200 flex items-start justify-between gap-4 cursor-pointer hover:border-slate-300 transition-all">
-            <div class="flex items-start gap-3">
-              <span class="text-xl">👨‍🏫</span>
-              <div>
-                <span class="text-xs font-bold text-slate-900">Minimalizacja okienek dla nauczycieli</span>
-                <p class="text-xs text-slate-500 mt-0.5 leading-snug">
-                  Nauczyciele nie powinni czekać bezczynnie w szkole między lekcjami (maks. 1-2 okienka w tygodniu).
-                </p>
+            {#if ruleStudentNoGaps}
+              <div class="pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3 text-xs">
+                <div class="flex items-center gap-4">
+                  <span class="text-slate-500 text-[11px] font-medium">Rygor ograniczenia:</span>
+                  <label class="flex items-center gap-1.5 cursor-pointer">
+                    <input type="radio" name="studentGapsRigor" checked={!ruleStudentNoGapsSoft} onchange={() => (ruleStudentNoGapsSoft = false)} class="w-3.5 h-3.5 accent-rose-600" />
+                    <span class="font-semibold text-rose-700 text-[11px]">HARD (Zakaz bezwzględny)</span>
+                  </label>
+                  <label class="flex items-center gap-1.5 cursor-pointer">
+                    <input type="radio" name="studentGapsRigor" checked={ruleStudentNoGapsSoft} onchange={() => (ruleStudentNoGapsSoft = true)} class="w-3.5 h-3.5 accent-amber-600" />
+                    <span class="font-semibold text-amber-700 text-[11px]">SOFT (Preferencja z wagą)</span>
+                  </label>
+                </div>
+                {#if ruleStudentNoGapsSoft}
+                  <div class="flex items-center gap-1.5">
+                    <span class="text-slate-500 text-[11px]">Waga kary:</span>
+                    <input type="number" min="1" max="50" bind:value={studentGapsWeight} class="w-14 px-2 py-0.5 text-center bg-slate-50 border border-slate-200 rounded text-xs font-bold text-slate-800" />
+                  </div>
+                {/if}
               </div>
-            </div>
-            <input type="checkbox" bind:checked={ruleTeacherMaxGaps} class="w-4 h-4 accent-blue-600 cursor-pointer mt-1" />
-          </label>
+            {/if}
+          </div>
 
-          <!-- Reguła 5: Limit dzienny lekcji -->
-          <label class="p-4 bg-white rounded-xl border border-slate-200 flex items-start justify-between gap-4 cursor-pointer hover:border-slate-300 transition-all">
-            <div class="flex items-start gap-3">
-              <span class="text-xl">⚖️</span>
-              <div>
-                <span class="text-xs font-bold text-slate-900">Górny limit lekcji dziennie (Higiena nauki)</span>
-                <p class="text-xs text-slate-500 mt-0.5 leading-snug">
-                  Zapobieganie przeciążeniu uczniów zbyt długim dniem szkolnym (maksymalnie {maxDailyLimit} lekcji na dzień).
-                </p>
+          <!-- Reguła 4: Okienka nauczycieli (LimitIdleTimesConstraint) -->
+          <div class="p-4 bg-white rounded-xl border border-slate-200 flex flex-col gap-3">
+            <div class="flex items-start justify-between gap-4">
+              <div class="flex items-start gap-3">
+                <span class="text-xl">👨‍🏫</span>
+                <div>
+                  <div class="flex items-center gap-2">
+                    <span class="text-xs font-bold text-slate-900">Minimalizacja okienek dla nauczycieli (LimitIdleTimesConstraint)</span>
+                    <span class="text-[10px] font-semibold px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full border border-blue-200">
+                      Maks. {teacherMaxGapsLimit} {teacherMaxGapsLimit === 1 ? "okienko" : "okienka"} (waga {teacherGapsWeight})
+                    </span>
+                    {#if teachersWithCustomGaps.length > 0}
+                      <span class="text-[10px] font-semibold px-2 py-0.5 bg-cyan-50 text-cyan-700 rounded-full border border-cyan-200">
+                        {teachersWithCustomGaps.length} indywidualnych
+                      </span>
+                    {/if}
+                  </div>
+                  <p class="text-xs text-slate-500 mt-0.5 leading-snug">
+                    Nauczyciele nie powinni czekać bezczynnie w szkole między lekcjami w ciągu tygodnia roboczego.
+                  </p>
+                </div>
               </div>
+              <input type="checkbox" bind:checked={ruleTeacherMaxGaps} class="w-4 h-4 accent-blue-600 cursor-pointer mt-1" />
             </div>
-            <input type="checkbox" bind:checked={ruleMaxLessonsDaily} class="w-4 h-4 accent-blue-600 cursor-pointer mt-1" />
-          </label>
+
+            {#if ruleTeacherMaxGaps}
+              <div class="pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3 text-xs">
+                <div class="flex items-center gap-3">
+                  <span class="text-slate-500 text-[11px] font-medium">Dopuszczalny limit ogólny:</span>
+                  <select bind:value={teacherMaxGapsLimit} class="px-2.5 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-800">
+                    <option value={0}>0 okienek w tygodniu (ciągły plan)</option>
+                    <option value={1}>Maks. 1 okienko w tygodniu</option>
+                    <option value={2}>Maks. 2 okienka w tygodniu</option>
+                    <option value={3}>Maks. 3 okienka w tygodniu</option>
+                    <option value={4}>Maks. 4 okienka w tygodniu</option>
+                  </select>
+                </div>
+                <div class="flex items-center gap-1.5">
+                  <span class="text-slate-500 text-[11px]">Waga kary (kara/okienko):</span>
+                  <input type="number" min="1" max="50" bind:value={teacherGapsWeight} class="w-14 px-2 py-0.5 text-center bg-slate-50 border border-slate-200 rounded text-xs font-bold text-slate-800" />
+                </div>
+              </div>
+              {#if teachersWithCustomGaps.length > 0}
+                <div class="p-2 bg-cyan-50/60 rounded-lg border border-cyan-100 text-[11px] text-cyan-900">
+                  Nauczyciele z indywidualnym limitem: {teachersWithCustomGaps.map(t => `${t.name} (max ${t.maxGapsPerWeek})`).join(", ")}
+                </div>
+              {/if}
+            {/if}
+          </div>
+
+          <!-- Reguła 5: Dzienne obciążenie klas (LimitBusyTimesConstraint) -->
+          <div class="p-4 bg-white rounded-xl border border-slate-200 flex flex-col gap-3">
+            <div class="flex items-start justify-between gap-4">
+              <div class="flex items-start gap-3">
+                <span class="text-xl">⚖️</span>
+                <div>
+                  <div class="flex items-center gap-2">
+                    <span class="text-xs font-bold text-slate-900">Dzienne ramy lekcyjne dla oddziałów (LimitBusyTimesConstraint)</span>
+                    <span class="text-[10px] font-semibold px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full border border-blue-200">
+                      {studentMinDailyLimit} - {studentMaxDailyLimit} lekcji/dzień
+                    </span>
+                    {#if classesWithCustomDailyLimit.length > 0}
+                      <span class="text-[10px] font-semibold px-2 py-0.5 bg-purple-50 text-purple-700 rounded-full border border-purple-200">
+                        {classesWithCustomDailyLimit.length} indywidualnych
+                      </span>
+                    {/if}
+                  </div>
+                  <p class="text-xs text-slate-500 mt-0.5 leading-snug">
+                    Higiena nauki: zapobiega przychodzeniu uczniów na pojedyncze lekcje oraz przeciążeniu zbyt długim dniem nauki.
+                  </p>
+                </div>
+              </div>
+              <input type="checkbox" bind:checked={ruleMaxLessonsDaily} class="w-4 h-4 accent-blue-600 cursor-pointer mt-1" />
+            </div>
+
+            {#if ruleMaxLessonsDaily}
+              <div class="pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3 text-xs">
+                <div class="flex items-center gap-3">
+                  <div class="flex items-center gap-1.5">
+                    <span class="text-slate-500 text-[11px]">Min. lekcji dziennie:</span>
+                    <input type="number" min="1" max="6" bind:value={studentMinDailyLimit} class="w-14 px-2 py-0.5 text-center bg-slate-50 border border-slate-200 rounded text-xs font-bold text-slate-800" />
+                  </div>
+                  <div class="flex items-center gap-1.5">
+                    <span class="text-slate-500 text-[11px]">Maks. lekcji dziennie:</span>
+                    <input type="number" min="4" max="10" bind:value={studentMaxDailyLimit} class="w-14 px-2 py-0.5 text-center bg-slate-50 border border-slate-200 rounded text-xs font-bold text-slate-800" />
+                  </div>
+                </div>
+                <div class="flex items-center gap-1.5">
+                  <span class="text-slate-500 text-[11px]">Waga kary:</span>
+                  <input type="number" min="1" max="50" bind:value={studentDailyWeight} class="w-14 px-2 py-0.5 text-center bg-slate-50 border border-slate-200 rounded text-xs font-bold text-slate-800" />
+                </div>
+              </div>
+            {/if}
+          </div>
+
+          <!-- Reguła 5b: Maksymalne obciążenie dzienne nauczycieli (LimitBusyTimesConstraint) -->
+          <div class="p-4 bg-white rounded-xl border border-slate-200 flex flex-col gap-3">
+            <div class="flex items-start justify-between gap-4">
+              <div class="flex items-start gap-3">
+                <span class="text-xl">⏱️</span>
+                <div>
+                  <div class="flex items-center gap-2">
+                    <span class="text-xs font-bold text-slate-900">Maksymalne obciążenie dzienne nauczycieli (LimitBusyTimesConstraint)</span>
+                    <span class="text-[10px] font-semibold px-2 py-0.5 bg-amber-50 text-amber-700 rounded-full border border-amber-200">
+                      Maks. {teacherMaxDailyLimit} lekcji/dzień
+                    </span>
+                    {#if teachersWithCustomDailyLimit.length > 0}
+                      <span class="text-[10px] font-semibold px-2 py-0.5 bg-purple-50 text-purple-700 rounded-full border border-purple-200">
+                        {teachersWithCustomDailyLimit.length} indywidualnych
+                      </span>
+                    {/if}
+                  </div>
+                  <p class="text-xs text-slate-500 mt-0.5 leading-snug">
+                    Chroni kadrę pedagogiczną przed kumulacją zbyt wielu godzin dydaktycznych w jednym dniu.
+                  </p>
+                </div>
+              </div>
+              <input type="checkbox" bind:checked={ruleTeacherMaxDaily} class="w-4 h-4 accent-blue-600 cursor-pointer mt-1" />
+            </div>
+
+            {#if ruleTeacherMaxDaily}
+              <div class="pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3 text-xs">
+                <div class="flex items-center gap-3">
+                  <span class="text-slate-500 text-[11px] font-medium">Maks. lekcji w dniu:</span>
+                  <select bind:value={teacherMaxDailyLimit} class="px-2.5 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-800">
+                    <option value={4}>Maks. 4 lekcje dziennie</option>
+                    <option value={5}>Maks. 5 lekcji dziennie</option>
+                    <option value={6}>Maks. 6 lekcji dziennie</option>
+                    <option value={7}>Maks. 7 lekcji dziennie</option>
+                    <option value={8}>Maks. 8 lekcji dziennie</option>
+                  </select>
+                </div>
+                <div class="flex items-center gap-1.5">
+                  <span class="text-slate-500 text-[11px]">Waga kary:</span>
+                  <input type="number" min="1" max="50" bind:value={teacherDailyWeight} class="w-14 px-2 py-0.5 text-center bg-slate-50 border border-slate-200 rounded text-xs font-bold text-slate-800" />
+                </div>
+              </div>
+              {#if teachersWithCustomDailyLimit.length > 0}
+                <div class="p-2 bg-amber-50/60 rounded-lg border border-amber-100 text-[11px] text-amber-900">
+                  Nauczyciele z indywidualnym limitem: {teachersWithCustomDailyLimit.map(t => `${t.name} (max ${t.maxDailyLessons}h)`).join(", ")}
+                </div>
+              {/if}
+            {/if}
+          </div>
+
+          <!-- Reguła 5c: Kompaktowy tydzień pracy kadry (ClusterBusyTimesConstraint) -->
+          <div class="p-4 bg-white rounded-xl border border-slate-200 flex flex-col gap-3">
+            <div class="flex items-start justify-between gap-4">
+              <div class="flex items-start gap-3">
+                <span class="text-xl">📅</span>
+                <div>
+                  <div class="flex items-center gap-2">
+                    <span class="text-xs font-bold text-slate-900">Kompaktowy tydzień pracy kadry (ClusterBusyTimesConstraint)</span>
+                    <span class="text-[10px] font-semibold px-2 py-0.5 bg-purple-50 text-purple-700 rounded-full border border-purple-200">
+                      {teachersWithCustomDays.length} z limitem dni
+                    </span>
+                  </div>
+                  <p class="text-xs text-slate-500 mt-0.5 leading-snug">
+                    Egzekwuje ograniczenie liczby dni obecności w szkole dla nauczycieli na niepełnym etacie lub dojeżdżających.
+                  </p>
+                </div>
+              </div>
+              <input type="checkbox" bind:checked={ruleTeacherClusterDays} class="w-4 h-4 accent-blue-600 cursor-pointer mt-1" />
+            </div>
+
+            {#if ruleTeacherClusterDays}
+              <div class="pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3 text-xs">
+                <span class="text-slate-500 text-[11px]">
+                  Limity dni konfiguruje się w kroku 2 przy każdym pedagogu (przycisk Dostępność).
+                </span>
+                <div class="flex items-center gap-1.5">
+                  <span class="text-slate-500 text-[11px]">Waga kary:</span>
+                  <input type="number" min="1" max="50" bind:value={teacherClusterWeight} class="w-14 px-2 py-0.5 text-center bg-slate-50 border border-slate-200 rounded text-xs font-bold text-slate-800" />
+                </div>
+              </div>
+              {#if teachersWithCustomDays.length > 0}
+                <div class="p-2 bg-purple-50/60 rounded-lg border border-purple-100 text-[11px] text-purple-900">
+                  Nauczyciele z limitem dni: {teachersWithCustomDays.map(t => `${t.name} (maks. ${t.maxDaysPerWeek} dni)`).join(", ")}
+                </div>
+              {/if}
+            {/if}
+          </div>
 
           <!-- Reguła 6: Rozkład przedmiotów -->
           <label class="p-4 bg-white rounded-xl border border-slate-200 flex items-start justify-between gap-4 cursor-pointer hover:border-slate-300 transition-all">
@@ -1707,6 +2195,22 @@
                 </span>
               </div>
             {/if}
+            {#if teachersWithCustomDays.length > 0}
+              <div class="flex items-center gap-2 text-emerald-800">
+                <span>✓</span>
+                <span>
+                  Zdefiniowano kompaktowy tydzień pracy (ClusterBusyTimes) dla {teachersWithCustomDays.length} pedagogów
+                </span>
+              </div>
+            {/if}
+            {#if teachersWithCustomDailyLimit.length > 0 || classesWithCustomDailyLimit.length > 0}
+              <div class="flex items-center gap-2 text-emerald-800">
+                <span>✓</span>
+                <span>
+                  Skonfigurowano indywidualne limity obciążenia dziennego (LimitBusyTimes)
+                </span>
+              </div>
+            {/if}
           </div>
 
           <!-- Save CTA -->
@@ -1772,7 +2276,7 @@
     {/if}
   </footer>
 
-  <!-- Modal Availability Grid (Phase 1) -->
+  <!-- Modal Availability Grid (Phase 1 & 2) -->
   {#if activeAvailabilityTarget}
     <AvailabilityModal
       resourceId={activeAvailabilityTarget.id}
@@ -1783,6 +2287,11 @@
       initialUnavailableTimes={activeAvailabilityTarget.unavailableTimes}
       initialIsSoft={activeAvailabilityTarget.isSoft}
       initialWeight={activeAvailabilityTarget.weight}
+      initialMaxDaysPerWeek={activeAvailabilityTarget.maxDaysPerWeek}
+      initialMinDaysPerWeek={activeAvailabilityTarget.minDaysPerWeek}
+      initialMaxDailyLessons={activeAvailabilityTarget.maxDailyLessons}
+      initialMaxGapsPerWeek={activeAvailabilityTarget.maxGapsPerWeek}
+      initialMinDailyLessons={activeAvailabilityTarget.minDailyLessons}
       onSave={handleSaveAvailability}
       onClose={() => (activeAvailabilityTarget = null)}
     />

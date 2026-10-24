@@ -1,4 +1,12 @@
 <script lang="ts">
+  export interface AvailabilityExtraParams {
+    maxDaysPerWeek?: number | null;
+    minDaysPerWeek?: number | null;
+    maxDailyLessons?: number | null;
+    maxGapsPerWeek?: number | null;
+    minDailyLessons?: number | null;
+  }
+
   interface Props {
     resourceId: string;
     resourceName: string;
@@ -8,7 +16,17 @@
     initialUnavailableTimes: string[];
     initialIsSoft?: boolean;
     initialWeight?: number;
-    onSave: (unavailableTimes: string[], isSoft: boolean, weight: number) => void;
+    initialMaxDaysPerWeek?: number | null;
+    initialMinDaysPerWeek?: number | null;
+    initialMaxDailyLessons?: number | null;
+    initialMaxGapsPerWeek?: number | null;
+    initialMinDailyLessons?: number | null;
+    onSave: (
+      unavailableTimes: string[],
+      isSoft: boolean,
+      weight: number,
+      extra?: AvailabilityExtraParams
+    ) => void;
     onClose: () => void;
   }
 
@@ -21,6 +39,11 @@
     initialUnavailableTimes,
     initialIsSoft = false,
     initialWeight = 10,
+    initialMaxDaysPerWeek = null,
+    initialMinDaysPerWeek = null,
+    initialMaxDailyLessons = null,
+    initialMaxGapsPerWeek = null,
+    initialMinDailyLessons = null,
     onSave,
     onClose,
   }: Props = $props();
@@ -28,11 +51,21 @@
   let unavailableSet = $state<Set<string>>(new Set());
   let isSoft = $state(false);
   let weight = $state(10);
+  let maxDaysPerWeek = $state<number | null>(null);
+  let minDaysPerWeek = $state<number | null>(null);
+  let maxDailyLessons = $state<number | null>(null);
+  let maxGapsPerWeek = $state<number | null>(null);
+  let minDailyLessons = $state<number | null>(null);
 
   $effect(() => {
     unavailableSet = new Set(initialUnavailableTimes);
     isSoft = initialIsSoft;
     weight = initialWeight;
+    maxDaysPerWeek = initialMaxDaysPerWeek ?? null;
+    minDaysPerWeek = initialMinDaysPerWeek ?? null;
+    maxDailyLessons = initialMaxDailyLessons ?? null;
+    maxGapsPerWeek = initialMaxGapsPerWeek ?? null;
+    minDailyLessons = initialMinDailyLessons ?? null;
   });
 
   // Helper to format slot ID
@@ -148,7 +181,13 @@
   }
 
   function handleSave() {
-    onSave(Array.from(unavailableSet), isSoft, weight);
+    onSave(Array.from(unavailableSet), isSoft, weight, {
+      maxDaysPerWeek: maxDaysPerWeek !== null && String(maxDaysPerWeek) !== "" ? Number(maxDaysPerWeek) : null,
+      minDaysPerWeek: minDaysPerWeek !== null && String(minDaysPerWeek) !== "" ? Number(minDaysPerWeek) : null,
+      maxDailyLessons: maxDailyLessons !== null && String(maxDailyLessons) !== "" ? Number(maxDailyLessons) : null,
+      maxGapsPerWeek: maxGapsPerWeek !== null && String(maxGapsPerWeek) !== "" ? Number(maxGapsPerWeek) : null,
+      minDailyLessons: minDailyLessons !== null && String(minDailyLessons) !== "" ? Number(minDailyLessons) : null,
+    });
     onClose();
   }
 
@@ -412,6 +451,176 @@
           {/if}
         </div>
       </div>
+
+      <!-- Phase 2: Parametry obciążenia i czasu pracy dla Nauczycieli -->
+      {#if resourceType === "teacher"}
+        <div class="mt-4 p-4 bg-white rounded-xl border border-indigo-100 shadow-2xs flex flex-col gap-3 text-xs">
+          <div class="flex items-center justify-between border-b border-indigo-50/80 pb-2">
+            <div class="flex items-center gap-2">
+              <span class="text-sm">⚡</span>
+              <span class="font-bold text-slate-900">Parametry czasu pracy i obciążenia (Faza 2)</span>
+              <span class="text-[10px] font-semibold px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded-full border border-indigo-200">
+                Indywidualne preferencje
+              </span>
+            </div>
+            <span class="text-[11px] text-slate-400">Nadpisuje domyślne reguły ogólnoszkolne</span>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <!-- Maks dni roboczych (ClusterBusyTimes) -->
+            <div class="p-3 bg-slate-50/80 rounded-lg border border-slate-200/60 flex flex-col justify-between">
+              <div>
+                <label for="teacher-max-days-input" class="font-semibold text-slate-800 flex items-center gap-1.5 mb-1">
+                  <span>📅</span>
+                  <span>Dni w tygodniu:</span>
+                </label>
+                <p class="text-[11px] text-slate-500 leading-snug">
+                  Maks. liczba aktywnych dni (np. dla niepełnego etatu).
+                </p>
+              </div>
+              <div class="mt-2 flex items-center gap-2">
+                <select
+                  id="teacher-max-days-input"
+                  bind:value={maxDaysPerWeek}
+                  class="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-800 focus:outline-none focus:border-indigo-500"
+                >
+                  <option value={null}>Brak limitu (cały tydzień)</option>
+                  {#each days as d, i}
+                    {#if i + 1 < days.length}
+                      <option value={i + 1}>Maks. {i + 1} {i === 0 ? "dzień" : i < 4 ? "dni" : "dni"}</option>
+                    {/if}
+                  {/each}
+                </select>
+              </div>
+            </div>
+
+            <!-- Maks lekcji dziennie (LimitBusyTimes) -->
+            <div class="p-3 bg-slate-50/80 rounded-lg border border-slate-200/60 flex flex-col justify-between">
+              <div>
+                <label for="teacher-max-daily-input" class="font-semibold text-slate-800 flex items-center gap-1.5 mb-1">
+                  <span>⏱️</span>
+                  <span>Lekcji dziennie:</span>
+                </label>
+                <p class="text-[11px] text-slate-500 leading-snug">
+                  Maks. liczba zajęć w jednym dniu roboczym.
+                </p>
+              </div>
+              <div class="mt-2 flex items-center gap-2">
+                <select
+                  id="teacher-max-daily-input"
+                  bind:value={maxDailyLessons}
+                  class="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-800 focus:outline-none focus:border-indigo-500"
+                >
+                  <option value={null}>Domyślny limit ze szkoły</option>
+                  <option value={3}>Maks. 3 lekcje</option>
+                  <option value={4}>Maks. 4 lekcje</option>
+                  <option value={5}>Maks. 5 lekcji</option>
+                  <option value={6}>Maks. 6 lekcji</option>
+                  <option value={7}>Maks. 7 lekcji</option>
+                  <option value={8}>Maks. 8 lekcji</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Maks okienek w tygodniu (LimitIdleTimes) -->
+            <div class="p-3 bg-slate-50/80 rounded-lg border border-slate-200/60 flex flex-col justify-between">
+              <div>
+                <label for="teacher-max-gaps-input" class="font-semibold text-slate-800 flex items-center gap-1.5 mb-1">
+                  <span>☕</span>
+                  <span>Okienka (tydzień):</span>
+                </label>
+                <p class="text-[11px] text-slate-500 leading-snug">
+                  Dopuszczalna liczba wolnych godzin między lekcjami.
+                </p>
+              </div>
+              <div class="mt-2 flex items-center gap-2">
+                <select
+                  id="teacher-max-gaps-input"
+                  bind:value={maxGapsPerWeek}
+                  class="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-800 focus:outline-none focus:border-indigo-500"
+                >
+                  <option value={null}>Domyślny limit ze szkoły</option>
+                  <option value={0}>0 okienek (ciągły plan)</option>
+                  <option value={1}>Maks. 1 okienko</option>
+                  <option value={2}>Maks. 2 okienka</option>
+                  <option value={3}>Maks. 3 okienka</option>
+                  <option value={4}>Maks. 4 okienka</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      <!-- Phase 2: Parametry obciążenia dla Klas -->
+      {:else if resourceType === "class"}
+        <div class="mt-4 p-4 bg-white rounded-xl border border-indigo-100 shadow-2xs flex flex-col gap-3 text-xs">
+          <div class="flex items-center justify-between border-b border-indigo-50/80 pb-2">
+            <div class="flex items-center gap-2">
+              <span class="text-sm">⚖️</span>
+              <span class="font-bold text-slate-900">Dzienne ramy lekcyjne oddziału (LimitBusyTimes)</span>
+              <span class="text-[10px] font-semibold px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded-full border border-indigo-200">
+                Higiena nauki
+              </span>
+            </div>
+            <span class="text-[11px] text-slate-400">Nadpisuje domyślne reguły ogólnoszkolne</span>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <!-- Min lekcji dziennie -->
+            <div class="p-3 bg-slate-50/80 rounded-lg border border-slate-200/60 flex flex-col justify-between">
+              <div>
+                <label for="class-min-daily-input" class="font-semibold text-slate-800 flex items-center gap-1.5 mb-1">
+                  <span>📉</span>
+                  <span>Minimalna liczba lekcji w dniu:</span>
+                </label>
+                <p class="text-[11px] text-slate-500 leading-snug">
+                  Zapobiega przychodzeniu uczniów do szkoły na zbyt małą liczbę lekcji.
+                </p>
+              </div>
+              <div class="mt-2 flex items-center gap-2">
+                <select
+                  id="class-min-daily-input"
+                  bind:value={minDailyLessons}
+                  class="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-800 focus:outline-none focus:border-indigo-500"
+                >
+                  <option value={null}>Domyślny limit ze szkoły</option>
+                  <option value={2}>Min. 2 lekcje</option>
+                  <option value={3}>Min. 3 lekcje</option>
+                  <option value={4}>Min. 4 lekcje</option>
+                  <option value={5}>Min. 5 lekcji</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Maks lekcji dziennie -->
+            <div class="p-3 bg-slate-50/80 rounded-lg border border-slate-200/60 flex flex-col justify-between">
+              <div>
+                <label for="class-max-daily-input" class="font-semibold text-slate-800 flex items-center gap-1.5 mb-1">
+                  <span>📈</span>
+                  <span>Maksymalna liczba lekcji w dniu:</span>
+                </label>
+                <p class="text-[11px] text-slate-500 leading-snug">
+                  Chroni uczniów przed nadmiernym zmęczeniem zbyt długim dniem nauki.
+                </p>
+              </div>
+              <div class="mt-2 flex items-center gap-2">
+                <select
+                  id="class-max-daily-input"
+                  bind:value={maxDailyLessons}
+                  class="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-800 focus:outline-none focus:border-indigo-500"
+                >
+                  <option value={null}>Domyślny limit ze szkoły</option>
+                  <option value={5}>Maks. 5 lekcji</option>
+                  <option value={6}>Maks. 6 lekcji</option>
+                  <option value={7}>Maks. 7 lekcji</option>
+                  <option value={8}>Maks. 8 lekcji</option>
+                  <option value={9}>Maks. 9 lekcji</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </div>
+      {/if}
     </div>
 
     <!-- Footer Controls -->
