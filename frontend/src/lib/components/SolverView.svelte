@@ -374,18 +374,33 @@
               <strong class="
                 {solverStatus?.status === 'running' ? 'text-blue-600' :
                  solverStatus?.status === 'completed' ? 'text-emerald-700' :
-                 solverStatus?.status === 'stopped' ? 'text-amber-700' : 'text-slate-700'}">
+                 solverStatus?.status === 'stopped' ? 'text-amber-700' :
+                 solverStatus?.status === 'error' ? 'text-rose-600' : 'text-slate-700'}">
                 {solverStatus?.status === 'running' ? 'Przeszukiwanie przestrzeni rozwiązań...' :
                  solverStatus?.status === 'completed' ? 'Zakończono pomyślnie' :
-                 solverStatus?.status === 'stopped' ? 'Zatrzymano przez użytkownika' : 'Oczekuje na uruchomienie'}
+                 solverStatus?.status === 'stopped' ? 'Zatrzymano przez użytkownika' :
+                 solverStatus?.status === 'error' ? 'Wystąpił błąd optymalizacji' : 'Oczekuje na uruchomienie'}
               </strong>
             </p>
           </div>
 
           {#if solverStatus?.status === "running"}
             <span class="w-3 h-3 rounded-full bg-blue-600 animate-ping"></span>
+          {:else if solverStatus?.status === "error"}
+            <span class="w-3 h-3 rounded-full bg-rose-600"></span>
           {/if}
         </div>
+
+        {#if solverStatus?.status === "error"}
+          <div class="p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 flex flex-col gap-1.5 shadow-2xs">
+            <span class="font-bold text-rose-900 flex items-center gap-1.5">
+              <span>⚠️ Komunikat błędu silnika:</span>
+            </span>
+            <p class="font-mono text-[11px] bg-white/80 p-2 rounded border border-rose-200 text-rose-700 break-words">
+              {solverStatus.error || "Wystąpił nieoczekiwany problem podczas optymalizacji."}
+            </p>
+          </div>
+        {/if}
 
         <!-- Progress Bar -->
         <div class="flex flex-col gap-1.5">

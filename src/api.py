@@ -3,6 +3,7 @@ import random
 import sys
 import threading
 import time
+import traceback
 from pathlib import Path
 from typing import Any
 
@@ -292,74 +293,83 @@ class SolveRequest(BaseModel):
 
 
 def _run_solver_thread(req: SolveRequest, instance: Instance) -> None:
-    rng = random.Random(req.seed)
-    initial = build_initial(instance, rng)
-    infeasibility_0, objective_0 = evaluate_cost_components(instance, initial)
-
-    with solver_state.lock:
-        solver_state.infeasibility = infeasibility_0
-        solver_state.objective = objective_0
-        solver_state.best_cost = infeasibility_0 * 1_000_000 + objective_0
-        solver_state.history.append(
-            {
-                "iteration": 0,
-                "infeasibility": infeasibility_0,
-                "objective": objective_0,
-                "elapsed": 0.0,
-            }
-        )
-
-    t_start = time.time()
-    last_record_iter = 0
-
-    def on_progress(iteration: int, best_cost: int) -> None:
-        nonlocal last_record_iter
-        if solver_state.stop_event.is_set():
-            raise StopRequestedException("Zatrzymano na żądanie użytkownika.")
-
-        elapsed = time.time() - t_start
-        rate = iteration / elapsed if elapsed > 0 else 0.0
-        infeasibility = best_cost // 1_000_000
-        objective = best_cost % 1_000_000
+    try:
+        rng = random.Random(req.seed)
+        initial = build_initial(instance, rng)
+        infeasibility_0, objective_0 = evaluate_cost_components(instance, initial)
 
         with solver_state.lock:
-            solver_state.iteration = iteration
-            solver_state.best_cost = best_cost
-            solver_state.infeasibility = infeasibility
-            solver_state.objective = objective
-            solver_state.rate = round(rate, 1)
-            solver_state.elapsed = round(elapsed, 1)
+            solver_state.infeasibility = infeasibility_0
+            solver_state.objective = objective_0
+            solver_state.best_cost = infeasibility_0 * 1_000_000 + objective_0
+            solver_state.history.append(
+                {
+                    "iteration": 0,
+                    "infeasibility": infeasibility_0,
+                    "objective": objective_0,
+                    "elapsed": 0.0,
+                }
+            )
 
-            if iteration - last_record_iter >= max(50, req.iterations // 200) or iteration == req.iterations:
-                last_record_iter = iteration
-                solver_state.history.append(
-                    {
-                        "iteration": iteration,
-                        "infeasibility": infeasibility,
-                        "objective": objective,
-                        "elapsed": round(elapsed, 2),
-                    }
-                )
+        t_start = time.time()
+        last_record_iter = 0
 
-    # Selector
-    if req.selector == "ucb":
-        selector = UCBSelector()
-    elif req.selector == "epsilon-greedy":
-        selector = EpsilonGreedySelector()
-    else:
-        selector = RandomSelector()
+        def on_progress(iteration: int, best_cost: int) -> None:
+            nonlocal last_record_iter
+            if solver_state.stop_event.is_set():
+                raise StopRequestedException("Zatrzymano na żądanie użytkownika.")
 
-    # Acceptance
-    if req.acceptance == "sa":
-        acceptance = SimulatedAnnealingAcceptance(
-            t_start=req.sa_t_start,
-            t_end=req.sa_t_end,
-            cooling_rate=req.sa_cooling,
-        )
-    else:
-        acceptance = LAHCAcceptance(history_length=req.history_length)
+            elapsed = time.time() - t_start
+            rate = iteration / elapsed if elapsed > 0 else 0.0
+            infeasibility = best_cost // 1_000_000
+            objective = best_cost % 1_000_000
 
-    try:
+            with solver_state.lock:
+                solver_state.iteration = iteration
+                solver_state.best_cost = best_cost
+                solver_state.infeasibility = infeasibility
+                solver_state.objective = objective
+                solver_state.rate = round(rate, 1)
+                solver_state.elapsed = round(elapsed, 1)
+
+                if iteration - last_record_iter >= max(50, req.iterations // 200) or iteration == req.iterations:
+                    last_record_iter = iteration
+                    solver_state.history.append(
+                        {
+                            "iteration": iteration,
+                            "infeasibility": infeasibility,
+                            "objective": objective,
+                            "elapsed": round(elapsed, 2),
+                        }
+                    )
+
+        # Selector
+        if req.selector == "ucb":
+            selector = UCBSelector()
+        elif req.selector == "epsilon-greedy":
+            selector = EpsilonGreedySelector()
+        else:
+            selector = RandomSelector()
+
+        # Acceptance
+        if req.acceptance == "sa":
+            acceptance = SimulatedAnnealingAcceptance(
+                t_start=req.sa_t_start,
+                t_end=req.sa_t_end,
+                cooling_rate=req.sa_cooling,
+            )
+        else:
+            acceptance = LAHCAcceptance(history_length=req.history_length)
+
+        # Check if incremental evaluation is supported for this instance
+        eval_mode = "incremental"
+        try:
+            from src.incremental import IncrementalEvaluator
+            IncrementalEvaluator(instance, initial)
+        except Exception as eval_exc:
+            print(f"[Solver] Incremental evaluation not available ({eval_exc}), using full evaluation.")
+            eval_mode = "full"
+
         best_solution, _ = run_lahc(
             instance=instance,
             initial=initial,
@@ -371,7 +381,7 @@ def _run_solver_thread(req: SolveRequest, instance: Instance) -> None:
             on_progress=on_progress,
             progress_every=max(1, req.iterations // 100),
             progress_seconds=0.5,
-            evaluation="incremental",
+            evaluation=eval_mode,
             acceptance=acceptance,
         )
         final_infeasibility, final_objective = evaluate_cost_components(instance, best_solution)
@@ -388,6 +398,7 @@ def _run_solver_thread(req: SolveRequest, instance: Instance) -> None:
             if solver_state.best_solution is not None:
                 solver_state.result = build_timetable_payload(instance, solver_state.best_solution)
     except Exception as exc:
+        traceback.print_exc()
         with solver_state.lock:
             solver_state.status = "error"
             solver_state.error = str(exc)

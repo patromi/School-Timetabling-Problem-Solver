@@ -426,9 +426,20 @@
       })),
     ];
 
-    // 5. Zdarzenia (Events / Lekcje)
+    // 5. Zdarzenia (Events / Lekcje) i Grupy Lekcyjne (EventGroups)
     const events: EventItem[] = [];
+    const event_groups: GroupItem[] = [];
+
     lessons.forEach((l) => {
+      const egId = `EG_${l.classId}_${l.subject.replace(/[^a-zA-Z0-9_]/g, "_")}`;
+      if (!event_groups.some((eg) => eg.id === egId)) {
+        event_groups.push({
+          id: egId,
+          name: `${l.subject} - klasa ${l.classId}`,
+          kind: "EventGroup",
+        });
+      }
+
       let remainingCount = l.weeklyCount;
       let counter = 1;
 
@@ -441,7 +452,7 @@
           course_ref: l.subject,
           time_ref: null,
           workload: 2,
-          group_refs: [],
+          group_refs: [egId],
           resources: [
             { role: "Teacher", resource_ref: l.teacherId, resource_type_ref: "Teacher", workload: 2 },
             { role: "Class", resource_ref: l.classId, resource_type_ref: "Class", workload: 2 },
@@ -460,7 +471,7 @@
           course_ref: l.subject,
           time_ref: null,
           workload: 1,
-          group_refs: [],
+          group_refs: [egId],
           resources: [
             { role: "Teacher", resource_ref: l.teacherId, resource_type_ref: "Teacher", workload: 1 },
             { role: "Class", resource_ref: l.classId, resource_type_ref: "Class", workload: 1 },
@@ -481,7 +492,7 @@
         name: "Każda lekcja musi mieć wyznaczony termin",
         required: true,
         weight: 1,
-        cost_function: "LINEAR",
+        cost_function: "Linear",
         applies_to: {
           event_groups: [],
           events: events.map((e) => e.id),
@@ -503,7 +514,7 @@
         name: "Żaden nauczyciel, klasa ani sala nie ma lekcji w tym samym czasie",
         required: true,
         weight: 1,
-        cost_function: "LINEAR",
+        cost_function: "Linear",
         applies_to: {
           event_groups: [],
           events: [],
@@ -517,15 +528,17 @@
       });
     }
 
-    // Reguła 3: Brak okienek dla klas
+    const dayGroupRefs = time_groups.map((tg) => tg.id);
+
+    // Reguła 3: Brak okienek dla klas (XHSTT LimitIdleTimesConstraint)
     if (ruleStudentNoGaps) {
       constraints.push({
-        type: "MinGapsConstraint",
+        type: "LimitIdleTimesConstraint",
         id: "Regula_KlasyBezOkienek",
         name: "Brak pustych godzin (okienek) w planie uczniów",
         required: true,
         weight: 10,
-        cost_function: "LINEAR",
+        cost_function: "Linear",
         applies_to: {
           event_groups: [],
           events: [],
@@ -535,19 +548,23 @@
           times: [],
           event_pairs: [],
         },
-        params: { minimum: 0 },
+        params: {
+          TimeGroups: dayGroupRefs,
+          Minimum: 0,
+          Maximum: 0,
+        },
       });
     }
 
-    // Reguła 4: Ograniczenie okienek dla nauczycieli
+    // Reguła 4: Ograniczenie okienek dla nauczycieli (XHSTT LimitIdleTimesConstraint)
     if (ruleTeacherMaxGaps) {
       constraints.push({
-        type: "MaxGapsConstraint",
+        type: "LimitIdleTimesConstraint",
         id: "Regula_KomfortNauczycieli",
         name: "Minimalizacja okienek dla kadry pedagogicznej",
         required: false,
-        weight: 20,
-        cost_function: "QUADRATIC",
+        weight: 5,
+        cost_function: "Linear",
         applies_to: {
           event_groups: [],
           events: [],
@@ -557,19 +574,23 @@
           times: [],
           event_pairs: [],
         },
-        params: { maximum: 2 },
+        params: {
+          TimeGroups: dayGroupRefs,
+          Minimum: 0,
+          Maximum: 2,
+        },
       });
     }
 
-    // Reguła 5: Limit lekcji dziennie
+    // Reguła 5: Limit lekcji dziennie (XHSTT LimitBusyTimesConstraint)
     if (ruleMaxLessonsDaily) {
       constraints.push({
-        type: "MaxBusyTimesConstraint",
+        type: "LimitBusyTimesConstraint",
         id: "Regula_HigienaNauki",
         name: "Maksymalna dopuszczalna liczba lekcji dziennie",
         required: false,
-        weight: 15,
-        cost_function: "LINEAR",
+        weight: 5,
+        cost_function: "Linear",
         applies_to: {
           event_groups: [],
           events: [],
@@ -579,51 +600,39 @@
           times: [],
           event_pairs: [],
         },
-        params: { maximum: maxDailyLimit },
+        params: {
+          TimeGroups: dayGroupRefs,
+          Minimum: 0,
+          Maximum: maxDailyLimit,
+        },
       });
     }
 
-    // Reguła 6: Równomierny rozkład zajęć
-    if (ruleSpreadSubjects) {
+    // Reguła 6: Równomierny rozkład zajęć (XHSTT SpreadEventsConstraint)
+    if (ruleSpreadSubjects && event_groups.length > 0) {
       constraints.push({
         type: "SpreadEventsConstraint",
         id: "Regula_RozkladPrzedmiotow",
         name: "Równomierny rozkład lekcji w poszczególne dni tygodnia",
         required: false,
-        weight: 10,
-        cost_function: "LINEAR",
-        applies_to: {
-          event_groups: [],
-          events: events.map((e) => e.id),
-          resource_groups: [],
-          resources: [],
-          time_groups: [],
-          times: [],
-          event_pairs: [],
-        },
-        params: {},
-      });
-    }
-
-    // Reguła 7: Ciągłość bloków 2-godzinnych
-    if (ruleContinuousBlocks) {
-      constraints.push({
-        type: "AvoidSplitWeeksConstraint",
-        id: "Regula_CiagloscBlokow",
-        name: "Bloki zajęć odbywają się pod rząd",
-        required: true,
         weight: 5,
-        cost_function: "LINEAR",
+        cost_function: "Linear",
         applies_to: {
-          event_groups: [],
-          events: events.filter((e) => e.duration > 1).map((e) => e.id),
+          event_groups: event_groups.map((eg) => eg.id),
+          events: [],
           resource_groups: [],
           resources: [],
           time_groups: [],
           times: [],
           event_pairs: [],
         },
-        params: {},
+        params: {
+          TimeGroups: dayGroupRefs.map((d) => ({
+            reference: d,
+            Minimum: 0,
+            Maximum: 1,
+          })),
+        },
       });
     }
 
@@ -635,7 +644,7 @@
       resource_types,
       resource_groups: [],
       resources,
-      event_groups: [],
+      event_groups,
       events,
       constraints,
     };
@@ -1330,7 +1339,7 @@
             <div class="flex items-start gap-3">
               <span class="text-xl">☕</span>
               <div>
-                <span class="text-xs font-bold text-slate-900">Brak okienek dla uczniów (MinGaps)</span>
+                <span class="text-xs font-bold text-slate-900">Brak okienek dla uczniów</span>
                 <p class="text-xs text-slate-500 mt-0.5 leading-snug">
                   Uczniowie mają zajęcia ciągiem od pierwszej do ostatniej lekcji, bez pustych przerw w środku dnia.
                 </p>
@@ -1344,7 +1353,7 @@
             <div class="flex items-start gap-3">
               <span class="text-xl">👨‍🏫</span>
               <div>
-                <span class="text-xs font-bold text-slate-900">Minimalizacja okienek dla nauczycieli (MaxGaps)</span>
+                <span class="text-xs font-bold text-slate-900">Minimalizacja okienek dla nauczycieli</span>
                 <p class="text-xs text-slate-500 mt-0.5 leading-snug">
                   Nauczyciele nie powinni czekać bezczynnie w szkole między lekcjami (maks. 1-2 okienka w tygodniu).
                 </p>
@@ -1372,7 +1381,7 @@
             <div class="flex items-start gap-3">
               <span class="text-xl">🗓️</span>
               <div>
-                <span class="text-xs font-bold text-slate-900">Równomierny rozkład w tygodniu (SpreadEvents)</span>
+                <span class="text-xs font-bold text-slate-900">Równomierny rozkład przedmiotów w tygodniu</span>
                 <p class="text-xs text-slate-500 mt-0.5 leading-snug">
                   Wielogodzinne przedmioty (np. 4h matematyki) są rozkładane na różne dni, a nie kumulowane w jeden dzień.
                 </p>
@@ -1386,7 +1395,7 @@
             <div class="flex items-start gap-3">
               <span class="text-xl">🔗</span>
               <div>
-                <span class="text-xs font-bold text-slate-900">Ciągłość bloków lekcyjnych (AvoidSplitWeeks)</span>
+                <span class="text-xs font-bold text-slate-900">Ciągłość bloków lekcyjnych (bloki 2h)</span>
                 <p class="text-xs text-slate-500 mt-0.5 leading-snug">
                   Zajęcia 2-godzinne (np. laboratorium, 2h WF-u) odbywają się pod rząd tego samego dnia.
                 </p>

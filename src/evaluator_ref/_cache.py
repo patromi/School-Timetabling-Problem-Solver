@@ -68,11 +68,12 @@ def _referenced_ids(entries: list[dict] | None) -> set[str]:  # type: ignore[typ
 
 
 def apply_cost_function(name: str, deviation: int) -> int:
-    if name == "Linear":
+    fn = name.strip().lower()
+    if fn == "linear":
         return deviation
-    if name == "Quadratic":
+    if fn == "quadratic":
         return deviation * deviation
-    if name == "Step":
+    if fn == "step":
         return 1 if deviation != 0 else 0
     raise ValueError(f"unknown XHSTT cost function: {name!r}")
 

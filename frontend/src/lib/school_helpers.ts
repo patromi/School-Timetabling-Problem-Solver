@@ -99,40 +99,16 @@ export const CONSTRAINT_FRIENDLY_MAP: Record<string, ConstraintFriendlyInfo> = {
     description: "Lekcje z jednego przedmiotu powinny być równomiernie podzielone na różne dni tygodnia.",
     isHardByDefault: false,
   },
-  MinGapsConstraint: {
-    title: "Brak okienek dla uczniów",
+  LimitIdleTimesConstraint: {
+    title: "Ograniczenie okienek w planie (puste godziny)",
     category: "uczniowie",
-    description: "Oddziały klasowe nie powinny mieć pustych godzin w środku dnia szkolnego.",
+    description: "Eliminacja lub minimalizacja przerw między zajęciami w ciągu dnia szkolnego.",
     isHardByDefault: true,
   },
-  MaxGapsConstraint: {
-    title: "Ograniczenie okienek nauczycieli",
-    category: "nauczyciele",
-    description: "Minimalizacja bezczynnego czasu oczekiwania nauczycieli między kolejnymi lekcjami.",
-    isHardByDefault: false,
-  },
-  MinDaysConstraint: {
-    title: "Minimalna liczba dni pracy",
-    category: "nauczyciele",
-    description: "Nauczyciele z dużym wymiarem godzin powinni mieć zajęcia rozłożone na odpowiednią liczbę dni.",
-    isHardByDefault: false,
-  },
-  MaxDaysConstraint: {
-    title: "Maksymalna liczba dni pracy",
-    category: "nauczyciele",
-    description: "Zapewnienie nauczycielom dni wolnych od zajęć dydaktycznych (np. praca w 3 lub 4 dni).",
-    isHardByDefault: false,
-  },
-  MinBusyTimesConstraint: {
-    title: "Dolny limit lekcji dziennie",
-    category: "organizacja",
-    description: "Dzień nauki nie powinien być za krótki (np. minimum 2 lub 3 godziny).",
-    isHardByDefault: false,
-  },
-  MaxBusyTimesConstraint: {
-    title: "Górny limit lekcji dziennie (higiena nauki)",
+  LimitBusyTimesConstraint: {
+    title: "Limit liczby lekcji dziennie (higiena nauki)",
     category: "uczniowie",
-    description: "Uczniowie i nauczyciele nie powinni mieć więcej niż dopuszczalny limit lekcji w ciągu jednego dnia.",
+    description: "Zapewnienie zrównoważonego obciążenia i nieprzekraczanie maksymalnej liczby lekcji na dzień.",
     isHardByDefault: false,
   },
   AvoidUnavailableTimesConstraint: {
