@@ -9,6 +9,7 @@
     TimeItem,
   } from "../../types";
   import { saveInstance } from "../../api";
+  import AvailabilityModal from "./AvailabilityModal.svelte";
 
   interface Props {
     initialInstance?: InstanceDetail | null;
@@ -28,10 +29,30 @@
   let periodsPerDay = $state<number>(7);
   let periodDurationMinutes = $state<number>(45);
 
+  const dayMap: Record<string, string> = {
+    Poniedziałek: "Mon",
+    Wtorek: "Tue",
+    Środa: "Wed",
+    Czwartek: "Thu",
+    Piątek: "Fri",
+    Sobota: "Sat",
+    Niedziela: "Sun",
+  };
+
+  let currentDaysFormatted = $derived(
+    selectedDays.map((dName) => ({
+      id: dayMap[dName] || dName.slice(0, 3),
+      name: dName,
+    }))
+  );
+
   // Krok 2: Oddziały klasowe i Nauczyciele
   interface SimpleClass {
     id: string;
     name: string;
+    unavailableTimes?: string[];
+    unavailableSoft?: boolean;
+    unavailableWeight?: number;
   }
   let classes = $state<SimpleClass[]>([
     { id: "1A", name: "Klasa 1A (Mat-Fiz)" },
@@ -49,6 +70,9 @@
     name: string;
     subject: string;
     workload: number;
+    unavailableTimes?: string[];
+    unavailableSoft?: boolean;
+    unavailableWeight?: number;
   }
   let teachers = $state<SimpleTeacher[]>([
     { id: "Kowalski_J", name: "Jan Kowalski", subject: "Matematyka", workload: 18 },
@@ -68,6 +92,9 @@
     id: string;
     name: string;
     type: "general" | "gym" | "lab" | "it";
+    unavailableTimes?: string[];
+    unavailableSoft?: boolean;
+    unavailableWeight?: number;
   }
   let rooms = $state<SimpleRoom[]>([
     { id: "s101", name: "Sala 101 (Ogólna)", type: "general" },
@@ -125,6 +152,91 @@
   let saveError = $state<string | null>(null);
   let saveSuccess = $state<string | null>(null);
 
+  // Modal availability state (Phase 1)
+  let activeAvailabilityTarget = $state<{
+    id: string;
+    name: string;
+    type: "teacher" | "room" | "class";
+    unavailableTimes: string[];
+    isSoft?: boolean;
+    weight?: number;
+  } | null>(null);
+
+  function openAvailabilityModal(id: string, name: string, type: "teacher" | "room" | "class") {
+    if (type === "teacher") {
+      const t = teachers.find((x) => x.id === id);
+      if (!t) return;
+      activeAvailabilityTarget = {
+        id: t.id,
+        name: t.name,
+        type: "teacher",
+        unavailableTimes: t.unavailableTimes || [],
+        isSoft: t.unavailableSoft || false,
+        weight: t.unavailableWeight || 10,
+      };
+    } else if (type === "room") {
+      const r = rooms.find((x) => x.id === id);
+      if (!r) return;
+      activeAvailabilityTarget = {
+        id: r.id,
+        name: r.name,
+        type: "room",
+        unavailableTimes: r.unavailableTimes || [],
+        isSoft: r.unavailableSoft || false,
+        weight: r.unavailableWeight || 10,
+      };
+    } else if (type === "class") {
+      const c = classes.find((x) => x.id === id);
+      if (!c) return;
+      activeAvailabilityTarget = {
+        id: c.id,
+        name: c.name,
+        type: "class",
+        unavailableTimes: c.unavailableTimes || [],
+        isSoft: c.unavailableSoft || false,
+        weight: c.unavailableWeight || 10,
+      };
+    }
+  }
+
+  function handleSaveAvailability(times: string[], isSoft: boolean, weight: number) {
+    if (!activeAvailabilityTarget) return;
+    const { id, type } = activeAvailabilityTarget;
+
+    if (type === "teacher") {
+      teachers = teachers.map((t) =>
+        t.id === id
+          ? { ...t, unavailableTimes: times, unavailableSoft: isSoft, unavailableWeight: weight }
+          : t
+      );
+    } else if (type === "room") {
+      rooms = rooms.map((r) =>
+        r.id === id
+          ? { ...r, unavailableTimes: times, unavailableSoft: isSoft, unavailableWeight: weight }
+          : r
+      );
+    } else if (type === "class") {
+      classes = classes.map((c) =>
+        c.id === id
+          ? { ...c, unavailableTimes: times, unavailableSoft: isSoft, unavailableWeight: weight }
+          : c
+      );
+    }
+  }
+
+  let totalUnavailabilitiesCount = $derived(
+    [...teachers, ...classes, ...rooms].reduce(
+      (sum, r) => sum + (r.unavailableTimes?.length || 0),
+      0
+    )
+  );
+
+  let resourcesWithUnavailability = $derived(
+    [...teachers, ...classes, ...rooms].filter(
+      (r) => (r.unavailableTimes?.length || 0) > 0
+    )
+  );
+
   // Synchronize on start or on template load
   $effect(() => {
     if (initialInstance) {
@@ -145,10 +257,33 @@
       periodsPerDay = Math.max(5, Math.round(inst.times.length / days.length));
     }
 
+    // Extract any existing AvoidUnavailableTimesConstraint into maps
+    const unavailMap: Record<string, { times: string[]; isSoft: boolean; weight: number }> = {};
+    (inst.constraints || []).forEach((c) => {
+      if (c.type === "AvoidUnavailableTimesConstraint") {
+        const times = Array.isArray(c.params.Times)
+          ? c.params.Times.map((item: any) => (typeof item === "string" ? item : item?.reference)).filter(Boolean)
+          : [];
+        (c.applies_to?.resources || []).forEach((rId) => {
+          unavailMap[rId] = {
+            times: [...(unavailMap[rId]?.times || []), ...times],
+            isSoft: !c.required,
+            weight: c.weight || 10,
+          };
+        });
+      }
+    });
+
     // Klasy
     const foundClasses = inst.resources
       .filter((r) => r.resource_type_ref.toLowerCase().includes("class"))
-      .map((r) => ({ id: r.id, name: r.name || r.id }));
+      .map((r) => ({
+        id: r.id,
+        name: r.name || r.id,
+        unavailableTimes: unavailMap[r.id]?.times || [],
+        unavailableSoft: unavailMap[r.id]?.isSoft || false,
+        unavailableWeight: unavailMap[r.id]?.weight || 10,
+      }));
     if (foundClasses.length > 0) classes = foundClasses;
 
     // Nauczyciele
@@ -159,6 +294,9 @@
         name: r.name || r.id,
         subject: "Przedmiot ogólny",
         workload: 18,
+        unavailableTimes: unavailMap[r.id]?.times || [],
+        unavailableSoft: unavailMap[r.id]?.isSoft || false,
+        unavailableWeight: unavailMap[r.id]?.weight || 10,
       }));
     if (foundTeachers.length > 0) teachers = foundTeachers;
 
@@ -169,6 +307,9 @@
         id: r.id,
         name: r.name || r.id,
         type: ((r.name || "").toLowerCase().includes("gym") ? "gym" : "general") as "general" | "gym" | "lab" | "it",
+        unavailableTimes: unavailMap[r.id]?.times || [],
+        unavailableSoft: unavailMap[r.id]?.isSoft || false,
+        unavailableWeight: unavailMap[r.id]?.weight || 10,
       }));
     if (foundRooms.length > 0) rooms = foundRooms;
 
@@ -444,7 +585,8 @@
       let counter = 1;
 
       // Jeśli zaznaczono blok i lekcja ma min 2h
-      if (l.duration === 2 && remainingCount >= 2) {
+      const allowBlock = ruleContinuousBlocks && l.duration === 2 && remainingCount >= 2;
+      if (allowBlock) {
         events.push({
           id: `${l.id}_blok`,
           name: `${l.subject} (blok 2h)`,
@@ -635,6 +777,32 @@
         },
       });
     }
+
+    // Reguła 7: Indywidualne niedostępności zasobów (XHSTT AvoidUnavailableTimesConstraint - Faza 1)
+    [...teachers, ...classes, ...rooms].forEach((res) => {
+      if (res.unavailableTimes && res.unavailableTimes.length > 0) {
+        constraints.push({
+          type: "AvoidUnavailableTimesConstraint",
+          id: `Niedostepnosc_${res.id}`,
+          name: `Niedostępność w planie: ${res.name}`,
+          required: !res.unavailableSoft,
+          weight: res.unavailableWeight || 10,
+          cost_function: "Linear",
+          applies_to: {
+            event_groups: [],
+            events: [],
+            resource_groups: [],
+            resources: [res.id],
+            time_groups: [],
+            times: [],
+            event_pairs: [],
+          },
+          params: {
+            Times: res.unavailableTimes.map((tId) => ({ reference: tId })),
+          },
+        });
+      }
+    });
 
     return {
       id: schoolId.trim() || `Szkola_${Date.now()}`,
@@ -991,14 +1159,29 @@
               {#each classes as cls}
                 <div class="p-2.5 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-between text-xs">
                   <span class="font-bold text-slate-800">👥 {cls.name}</span>
-                  <button
-                    type="button"
-                    onclick={() => removeClass(cls.id)}
-                    class="text-slate-400 hover:text-rose-600 text-xs px-2 py-0.5 rounded cursor-pointer"
-                    title="Usuń klasę"
-                  >
-                    ✕
-                  </button>
+                  <div class="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onclick={() => openAvailabilityModal(cls.id, cls.name, "class")}
+                      class={`text-[11px] px-2.5 py-1 rounded-lg border flex items-center gap-1 transition-all cursor-pointer ${
+                        (cls.unavailableTimes?.length || 0) > 0
+                          ? "bg-rose-50 text-rose-700 border-rose-200 font-semibold"
+                          : "bg-white text-slate-600 border-slate-200 hover:border-slate-300"
+                      }`}
+                      title="Ustal dostępność klasy (AvoidUnavailableTimesConstraint)"
+                    >
+                      <span>🗓️</span>
+                      <span>{cls.unavailableTimes?.length ? `${cls.unavailableTimes.length} wykl.` : "Dostępność"}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onclick={() => removeClass(cls.id)}
+                      class="text-slate-400 hover:text-rose-600 text-xs px-2 py-0.5 rounded cursor-pointer"
+                      title="Usuń klasę"
+                    >
+                      ✕
+                    </button>
+                  </div>
                 </div>
               {/each}
             </div>
@@ -1050,14 +1233,29 @@
                     <span class="font-bold text-slate-800">👨‍🏫 {t.name}</span>
                     <span class="text-[11px] text-slate-500">{t.subject} • pensum: {t.workload}h</span>
                   </div>
-                  <button
-                    type="button"
-                    onclick={() => removeTeacher(t.id)}
-                    class="text-slate-400 hover:text-rose-600 text-xs px-2 py-0.5 rounded cursor-pointer"
-                    title="Usuń nauczyciela"
-                  >
-                    ✕
-                  </button>
+                  <div class="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onclick={() => openAvailabilityModal(t.id, t.name, "teacher")}
+                      class={`text-[11px] px-2.5 py-1 rounded-lg border flex items-center gap-1 transition-all cursor-pointer ${
+                        (t.unavailableTimes?.length || 0) > 0
+                          ? "bg-rose-50 text-rose-700 border-rose-200 font-semibold"
+                          : "bg-white text-slate-600 border-slate-200 hover:border-slate-300"
+                      }`}
+                      title="Ustal godziny pracy i wykluczenia (AvoidUnavailableTimesConstraint)"
+                    >
+                      <span>🗓️</span>
+                      <span>{t.unavailableTimes?.length ? `${t.unavailableTimes.length} wykl.` : "Dostępność"}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onclick={() => removeTeacher(t.id)}
+                      class="text-slate-400 hover:text-rose-600 text-xs px-2 py-0.5 rounded cursor-pointer"
+                      title="Usuń nauczyciela"
+                    >
+                      ✕
+                    </button>
+                  </div>
                 </div>
               {/each}
             </div>
@@ -1123,14 +1321,29 @@
                   <div class="text-[10px] text-slate-400 capitalize">Typ: {room.type}</div>
                 </div>
               </div>
-              <button
-                type="button"
-                onclick={() => removeRoom(room.id)}
-                class="text-slate-400 hover:text-rose-600 text-xs px-2 py-0.5 rounded cursor-pointer"
-                title="Usuń salę"
-              >
-                ✕
-              </button>
+              <div class="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onclick={() => openAvailabilityModal(room.id, room.name, "room")}
+                  class={`text-[10px] px-2 py-1 rounded-lg border flex items-center gap-1 transition-all cursor-pointer ${
+                    (room.unavailableTimes?.length || 0) > 0
+                      ? "bg-rose-50 text-rose-700 border-rose-200 font-semibold"
+                      : "bg-white text-slate-500 border-slate-200 hover:border-slate-300"
+                  }`}
+                  title="Ustal dostępność sali w tygodniu (AvoidUnavailableTimesConstraint)"
+                >
+                  <span>🗓️</span>
+                  <span>{room.unavailableTimes?.length ? `${room.unavailableTimes.length} wykl.` : "Dostępność"}</span>
+                </button>
+                <button
+                  type="button"
+                  onclick={() => removeRoom(room.id)}
+                  class="text-slate-400 hover:text-rose-600 text-xs px-2 py-0.5 rounded cursor-pointer"
+                  title="Usuń salę"
+                >
+                  ✕
+                </button>
+              </div>
             </div>
           {/each}
         </div>
@@ -1403,6 +1616,38 @@
             </div>
             <input type="checkbox" bind:checked={ruleContinuousBlocks} class="w-4 h-4 accent-blue-600 cursor-pointer mt-1" />
           </label>
+
+          <!-- Reguła 8: Indywidualne niedostępności zasobów (AvoidUnavailableTimesConstraint - Faza 1) -->
+          <div class="p-4 bg-slate-50/80 rounded-xl border border-slate-200/70 flex items-start justify-between gap-4">
+            <div class="flex items-start gap-3">
+              <span class="text-xl">🗓️</span>
+              <div>
+                <div class="flex items-center gap-2">
+                  <span class="text-xs font-bold text-slate-900">Indywidualne wykluczenia czasowe (AvoidUnavailableTimesConstraint)</span>
+                  {#if totalUnavailabilitiesCount > 0}
+                    <span class="text-[10px] font-bold px-2 py-0.5 bg-rose-100 text-rose-800 rounded-full border border-rose-200">
+                      {totalUnavailabilitiesCount} zablokowanych godzin
+                    </span>
+                  {/if}
+                </div>
+                <p class="text-xs text-slate-500 mt-0.5 leading-snug">
+                  Uwzględnia zdefiniowane w krokach 2 i 3 blokady godzin dla nauczycieli, sal i klas (urlopy, zebrania, wyłączenia pracowni).
+                  {#if resourcesWithUnavailability.length > 0}
+                    <span class="text-slate-700 font-medium block mt-1">
+                      Zasoby z ograniczeniami ({resourcesWithUnavailability.length}): {resourcesWithUnavailability.map((r) => r.name).slice(0, 4).join(", ")}{resourcesWithUnavailability.length > 4 ? ` i ${resourcesWithUnavailability.length - 4} innych` : ""}.
+                    </span>
+                  {:else}
+                    <span class="text-slate-400 italic block mt-1">
+                      (Brak wykluczeń — wszyscy nauczyciele, sale i klasy są w pełni dyspozycyjni).
+                    </span>
+                  {/if}
+                </p>
+              </div>
+            </div>
+            <span class="text-[11px] font-semibold px-2.5 py-1 bg-blue-50 text-blue-700 rounded-full border border-blue-200 shrink-0">
+              {resourcesWithUnavailability.length} zasobów
+            </span>
+          </div>
         </div>
       </div>
 
@@ -1454,6 +1699,14 @@
               <span>✓</span>
               <span>Wymogi bezwzględne oraz preferencje dydaktyczne zostały poprawnie skonfigurowane</span>
             </div>
+            {#if totalUnavailabilitiesCount > 0}
+              <div class="flex items-center gap-2 text-emerald-800">
+                <span>✓</span>
+                <span>
+                  Uwzględniono {totalUnavailabilitiesCount} godzin wykluczeń czasowych dla {resourcesWithUnavailability.length} zasobów (AvoidUnavailableTimesConstraint)
+                </span>
+              </div>
+            {/if}
           </div>
 
           <!-- Save CTA -->
@@ -1518,4 +1771,20 @@
       </button>
     {/if}
   </footer>
+
+  <!-- Modal Availability Grid (Phase 1) -->
+  {#if activeAvailabilityTarget}
+    <AvailabilityModal
+      resourceId={activeAvailabilityTarget.id}
+      resourceName={activeAvailabilityTarget.name}
+      resourceType={activeAvailabilityTarget.type}
+      days={currentDaysFormatted}
+      periodsPerDay={periodsPerDay}
+      initialUnavailableTimes={activeAvailabilityTarget.unavailableTimes}
+      initialIsSoft={activeAvailabilityTarget.isSoft}
+      initialWeight={activeAvailabilityTarget.weight}
+      onSave={handleSaveAvailability}
+      onClose={() => (activeAvailabilityTarget = null)}
+    />
+  {/if}
 </div>
