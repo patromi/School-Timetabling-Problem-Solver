@@ -48,10 +48,17 @@
     return new Set();
   }
 
-  let preference = $state<"any" | "morning" | "afternoon" | "custom">(initialPreference);
-  let preferredSet = $state<Set<string>>(buildInitialSet());
-  let isSoft = $state(initialIsSoft ?? true);
-  let weight = $state(initialWeight ?? 4);
+  let preference = $state<"any" | "morning" | "afternoon" | "custom">("any");
+  let preferredSet = $state<Set<string>>(new Set());
+  let isSoft = $state(true);
+  let weight = $state(4);
+
+  $effect(() => {
+    preference = initialPreference;
+    preferredSet = buildInitialSet();
+    isSoft = initialIsSoft ?? true;
+    weight = initialWeight ?? 4;
+  });
 
   function selectPreset(type: "any" | "morning" | "afternoon" | "custom") {
     preference = type;
