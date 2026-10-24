@@ -13,6 +13,7 @@
   import AvailabilityModal from "./AvailabilityModal.svelte";
   import LessonPreferencesModal from "./LessonPreferencesModal.svelte";
   import LinkedLessonsModal, { type LinkedGroupItem } from "./LinkedLessonsModal.svelte";
+  import DuplicateCurriculumModal from "./DuplicateCurriculumModal.svelte";
 
   interface Props {
     initialInstance?: InstanceDetail | null;
@@ -53,6 +54,7 @@
   interface SimpleClass {
     id: string;
     name: string;
+    grade?: number;
     unavailableTimes?: string[];
     unavailableSoft?: boolean;
     unavailableWeight?: number;
@@ -60,14 +62,14 @@
     maxDailyLessons?: number | null;
   }
   let classes = $state<SimpleClass[]>([
-    { id: "1A", name: "Klasa 1A (Mat-Fiz)" },
-    { id: "1B", name: "Klasa 1B (Biol-Chem)" },
-    { id: "2A", name: "Klasa 2A (Mat-Fiz)" },
-    { id: "2B", name: "Klasa 2B (Humanistyczna)" },
-    { id: "3A", name: "Klasa 3A (Mat-Geo)" },
-    { id: "3B", name: "Klasa 3B (Biol-Chem)" },
-    { id: "4A", name: "Klasa 4A (Mat-Fiz)" },
-    { id: "4B", name: "Klasa 4B (Językowa)" },
+    { id: "1A", name: "Klasa 1A (Mat-Fiz)", grade: 1 },
+    { id: "1B", name: "Klasa 1B (Biol-Chem)", grade: 1 },
+    { id: "2A", name: "Klasa 2A (Mat-Fiz)", grade: 2 },
+    { id: "2B", name: "Klasa 2B (Humanistyczna)", grade: 2 },
+    { id: "3A", name: "Klasa 3A (Mat-Geo)", grade: 3 },
+    { id: "3B", name: "Klasa 3B (Biol-Chem)", grade: 3 },
+    { id: "4A", name: "Klasa 4A (Mat-Fiz)", grade: 4 },
+    { id: "4B", name: "Klasa 4B (Językowa)", grade: 4 },
   ]);
 
   interface SimpleTeacher {
@@ -95,6 +97,216 @@
     { id: "Dabrowski_R", name: "Robert Dąbrowski", subject: "Informatyka", workload: 14, maxGapsPerWeek: 1 },
     { id: "Kozlowska_M", name: "Magdalena Kozłowska", subject: "Geografia", workload: 14, maxGapsPerWeek: 1 },
   ]);
+
+  // Sub-nawigacja i organizacja roczników w Kroku 2
+  let step2ActiveTab = $state<"classes" | "teachers">("classes");
+  let selectedGradeFilter = $state<number | null>(null);
+  let duplicateModalTarget = $state<SimpleClass | null>(null);
+
+  // Sub-nawigacja i widoki w Kroku 4 (Siatka zajęć)
+  let step4ActiveTab = $state<"lessons" | "byClass" | "byTeacher">("lessons");
+  let selectedClassViewId = $state<string>("1A");
+  let selectedTeacherViewId = $state<string>("");
+  let selectedGradeCurriculum = $state<number>(1);
+  let batchGradeSubject = $state("Matematyka");
+  let batchGradeHours = $state(4);
+  let batchGradeIsBlock = $state(false);
+
+  // Pomocnik rozpoznawania rocznika
+  function getClassGrade(cls: SimpleClass): number {
+    if (cls.grade !== undefined && cls.grade !== null) return cls.grade;
+    const match = cls.name.match(/^(\d+)/) || cls.id.match(/^(\d+)/);
+    return match ? parseInt(match[1], 10) : 1;
+  }
+
+  let availableGrades = $derived(
+    Array.from(new Set(classes.map(getClassGrade))).sort((a, b) => a - b)
+  );
+
+  let filteredClasses = $derived(
+    selectedGradeFilter !== null
+      ? classes.filter((c) => getClassGrade(c) === selectedGradeFilter)
+      : classes
+  );
+
+  let currentGradeClasses = $derived(
+    classes.filter((c) => getClassGrade(c) === selectedGradeCurriculum)
+  );
+
+  function getClassWeeklyHours(classId: string): number {
+    return lessons
+      .filter((l) => l.classId === classId)
+      .reduce((sum, l) => sum + l.weeklyCount, 0);
+  }
+
+  function getClassLessons(classId: string) {
+    return lessons.filter((l) => l.classId === classId);
+  }
+
+  let activeViewClass = $derived(
+    classes.find((c) => c.id === selectedClassViewId) || classes[0]
+  );
+
+  let activeViewTeacher = $derived(
+    teachers.find((t) => t.id === selectedTeacherViewId) || teachers[0]
+  );
+
+  function getTeacherAssignedHours(teacherId: string): number {
+    return lessons
+      .filter((l) => l.teacherId === teacherId)
+      .reduce((sum, l) => sum + l.weeklyCount, 0);
+  }
+
+  function getTeacherClasses(teacherId: string): { classId: string; className: string; subject: string; hours: number }[] {
+    return lessons
+      .filter((l) => l.teacherId === teacherId)
+      .map((l) => ({
+        classId: l.classId,
+        className: classes.find((c) => c.id === l.classId)?.name || l.classId,
+        subject: l.subject,
+        hours: l.weeklyCount,
+      }));
+  }
+
+  function updateTeacherWorkload(teacherId: string, newWorkload: number) {
+    const val = Math.max(1, Math.min(60, Number(newWorkload) || 18));
+    teachers = teachers.map((t) => (t.id === teacherId ? { ...t, workload: val } : t));
+  }
+
+  // Zasada spójności: Stały nauczyciel dla klasy z danego przedmiotu
+  function getConsistentTeacherForClassSubject(classId: string, subject: string): string | null {
+    const match = lessons.find(
+      (l) => l.classId === classId && l.subject.toLowerCase() === subject.toLowerCase()
+    );
+    return match ? match.teacherId : null;
+  }
+
+  // Duplikowanie oddziału klasowego (np. 4A -> 4B)
+  function duplicateClass(sourceClassId: string) {
+    const srcClass = classes.find((c) => c.id === sourceClassId);
+    if (!srcClass) return;
+
+    const baseName = srcClass.name;
+    let nextLetter = "B";
+    const match = baseName.match(/^(\d+)([A-Z])/i);
+    if (match) {
+      const gradeNum = match[1];
+      const letter = match[2].toUpperCase();
+      const charCode = letter.charCodeAt(0);
+      for (let c = charCode + 1; c <= 90; c++) {
+        const candidateLetter = String.fromCharCode(c);
+        const candidateName = `${gradeNum}${candidateLetter}`;
+        if (!classes.some((cl) => cl.name.startsWith(candidateName) || cl.id === candidateName)) {
+          nextLetter = candidateLetter;
+          break;
+        }
+      }
+    }
+    const newId = match ? `${match[1]}${nextLetter}` : `${srcClass.id}_kopia`;
+    const newName = match ? `Klasa ${match[1]}${nextLetter}` : `${srcClass.name} (kopia)`;
+
+    if (classes.some((c) => c.id === newId)) {
+      alert("Klasa o identyfikatorze " + newId + " już istnieje!");
+      return;
+    }
+
+    const grade = getClassGrade(srcClass);
+    const newClassObj: SimpleClass = {
+      id: newId,
+      name: newName,
+      grade: grade,
+      unavailableTimes: srcClass.unavailableTimes ? [...srcClass.unavailableTimes] : [],
+      unavailableSoft: srcClass.unavailableSoft,
+      unavailableWeight: srcClass.unavailableWeight,
+      minDailyLessons: srcClass.minDailyLessons,
+      maxDailyLessons: srcClass.maxDailyLessons,
+    };
+
+    classes = [...classes, newClassObj];
+    duplicateCurriculum(sourceClassId, [newId]);
+  }
+
+  // Kopiowanie siatki zajęć do wybranych klas
+  function duplicateCurriculum(sourceClassId: string, targetClassIds: string[]) {
+    if (targetClassIds.length === 0) return;
+    const sourceLessons = lessons.filter((l) => l.classId === sourceClassId);
+    if (sourceLessons.length === 0) {
+      alert("Wybrana klasa źródłowa nie posiada jeszcze żadnych zaplanowanych lekcji.");
+      return;
+    }
+
+    let newLessons = lessons.filter((l) => !targetClassIds.includes(l.classId));
+
+    targetClassIds.forEach((targetId) => {
+      sourceLessons.forEach((sl) => {
+        const existingTeacherId = lessons.find(
+          (l) => l.classId === targetId && l.subject.toLowerCase() === sl.subject.toLowerCase()
+        )?.teacherId;
+        const assignedTeacherId = existingTeacherId || sl.teacherId;
+
+        newLessons.push({
+          id: `${targetId}_${sl.subject.replace(/[^a-zA-Z0-9]/g, "")}_${Date.now().toString().slice(-4)}_${Math.random().toString(36).substring(2, 5)}`,
+          subject: sl.subject,
+          classId: targetId,
+          teacherId: assignedTeacherId,
+          roomId: sl.roomId,
+          duration: sl.duration,
+          weeklyCount: sl.weeklyCount,
+          timePreference: sl.timePreference,
+          preferredTimes: sl.preferredTimes ? [...sl.preferredTimes] : undefined,
+          preferenceSoft: sl.preferenceSoft,
+          preferenceWeight: sl.preferenceWeight,
+        });
+      });
+    });
+
+    lessons = newLessons;
+    duplicateModalTarget = null;
+  }
+
+  // Przypisanie przedmiotu do całego rocznika
+  function addSubjectToGrade(grade: number, subject: string, weeklyCount: number, isBlock: boolean = false) {
+    const targetClasses = classes.filter((c) => getClassGrade(c) === grade);
+    if (targetClasses.length === 0) {
+      alert("Brak klas w roczniku " + grade);
+      return;
+    }
+
+    let updated = [...lessons];
+    targetClasses.forEach((cls) => {
+      const existingIndex = updated.findIndex(
+        (l) => l.classId === cls.id && l.subject.toLowerCase() === subject.toLowerCase()
+      );
+      const teacherId =
+        getConsistentTeacherForClassSubject(cls.id, subject) ||
+        teachers.find((t) => t.subject.toLowerCase() === subject.toLowerCase())?.id ||
+        teachers[0]?.id ||
+        "";
+
+      if (existingIndex >= 0) {
+        updated[existingIndex].weeklyCount = weeklyCount;
+      } else {
+        updated.push({
+          id: `${cls.id}_${subject.replace(/[^a-zA-Z0-9]/g, "")}_${Date.now().toString().slice(-4)}_${Math.random().toString(36).substring(2, 5)}`,
+          subject: subject,
+          classId: cls.id,
+          teacherId: teacherId,
+          roomId: "",
+          duration: isBlock ? 2 : 1,
+          weeklyCount: weeklyCount,
+        });
+      }
+    });
+    lessons = updated;
+  }
+
+  function selectGradeCurriculum(grade: number) {
+    selectedGradeCurriculum = grade;
+    const firstInGrade = classes.find((c) => getClassGrade(c) === grade);
+    if (firstInGrade) {
+      selectedClassViewId = firstInGrade.id;
+    }
+  }
 
   // Krok 3: Sale lekcyjne
   interface SimpleRoom {
@@ -268,6 +480,7 @@
 
   // Form helpers for adding single items
   let newClassName = $state("");
+  let newClassGrade = $state(1);
   let newTeacherName = $state("");
   let newTeacherSubject = $state("Matematyka");
   let newTeacherWorkload = $state(18);
@@ -674,7 +887,9 @@
       alert("Oddział o tej nazwie już istnieje!");
       return;
     }
-    classes = [...classes, { id: cleanId, name: newClassName.trim() }];
+    const match = newClassName.match(/^(\d+)/);
+    const grade = match ? parseInt(match[1], 10) : newClassGrade;
+    classes = [...classes, { id: cleanId, name: newClassName.trim(), grade: grade }];
     newClassName = "";
   }
 
@@ -751,6 +966,10 @@
   // Bilans obliczeniowy
   let totalHoursAssigned = $derived(
     lessons.reduce((sum, l) => sum + l.weeklyCount, 0)
+  );
+
+  let totalTeacherWorkload = $derived(
+    teachers.reduce((sum, t) => sum + (Number(t.workload) || 0), 0)
   );
 
   let weeklySlotsCapacity = $derived(
@@ -1725,174 +1944,390 @@
         </div>
       </div>
 
-    <!-- STEP 2: ODDZIAŁY KLASOWE I NAUCZYCIELE -->
+    <!-- STEP 2: ODDZIAŁY KLASOWE I KADRA NAUCZYCIELSKA -->
     {:else if currentStep === 2}
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <!-- Klasy -->
-        <div class="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-xs flex flex-col justify-between gap-4">
-          <div>
-            <div class="flex items-center justify-between">
-              <h3 class="text-sm font-bold text-slate-900">Oddziały klasowe ({classes.length})</h3>
-              <span class="text-xs text-slate-400">Grupy uczniów</span>
-            </div>
-
-            <!-- Add class input -->
-            <div class="mt-3 flex gap-2">
-              <input
-                type="text"
-                bind:value={newClassName}
-                placeholder="np. 1C lub 2D (Human)"
-                onkeydown={(e) => e.key === "Enter" && addClass()}
-                class="flex-1 px-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-              />
-              <button
-                type="button"
-                onclick={addClass}
-                class="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-lg cursor-pointer transition-all"
-              >
-                + Dodaj
-              </button>
-            </div>
-
-            <!-- Classes list -->
-            <div class="mt-3 flex flex-col gap-1.5 max-h-72 overflow-y-auto">
-              {#each classes as cls}
-                <div class="p-2.5 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-between text-xs">
-                  <div class="flex flex-col">
-                    <span class="font-bold text-slate-800">👥 {cls.name}</span>
-                    {#if (cls.minDailyLessons !== null && cls.minDailyLessons !== undefined) || (cls.maxDailyLessons !== null && cls.maxDailyLessons !== undefined)}
-                      <div class="flex items-center gap-1.5 mt-0.5">
-                        <span class="text-[10px] px-1.5 py-0.2 bg-blue-50 text-blue-700 rounded border border-blue-200 font-medium">
-                          ⚖️ {cls.minDailyLessons ?? "min"}-{cls.maxDailyLessons ?? "max"} lekcji/dzień
-                        </span>
-                      </div>
-                    {/if}
-                  </div>
-                  <div class="flex items-center gap-1.5">
-                    <button
-                      type="button"
-                      onclick={() => openAvailabilityModal(cls.id, cls.name, "class")}
-                      class={`text-[11px] px-2.5 py-1 rounded-lg border flex items-center gap-1 transition-all cursor-pointer ${
-                        (cls.unavailableTimes?.length || 0) > 0 || cls.minDailyLessons || cls.maxDailyLessons
-                          ? "bg-rose-50 text-rose-700 border-rose-200 font-semibold"
-                          : "bg-white text-slate-600 border-slate-200 hover:border-slate-300"
-                      }`}
-                      title="Ustal dostępność klasy i ramy lekcyjne"
-                    >
-                      <span>🗓️</span>
-                      <span>{cls.unavailableTimes?.length ? `${cls.unavailableTimes.length} wykl.` : "Dostępność"}</span>
-                    </button>
-                    <button
-                      type="button"
-                      onclick={() => removeClass(cls.id)}
-                      class="text-slate-400 hover:text-rose-600 text-xs px-2 py-0.5 rounded cursor-pointer"
-                      title="Usuń klasę"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                </div>
-              {/each}
-            </div>
+      <div class="flex flex-col gap-5">
+        <!-- Sub-tabs bar -->
+        <div class="flex flex-wrap items-center justify-between gap-3 bg-white p-2 border border-slate-200/90 rounded-2xl shadow-xs">
+          <div class="flex items-center gap-1.5 p-1 bg-slate-100/80 rounded-xl">
+            <button
+              type="button"
+              onclick={() => (step2ActiveTab = "classes")}
+              class={`px-4 py-2 text-xs font-bold rounded-lg transition-all cursor-pointer flex items-center gap-2 ${
+                step2ActiveTab === "classes"
+                  ? "bg-white text-blue-700 shadow-xs"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              <span>👥 Klasy i roczniki</span>
+              <span class="px-1.5 py-0.5 rounded-full text-[10px] {step2ActiveTab === 'classes' ? 'bg-blue-100 text-blue-800' : 'bg-slate-200 text-slate-600'}">
+                {classes.length}
+              </span>
+            </button>
+            <button
+              type="button"
+              onclick={() => (step2ActiveTab = "teachers")}
+              class={`px-4 py-2 text-xs font-bold rounded-lg transition-all cursor-pointer flex items-center gap-2 ${
+                step2ActiveTab === "teachers"
+                  ? "bg-white text-blue-700 shadow-xs"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              <span>👨‍🏫 Kadra i pensum</span>
+              <span class="px-1.5 py-0.5 rounded-full text-[10px] {step2ActiveTab === 'teachers' ? 'bg-blue-100 text-blue-800' : 'bg-slate-200 text-slate-600'}">
+                {teachers.length}
+              </span>
+            </button>
           </div>
 
-          <div class="pt-3 border-t border-slate-100 text-[11px] text-slate-500">
-            Wskazówka: Do każdej klasy zostaną przypisane lekcje w kroku 4.
+          <div class="text-xs text-slate-500 px-3 py-1">
+            {#if step2ActiveTab === "classes"}
+              Zarządzaj poziomami klas, powielaj siatki godzin i ustalaj ograniczenia dzienne.
+            {:else}
+              Ustalaj pensum dydaktyczne (etat) i monitoruj zbilansowanie godzin kadry.
+            {/if}
           </div>
         </div>
 
-        <!-- Nauczyciele -->
-        <div class="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-xs flex flex-col justify-between gap-4">
-          <div>
-            <div class="flex items-center justify-between">
-              <h3 class="text-sm font-bold text-slate-900">Kadra nauczycielska ({teachers.length})</h3>
-              <span class="text-xs text-slate-400">Pedagodzy</span>
-            </div>
+        {#if step2ActiveTab === "classes"}
+          <!-- ZAKŁADKA KLAS I ROCZNIKÓW -->
+          <div class="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-xs flex flex-col gap-5">
+            <!-- Header & Grade filter -->
+            <div class="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-4 border-b border-slate-100">
+              <div>
+                <h3 class="text-sm font-bold text-slate-900">Oddziały klasowe według roczników</h3>
+                <p class="text-xs text-slate-500 mt-0.5">
+                  Możesz duplikować klasy (np. 4A &rarr; 4B) lub kopiować cały program nauczania między oddziałami.
+                </p>
+              </div>
 
-            <!-- Add teacher input -->
-            <div class="mt-3 flex flex-col gap-2 bg-slate-50 p-3 rounded-xl border border-slate-200/70">
-              <input
-                type="text"
-                bind:value={newTeacherName}
-                placeholder="Imię i nazwisko (np. Jan Kowalski)"
-                class="px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:border-blue-500"
-              />
-              <div class="flex gap-2">
-                <input
-                  type="text"
-                  bind:value={newTeacherSubject}
-                  placeholder="Nauczany przedmiot (np. Matematyka)"
-                  class="flex-1 px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:border-blue-500"
-                />
+              <!-- Filtry roczników -->
+              <div class="flex flex-wrap items-center gap-1.5">
+                <span class="text-xs font-semibold text-slate-500 mr-1">Rocznik:</span>
                 <button
                   type="button"
-                  onclick={addTeacher}
-                  class="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-lg cursor-pointer transition-all shrink-0"
+                  onclick={() => (selectedGradeFilter = null)}
+                  class={`px-2.5 py-1 text-xs rounded-lg font-semibold transition-all cursor-pointer border ${
+                    selectedGradeFilter === null
+                      ? "bg-blue-600 text-white border-blue-600"
+                      : "bg-white text-slate-600 border-slate-200 hover:border-slate-300"
+                  }`}
                 >
-                  + Dodaj
+                  Wszystkie ({classes.length})
                 </button>
+                {#each availableGrades as gr}
+                  {@const count = classes.filter((c) => getClassGrade(c) === gr).length}
+                  <button
+                    type="button"
+                    onclick={() => (selectedGradeFilter = gr)}
+                    class={`px-2.5 py-1 text-xs rounded-lg font-semibold transition-all cursor-pointer border ${
+                      selectedGradeFilter === gr
+                        ? "bg-blue-600 text-white border-blue-600"
+                        : "bg-white text-slate-600 border-slate-200 hover:border-slate-300"
+                    }`}
+                  >
+                    Rocznik {gr} ({count})
+                  </button>
+                {/each}
               </div>
             </div>
 
-            <!-- Teachers list -->
-            <div class="mt-3 flex flex-col gap-1.5 max-h-60 overflow-y-auto">
-              {#each teachers as t}
-                <div class="p-2.5 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-between text-xs">
-                  <div class="flex flex-col">
-                    <span class="font-bold text-slate-800">👨‍🏫 {t.name}</span>
-                    <span class="text-[11px] text-slate-500">{t.subject} • pensum: {t.workload}h</span>
-                    {#if t.maxDaysPerWeek || t.maxDailyLessons || (t.maxGapsPerWeek !== null && t.maxGapsPerWeek !== undefined)}
-                      <div class="flex flex-wrap items-center gap-1 mt-1">
-                        {#if t.maxDaysPerWeek}
-                          <span class="text-[10px] px-1.5 py-0.2 bg-purple-50 text-purple-700 rounded border border-purple-200 font-medium">
-                            📅 maks. {t.maxDaysPerWeek} {t.maxDaysPerWeek === 1 ? "dzień" : "dni"}
+            <!-- Formularz dodawania klasy -->
+            <div class="flex flex-wrap items-center gap-2 bg-slate-50 p-3 rounded-xl border border-slate-200/70">
+              <input
+                type="text"
+                bind:value={newClassName}
+                placeholder="Nazwa klasy (np. 4C Mat-Inf lub 1A)"
+                onkeydown={(e) => e.key === "Enter" && addClass()}
+                class="flex-1 min-w-[200px] px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+              />
+              <div class="flex items-center gap-1.5">
+                <span class="text-xs text-slate-500">Rocznik:</span>
+                <select
+                  bind:value={newClassGrade}
+                  class="px-2.5 py-1.5 text-xs bg-white border border-slate-200 rounded-lg text-slate-800 cursor-pointer focus:outline-none focus:border-blue-500"
+                >
+                  <option value={1}>Poziom 1</option>
+                  <option value={2}>Poziom 2</option>
+                  <option value={3}>Poziom 3</option>
+                  <option value={4}>Poziom 4</option>
+                  <option value={5}>Poziom 5</option>
+                </select>
+              </div>
+              <button
+                type="button"
+                onclick={addClass}
+                class="px-4 py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-lg cursor-pointer transition-all"
+              >
+                + Dodaj klasę
+              </button>
+            </div>
+
+            <!-- Siatka klas -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+              {#each filteredClasses as cls}
+                {@const weeklyHours = getClassWeeklyHours(cls.id)}
+                {@const clsLessons = getClassLessons(cls.id)}
+                {@const grade = getClassGrade(cls)}
+                <div class="p-4 bg-slate-50/90 rounded-2xl border border-slate-200 flex flex-col justify-between gap-3 shadow-2xs hover:border-slate-300 transition-colors">
+                  <div>
+                    <div class="flex items-start justify-between gap-2">
+                      <div class="flex items-center gap-2">
+                        <span class="w-8 h-8 rounded-xl bg-blue-100 text-blue-800 font-black text-xs flex items-center justify-center">
+                          {grade}
+                        </span>
+                        <div>
+                          <div class="flex items-center gap-2">
+                            <span class="font-bold text-slate-900 text-xs">👥 {cls.name}</span>
+                            <span class="text-[10px] px-1.5 py-0.2 bg-slate-200/80 text-slate-700 font-semibold rounded">
+                              Rocznik {grade}
+                            </span>
+                          </div>
+                          <span class="text-[11px] text-slate-500 block mt-0.5">
+                            Łącznie: <strong>{weeklyHours} godz./tydz.</strong> ({clsLessons.length} przedmiotów/wpisów)
                           </span>
-                        {/if}
-                        {#if t.maxDailyLessons}
-                          <span class="text-[10px] px-1.5 py-0.2 bg-amber-50 text-amber-700 rounded border border-amber-200 font-medium">
-                            ⏱️ maks. {t.maxDailyLessons} lekcji/dzień
+                        </div>
+                      </div>
+
+                      <div class="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onclick={() => openAvailabilityModal(cls.id, cls.name, "class")}
+                          class={`text-[11px] px-2 py-1 rounded-lg border flex items-center gap-1 transition-all cursor-pointer ${
+                            (cls.unavailableTimes?.length || 0) > 0 || cls.minDailyLessons || cls.maxDailyLessons
+                              ? "bg-rose-50 text-rose-700 border-rose-200 font-semibold"
+                              : "bg-white text-slate-600 border-slate-200 hover:border-slate-300"
+                          }`}
+                          title="Ustal dostępność klasy i ramy lekcyjne"
+                        >
+                          <span>🗓️</span>
+                          <span>{cls.unavailableTimes?.length ? `${cls.unavailableTimes.length} wykl.` : "Dostępność"}</span>
+                        </button>
+                        <button
+                          type="button"
+                          onclick={() => removeClass(cls.id)}
+                          class="text-slate-400 hover:text-rose-600 text-xs p-1 rounded cursor-pointer"
+                          title="Usuń klasę"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    </div>
+
+                    <!-- Mini podgląd siatki przedmiotów klasy -->
+                    {#if clsLessons.length > 0}
+                      <div class="mt-3 flex flex-wrap gap-1">
+                        {#each clsLessons.slice(0, 5) as l}
+                          <span class="text-[10px] px-2 py-0.5 bg-white border border-slate-200 text-slate-700 rounded-md">
+                            {l.subject}: {l.weeklyCount}h
                           </span>
-                        {/if}
-                        {#if t.maxGapsPerWeek !== null && t.maxGapsPerWeek !== undefined}
-                          <span class="text-[10px] px-1.5 py-0.2 bg-cyan-50 text-cyan-700 rounded border border-cyan-200 font-medium">
-                            ☕ maks. {t.maxGapsPerWeek} okienek
+                        {/each}
+                        {#if clsLessons.length > 5}
+                          <span class="text-[10px] px-1.5 py-0.5 text-slate-400 font-medium">
+                            +{clsLessons.length - 5} więcej
                           </span>
                         {/if}
                       </div>
+                    {:else}
+                      <p class="mt-2 text-[11px] text-slate-400 italic">
+                        Brak przypisanych lekcji. Użyj przycisku poniżej, aby skopiować siatkę z innej klasy.
+                      </p>
                     {/if}
                   </div>
-                  <div class="flex items-center gap-1.5">
+
+                  <!-- Akcje dla klasy: duplikowanie -->
+                  <div class="pt-2 border-t border-slate-200/60 flex items-center justify-between gap-2 text-xs">
                     <button
                       type="button"
-                      onclick={() => openAvailabilityModal(t.id, t.name, "teacher")}
-                      class={`text-[11px] px-2.5 py-1 rounded-lg border flex items-center gap-1 transition-all cursor-pointer ${
-                        (t.unavailableTimes?.length || 0) > 0 || t.maxDaysPerWeek || t.maxDailyLessons || (t.maxGapsPerWeek !== null && t.maxGapsPerWeek !== undefined)
-                          ? "bg-rose-50 text-rose-700 border-rose-200 font-semibold"
-                          : "bg-white text-slate-600 border-slate-200 hover:border-slate-300"
-                      }`}
-                      title="Ustal godziny pracy, dni i wykluczenia"
+                      onclick={() => (duplicateModalTarget = cls)}
+                      class="px-2.5 py-1 bg-white hover:bg-blue-50 text-blue-700 border border-slate-200 hover:border-blue-200 rounded-lg font-semibold transition-all cursor-pointer flex items-center gap-1.5 text-[11px]"
+                      title="Skopiuj wszystkie lekcje z tej klasy do innych klas tego samego lub innych roczników"
                     >
-                      <span>🗓️</span>
-                      <span>{t.unavailableTimes?.length ? `${t.unavailableTimes.length} wykl.` : "Dostępność"}</span>
+                      <span>📋 Duplikuj siatkę do...</span>
                     </button>
+
                     <button
                       type="button"
-                      onclick={() => removeTeacher(t.id)}
-                      class="text-slate-400 hover:text-rose-600 text-xs px-2 py-0.5 rounded cursor-pointer"
-                      title="Usuń nauczyciela"
+                      onclick={() => duplicateClass(cls.id)}
+                      class="px-2.5 py-1 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-lg font-semibold transition-all cursor-pointer flex items-center gap-1 text-[11px]"
+                      title="Utwórz nowy oddział na bazie tej klasy z identyczną siatką zajęć"
                     >
-                      ✕
+                      <span>➕ Nowy oddział</span>
                     </button>
                   </div>
                 </div>
               {/each}
             </div>
           </div>
+        {:else}
+          <!-- ZAKŁADKA KADRY I PENSUM -->
+          <div class="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-xs flex flex-col gap-5">
+            <!-- Globalny pasek bilansu pensum -->
+            <div class="p-4 bg-gradient-to-r from-blue-50/80 to-indigo-50/80 border border-blue-200/80 rounded-2xl flex flex-wrap items-center justify-between gap-4">
+              <div class="flex items-center gap-4">
+                <div class="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center text-lg font-black shadow-xs">
+                  ⚖️
+                </div>
+                <div>
+                  <h4 class="text-xs font-bold uppercase tracking-wider text-blue-950">
+                    Bilans pensum i etaty kadry pedagogicznej
+                  </h4>
+                  <p class="text-xs text-blue-800 mt-0.5">
+                    Możesz bezpośrednio edytować pensum każdego nauczyciela i śledzić jego obciążenie.
+                  </p>
+                </div>
+              </div>
 
-          <div class="pt-3 border-t border-slate-100 text-[11px] text-slate-500">
-            Nauczyciele zostaną powiązani z odpowiednimi przedmiotami w planie.
+              <div class="flex items-center gap-6 text-xs">
+                <div>
+                  <span class="text-slate-500 block text-[11px]">Łączne pensum:</span>
+                  <span class="font-black text-slate-900 text-sm">{totalTeacherWorkload} godz.</span>
+                </div>
+                <div>
+                  <span class="text-slate-500 block text-[11px]">Przydzielone lekcje:</span>
+                  <span class="font-black text-blue-700 text-sm">{totalHoursAssigned} godz.</span>
+                </div>
+                <div>
+                  <span class="text-slate-500 block text-[11px]">Bilans:</span>
+                  {#if totalHoursAssigned === totalTeacherWorkload}
+                    <span class="font-black text-emerald-600 text-sm">Zrównoważony (0h)</span>
+                  {:else if totalHoursAssigned > totalTeacherWorkload}
+                    <span class="font-black text-rose-600 text-sm">+{totalHoursAssigned - totalTeacherWorkload}h (nadgodziny)</span>
+                  {:else}
+                    <span class="font-black text-amber-600 text-sm">-{totalTeacherWorkload - totalHoursAssigned}h (wakat)</span>
+                  {/if}
+                </div>
+              </div>
+            </div>
+
+            <!-- Formularz dodawania nauczyciela z pensum -->
+            <div class="flex flex-wrap items-center gap-2 bg-slate-50 p-3.5 rounded-xl border border-slate-200/70">
+              <input
+                type="text"
+                bind:value={newTeacherName}
+                placeholder="Imię i nazwisko (np. Anna Nowak)"
+                class="flex-1 min-w-[180px] px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:border-blue-500"
+              />
+              <input
+                type="text"
+                bind:value={newTeacherSubject}
+                placeholder="Nauczany przedmiot (np. Matematyka)"
+                class="flex-1 min-w-[160px] px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:border-blue-500"
+              />
+              <div class="flex items-center gap-1.5">
+                <span class="text-xs font-semibold text-slate-600">Pensum:</span>
+                <input
+                  type="number"
+                  min="1"
+                  max="60"
+                  bind:value={newTeacherWorkload}
+                  class="w-16 px-2.5 py-1.5 text-xs bg-white border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:border-blue-500 text-center font-bold"
+                />
+                <span class="text-xs text-slate-500">h</span>
+              </div>
+              <button
+                type="button"
+                onclick={addTeacher}
+                class="px-4 py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-lg cursor-pointer transition-all"
+              >
+                + Dodaj nauczyciela
+              </button>
+            </div>
+
+            <!-- Siatka nauczycieli z edycją pensum i podglądem klas -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+              {#each teachers as t}
+                {@const assigned = getTeacherAssignedHours(t.id)}
+                {@const tClasses = getTeacherClasses(t.id)}
+                {@const workloadDiff = assigned - t.workload}
+                <div class="p-4 bg-slate-50/90 rounded-2xl border border-slate-200 flex flex-col justify-between gap-3 shadow-2xs hover:border-slate-300 transition-colors">
+                  <div>
+                    <div class="flex items-start justify-between gap-2">
+                      <div>
+                        <div class="flex items-center gap-2">
+                          <span class="font-bold text-slate-900 text-xs">👨‍🏫 {t.name}</span>
+                          <span class="text-[10px] px-2 py-0.5 bg-blue-50 text-blue-700 border border-blue-200 font-semibold rounded-full">
+                            {t.subject}
+                          </span>
+                        </div>
+
+                        <!-- Edycja pensum bezpośrednio w wierszu -->
+                        <div class="flex items-center gap-2 mt-2">
+                          <span class="text-[11px] text-slate-500">Pensum:</span>
+                          <input
+                            type="number"
+                            min="1"
+                            max="60"
+                            value={t.workload}
+                            oninput={(e) => updateTeacherWorkload(t.id, parseInt(e.currentTarget.value, 10))}
+                            class="w-14 px-2 py-0.5 text-xs bg-white border border-slate-300 rounded text-slate-900 font-bold text-center focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            title="Edytuj wymiar pensum nauczyciela"
+                          />
+                          <span class="text-xs text-slate-500">h / tydzień</span>
+
+                          <!-- Wskaźnik zbilansowania -->
+                          <span class={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+                            workloadDiff === 0
+                              ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                              : workloadDiff > 0
+                              ? "bg-rose-50 text-rose-700 border border-rose-200"
+                              : "bg-amber-50 text-amber-700 border border-amber-200"
+                          }`}>
+                            {assigned} / {t.workload}h ({workloadDiff === 0 ? "100%" : workloadDiff > 0 ? `+${workloadDiff}h` : `${workloadDiff}h`})
+                          </span>
+                        </div>
+                      </div>
+
+                      <div class="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onclick={() => openAvailabilityModal(t.id, t.name, "teacher")}
+                          class={`text-[11px] px-2 py-1 rounded-lg border flex items-center gap-1 transition-all cursor-pointer ${
+                            (t.unavailableTimes?.length || 0) > 0 || t.maxDaysPerWeek || t.maxDailyLessons || (t.maxGapsPerWeek !== null && t.maxGapsPerWeek !== undefined)
+                              ? "bg-rose-50 text-rose-700 border-rose-200 font-semibold"
+                              : "bg-white text-slate-600 border-slate-200 hover:border-slate-300"
+                          }`}
+                          title="Ustal dostępność nauczyciela, dni pracy i okienka"
+                        >
+                          <span>🗓️</span>
+                          <span>{t.unavailableTimes?.length ? `${t.unavailableTimes.length} wykl.` : "Dostępność"}</span>
+                        </button>
+                        <button
+                          type="button"
+                          onclick={() => removeTeacher(t.id)}
+                          class="text-slate-400 hover:text-rose-600 text-xs p-1 rounded cursor-pointer"
+                          title="Usuń nauczyciela"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    </div>
+
+                    <!-- Podgląd przypisanych klas (Requirement 4) -->
+                    <div class="mt-3">
+                      <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
+                        Przydzielone oddziały ({tClasses.length}):
+                      </span>
+                      {#if tClasses.length > 0}
+                        <div class="flex flex-wrap gap-1">
+                          {#each tClasses as tc}
+                            <span class="text-[10px] px-2 py-0.5 bg-white border border-slate-200 text-slate-800 rounded-md font-medium">
+                              {tc.className} ({tc.subject}: {tc.hours}h)
+                            </span>
+                          {/each}
+                        </div>
+                      {:else}
+                        <span class="text-[11px] text-slate-400 italic">
+                          Brak przypisanych klas (0 godzin).
+                        </span>
+                      {/if}
+                    </div>
+                  </div>
+                </div>
+              {/each}
+            </div>
           </div>
-        </div>
+        {/if}
       </div>
 
     <!-- STEP 3: SALE LEKCYJNE -->
@@ -1979,199 +2414,543 @@
 
     <!-- STEP 4: SIATKA LEKCJI (PRZYDZIAŁ) -->
     {:else if currentStep === 4}
-      <div class="flex flex-col gap-6">
-        <div class="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-          <div>
-            <h3 class="text-sm font-bold text-slate-900">Siatka godzin i przydział lekcji</h3>
-            <p class="text-xs text-slate-500 mt-0.5">
+      <div class="flex flex-col gap-5">
+        <!-- Sub-tabs bar -->
+        <div class="flex flex-wrap items-center justify-between gap-3 bg-white p-2 border border-slate-200/90 rounded-2xl shadow-xs">
+          <div class="flex items-center gap-1.5 p-1 bg-slate-100/80 rounded-xl">
+            <button
+              type="button"
+              onclick={() => (step4ActiveTab = "lessons")}
+              class={`px-4 py-2 text-xs font-bold rounded-lg transition-all cursor-pointer flex items-center gap-2 ${
+                step4ActiveTab === "lessons"
+                  ? "bg-white text-blue-700 shadow-xs"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              <span>📋 Wszystkie lekcje</span>
+              <span class="px-1.5 py-0.5 rounded-full text-[10px] {step4ActiveTab === 'lessons' ? 'bg-blue-100 text-blue-800' : 'bg-slate-200 text-slate-600'}">
+                {lessons.length}
+              </span>
+            </button>
+            <button
+              type="button"
+              onclick={() => (step4ActiveTab = "byClass")}
+              class={`px-4 py-2 text-xs font-bold rounded-lg transition-all cursor-pointer flex items-center gap-2 ${
+                step4ActiveTab === "byClass"
+                  ? "bg-white text-blue-700 shadow-xs"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              <span>🏫 Widok klas i roczników</span>
+            </button>
+            <button
+              type="button"
+              onclick={() => {
+                step4ActiveTab = "byTeacher";
+                if (!selectedTeacherViewId && teachers[0]) {
+                  selectedTeacherViewId = teachers[0].id;
+                }
+              }}
+              class={`px-4 py-2 text-xs font-bold rounded-lg transition-all cursor-pointer flex items-center gap-2 ${
+                step4ActiveTab === "byTeacher"
+                  ? "bg-white text-blue-700 shadow-xs"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              <span>👨‍🏫 Widok nauczycieli</span>
+            </button>
+          </div>
+
+          <div class="text-xs text-slate-500 px-3 py-1">
+            {#if step4ActiveTab === "lessons"}
               Łącznie zaplanowano: <strong>{totalHoursAssigned} godzin lekcyjnych</strong> w tygodniu.
-            </p>
-          </div>
-
-          <div class="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onclick={() => (isLinkedModalOpen = true)}
-              class="px-3.5 py-2 bg-purple-50 hover:bg-purple-100 text-purple-900 border border-purple-200 text-xs font-semibold rounded-xl cursor-pointer transition-all flex items-center gap-1.5 shadow-xs"
-              title="Zarządzaj lekcjami równoległymi i jednoczesnymi (np. języki, WF)"
-            >
-              <span>🔗 Lekcje równoległe ({linkedGroups.length})</span>
-            </button>
-
-            <button
-              type="button"
-              onclick={generateDefaultCurriculum}
-              class="px-3.5 py-2 bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-200 text-xs font-semibold rounded-xl cursor-pointer transition-all flex items-center gap-1.5 shadow-xs"
-            >
-              <span>⚡ Zrównoważ i wygeneruj pełną siatkę dla klas</span>
-            </button>
+            {:else if step4ActiveTab === "byClass"}
+              Przeglądaj plany poszczególnych klas, powielaj siatki i przypisuj przedmioty do roczników.
+            {:else}
+              Podgląd klas każdego nauczyciela oraz weryfikacja zasady spójności przydziału.
+            {/if}
           </div>
         </div>
 
-        <!-- Add lesson form -->
-        <div class="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-xs flex flex-col gap-4">
-          <h4 class="text-xs font-bold uppercase tracking-wider text-slate-500">
-            Ręczne dodanie zajęć do planu
-          </h4>
-          <div class="grid grid-cols-2 md:grid-cols-6 gap-2 text-xs">
-            <!-- Przedmiot -->
-            <div>
-              <label for="lesson-subject-input" class="block text-[11px] font-semibold text-slate-600 mb-1">Przedmiot:</label>
-              <input
-                id="lesson-subject-input"
-                type="text"
-                bind:value={lessonSubject}
-                placeholder="np. Matematyka"
-                class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:border-blue-500"
-              />
+        {#if step4ActiveTab === "lessons"}
+          <!-- ZAKŁADKA 1: WSZYSTKIE LEKCJE -->
+          <div class="flex flex-col gap-6">
+            <div class="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+              <div>
+                <h3 class="text-sm font-bold text-slate-900">Siatka godzin i przydział lekcji</h3>
+                <p class="text-xs text-slate-500 mt-0.5">
+                  Łącznie zaplanowano: <strong>{totalHoursAssigned} godzin lekcyjnych</strong> w tygodniu.
+                </p>
+              </div>
+
+              <div class="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onclick={() => (isLinkedModalOpen = true)}
+                  class="px-3.5 py-2 bg-purple-50 hover:bg-purple-100 text-purple-900 border border-purple-200 text-xs font-semibold rounded-xl cursor-pointer transition-all flex items-center gap-1.5 shadow-xs"
+                  title="Zarządzaj lekcjami równoległymi i jednoczesnymi (np. języki, WF)"
+                >
+                  <span>🔗 Lekcje równoległe ({linkedGroups.length})</span>
+                </button>
+
+                <button
+                  type="button"
+                  onclick={generateDefaultCurriculum}
+                  class="px-3.5 py-2 bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-200 text-xs font-semibold rounded-xl cursor-pointer transition-all flex items-center gap-1.5 shadow-xs"
+                >
+                  <span>⚡ Zrównoważ i wygeneruj pełną siatkę dla klas</span>
+                </button>
+              </div>
             </div>
 
-            <!-- Klasa -->
-            <div>
-              <label for="lesson-class-select" class="block text-[11px] font-semibold text-slate-600 mb-1">Dla klasy:</label>
-              <select
-                id="lesson-class-select"
-                bind:value={lessonClassId}
-                class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:border-blue-500"
-              >
-                <option value="">Wybierz klasę</option>
-                {#each classes as c}
-                  <option value={c.id}>{c.name}</option>
-                {/each}
-              </select>
-            </div>
-
-            <!-- Nauczyciel -->
-            <div>
-              <label for="lesson-teacher-select" class="block text-[11px] font-semibold text-slate-600 mb-1">Nauczyciel:</label>
-              <select
-                id="lesson-teacher-select"
-                bind:value={lessonTeacherId}
-                class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:border-blue-500"
-              >
-                <option value="">Wybierz nauczyciela</option>
-                {#each teachers as t}
-                  <option value={t.id}>{t.name} ({t.subject})</option>
-                {/each}
-              </select>
-            </div>
-
-            <!-- Sala -->
-            <div>
-              <label for="lesson-room-select" class="block text-[11px] font-semibold text-slate-600 mb-1">Sala:</label>
-              <select
-                id="lesson-room-select"
-                bind:value={lessonRoomId}
-                class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:border-blue-500"
-              >
-                <option value="">Dowolna / ogólna</option>
-                {#each rooms as r}
-                  <option value={r.id}>{r.name}</option>
-                {/each}
-              </select>
-            </div>
-
-            <!-- Godzin tyg -->
-            <div>
-              <label for="lesson-count-input" class="block text-[11px] font-semibold text-slate-600 mb-1">Godzin/tydz:</label>
-              <input
-                id="lesson-count-input"
-                type="number"
-                min="1"
-                max="10"
-                bind:value={lessonCount}
-                class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:border-blue-500"
-              />
-            </div>
-
-            <!-- Przycisk dodaj -->
-            <div class="flex items-end">
-              <button
-                type="button"
-                onclick={addCustomLesson}
-                class="w-full py-1.5 bg-slate-900 hover:bg-slate-800 text-white font-semibold rounded-lg transition-all cursor-pointer text-center"
-              >
-                + Dodaj lekcję
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <!-- Lessons table -->
-        <div class="bg-white border border-slate-200/90 rounded-2xl shadow-xs overflow-hidden">
-          <div class="p-4 border-b border-slate-100 flex items-center justify-between text-xs">
-            <span class="font-bold text-slate-800">Wykaz zaplanowanych zajęć ({lessons.length} pozycji)</span>
-            <span class="text-slate-400">Możesz ustalać preferencje godzinowe oraz usuwać wpisy</span>
-          </div>
-          <div class="divide-y divide-slate-100 max-h-96 overflow-y-auto">
-            {#each lessons as l}
-              {@const cls = classes.find((c) => c.id === l.classId)}
-              {@const t = teachers.find((tch) => tch.id === l.teacherId)}
-              {@const r = rooms.find((rm) => rm.id === l.roomId)}
-              {@const linkedGroup = linkedGroups.find((g) => g.lessonIds.includes(l.id))}
-              <div class="p-3 hover:bg-slate-50/80 flex items-center justify-between text-xs transition-colors">
-                <div class="flex items-center gap-3">
-                  <span class="w-8 h-8 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center font-bold text-xs shrink-0">
-                    📚
-                  </span>
-                  <div>
-                    <div class="flex items-center gap-2">
-                      <span class="font-bold text-slate-900">{l.subject}</span>
-                      {#if linkedGroup}
-                        <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-purple-50 text-purple-700 border border-purple-200">
-                          🔗 {linkedGroup.name}
-                        </span>
-                      {/if}
-                    </div>
-                    <div class="text-[11px] text-slate-500 flex items-center gap-2 mt-0.5">
-                      <span>Klasa: <strong>{cls ? cls.name : l.classId}</strong></span>
-                      <span>•</span>
-                      <span>Nauczyciel: <strong>{t ? t.name : l.teacherId}</strong></span>
-                      <span>•</span>
-                      <span>Sala: {r ? r.name : "Dowolna"}</span>
-                    </div>
-                  </div>
+            <!-- Add lesson form -->
+            <div class="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-xs flex flex-col gap-4">
+              <h4 class="text-xs font-bold uppercase tracking-wider text-slate-500">
+                Ręczne dodanie zajęć do planu
+              </h4>
+              <div class="grid grid-cols-2 md:grid-cols-6 gap-2 text-xs">
+                <!-- Przedmiot -->
+                <div>
+                  <label for="lesson-subject-input" class="block text-[11px] font-semibold text-slate-600 mb-1">Przedmiot:</label>
+                  <input
+                    id="lesson-subject-input"
+                    type="text"
+                    bind:value={lessonSubject}
+                    placeholder="np. Matematyka"
+                    class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:border-blue-500"
+                  />
                 </div>
 
-                <div class="flex items-center gap-2.5">
-                  <!-- Preference button (Phase 3: PreferTimesConstraint) -->
-                  <button
-                    type="button"
-                    onclick={() => openLessonPrefModal(l)}
-                    class="px-2.5 py-1 rounded-lg border text-[11px] font-semibold transition-all cursor-pointer flex items-center gap-1 {l.timePreference === 'morning' ? 'bg-amber-50 text-amber-800 border-amber-200' : l.timePreference === 'afternoon' ? 'bg-indigo-50 text-indigo-800 border-indigo-200' : l.timePreference === 'custom' ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'}"
-                    title="Ustal preferowane godziny lub porę dnia dla tej lekcji"
+                <!-- Klasa -->
+                <div>
+                  <label for="lesson-class-select" class="block text-[11px] font-semibold text-slate-600 mb-1">Dla klasy:</label>
+                  <select
+                    id="lesson-class-select"
+                    bind:value={lessonClassId}
+                    class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:border-blue-500"
                   >
-                    {#if l.timePreference === 'morning'}
-                      <span>🌅</span>
-                      <span>Rano (1–4)</span>
-                    {:else if l.timePreference === 'afternoon'}
-                      <span>🌇</span>
-                      <span>Popołudnie (5+)</span>
-                    {:else if l.timePreference === 'custom'}
-                      <span>⭐</span>
-                      <span>{l.preferredTimes?.length || 0} slotów</span>
-                    {:else}
-                      <span>🕒</span>
-                      <span class="text-slate-500">Dowolna pora</span>
-                    {/if}
-                  </button>
+                    <option value="">Wybierz klasę</option>
+                    {#each classes as c}
+                      <option value={c.id}>{c.name}</option>
+                    {/each}
+                  </select>
+                </div>
 
-                  <span class="px-2.5 py-1 bg-slate-100 text-slate-800 rounded-full font-semibold">
-                    {l.weeklyCount} godz./tydz.
-                  </span>
+                <!-- Nauczyciel -->
+                <div>
+                  <label for="lesson-teacher-select" class="block text-[11px] font-semibold text-slate-600 mb-1">Nauczyciel:</label>
+                  <select
+                    id="lesson-teacher-select"
+                    bind:value={lessonTeacherId}
+                    class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:border-blue-500"
+                  >
+                    <option value="">Wybierz nauczyciela</option>
+                    {#each teachers as t}
+                      <option value={t.id}>{t.name} ({t.subject})</option>
+                    {/each}
+                  </select>
+                </div>
+
+                <!-- Sala -->
+                <div>
+                  <label for="lesson-room-select" class="block text-[11px] font-semibold text-slate-600 mb-1">Sala:</label>
+                  <select
+                    id="lesson-room-select"
+                    bind:value={lessonRoomId}
+                    class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:border-blue-500"
+                  >
+                    <option value="">Dowolna / ogólna</option>
+                    {#each rooms as r}
+                      <option value={r.id}>{r.name}</option>
+                    {/each}
+                  </select>
+                </div>
+
+                <!-- Godzin tyg -->
+                <div>
+                  <label for="lesson-count-input" class="block text-[11px] font-semibold text-slate-600 mb-1">Godzin/tydz:</label>
+                  <input
+                    id="lesson-count-input"
+                    type="number"
+                    min="1"
+                    max="10"
+                    bind:value={lessonCount}
+                    class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+
+                <!-- Przycisk dodaj -->
+                <div class="flex items-end">
                   <button
                     type="button"
-                    onclick={() => removeLesson(l.id)}
-                    class="text-slate-400 hover:text-rose-600 px-2 py-1 rounded cursor-pointer"
-                    title="Usuń lekcję"
+                    onclick={addCustomLesson}
+                    class="w-full py-1.5 bg-slate-900 hover:bg-slate-800 text-white font-semibold rounded-lg transition-all cursor-pointer text-center"
                   >
-                    ✕
+                    + Dodaj lekcję
                   </button>
                 </div>
               </div>
-            {/each}
+            </div>
+
+            <!-- Lessons table -->
+            <div class="bg-white border border-slate-200/90 rounded-2xl shadow-xs overflow-hidden">
+              <div class="p-4 border-b border-slate-100 flex items-center justify-between text-xs">
+                <span class="font-bold text-slate-800">Wykaz zaplanowanych zajęć ({lessons.length} pozycji)</span>
+                <span class="text-slate-400">Możesz ustalać preferencje godzinowe oraz usuwać wpisy</span>
+              </div>
+              <div class="divide-y divide-slate-100 max-h-96 overflow-y-auto">
+                {#each lessons as l}
+                  {@const cls = classes.find((c) => c.id === l.classId)}
+                  {@const t = teachers.find((tch) => tch.id === l.teacherId)}
+                  {@const r = rooms.find((rm) => rm.id === l.roomId)}
+                  {@const linkedGroup = linkedGroups.find((g) => g.lessonIds.includes(l.id))}
+                  <div class="p-3 hover:bg-slate-50/80 flex items-center justify-between text-xs transition-colors">
+                    <div class="flex items-center gap-3">
+                      <span class="w-8 h-8 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center font-bold text-xs shrink-0">
+                        📚
+                      </span>
+                      <div>
+                        <div class="flex items-center gap-2">
+                          <span class="font-bold text-slate-900">{l.subject}</span>
+                          {#if linkedGroup}
+                            <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-purple-50 text-purple-700 border border-purple-200">
+                              🔗 {linkedGroup.name}
+                            </span>
+                          {/if}
+                        </div>
+                        <div class="text-[11px] text-slate-500 flex items-center gap-2 mt-0.5">
+                          <span>Klasa: <strong>{cls ? cls.name : l.classId}</strong></span>
+                          <span>•</span>
+                          <span>Nauczyciel: <strong>{t ? t.name : l.teacherId}</strong></span>
+                          <span>•</span>
+                          <span>Sala: {r ? r.name : "Dowolna"}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div class="flex items-center gap-2.5">
+                      <!-- Preference button (Phase 3: PreferTimesConstraint) -->
+                      <button
+                        type="button"
+                        onclick={() => openLessonPrefModal(l)}
+                        class="px-2.5 py-1 rounded-lg border text-[11px] font-semibold transition-all cursor-pointer flex items-center gap-1 {l.timePreference === 'morning' ? 'bg-amber-50 text-amber-800 border-amber-200' : l.timePreference === 'afternoon' ? 'bg-indigo-50 text-indigo-800 border-indigo-200' : l.timePreference === 'custom' ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'}"
+                        title="Ustal preferowane godziny lub porę dnia dla tej lekcji"
+                      >
+                        {#if l.timePreference === 'morning'}
+                          <span>🌅</span>
+                          <span>Rano (1–4)</span>
+                        {:else if l.timePreference === 'afternoon'}
+                          <span>🌇</span>
+                          <span>Popołudnie (5+)</span>
+                        {:else if l.timePreference === 'custom'}
+                          <span>⭐</span>
+                          <span>{l.preferredTimes?.length || 0} slotów</span>
+                        {:else}
+                          <span>🕒</span>
+                          <span class="text-slate-500">Dowolna pora</span>
+                        {/if}
+                      </button>
+
+                      <span class="px-2.5 py-1 bg-slate-100 text-slate-800 rounded-full font-semibold">
+                        {l.weeklyCount} godz./tydz.
+                      </span>
+                      <button
+                        type="button"
+                        onclick={() => removeLesson(l.id)}
+                        class="text-slate-400 hover:text-rose-600 px-2 py-1 rounded cursor-pointer"
+                        title="Usuń lekcję"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  </div>
+                {/each}
+              </div>
+            </div>
           </div>
-        </div>
+        {:else if step4ActiveTab === "byClass"}
+          <!-- ZAKŁADKA 2: WIDOK KLAS I ROCZNIKÓW -->
+          <div class="flex flex-col gap-6">
+            <!-- Pasek wyboru rocznika i oddziału -->
+            <div class="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs flex flex-col gap-4">
+              <div class="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+                <div class="flex items-center gap-3">
+                  <span class="text-xs font-bold uppercase tracking-wider text-slate-500">Wybierz rocznik:</span>
+                  <div class="flex flex-wrap items-center gap-1.5">
+                    {#each availableGrades as gr}
+                      <button
+                        type="button"
+                        onclick={() => selectGradeCurriculum(gr)}
+                        class={`px-3 py-1.5 text-xs rounded-xl font-bold transition-all cursor-pointer border ${
+                          selectedGradeCurriculum === gr
+                            ? "bg-blue-600 text-white border-blue-600 shadow-xs"
+                            : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
+                        }`}
+                      >
+                        Rocznik {gr}
+                      </button>
+                    {/each}
+                  </div>
+                </div>
+
+                <!-- Oddziały w wybranym roczniku -->
+                <div class="flex items-center gap-2">
+                  <span class="text-xs text-slate-400">Oddział:</span>
+                  <div class="flex flex-wrap gap-1">
+                    {#each currentGradeClasses as cls}
+                      <button
+                        type="button"
+                        onclick={() => (selectedClassViewId = cls.id)}
+                        class={`px-3 py-1 text-xs rounded-lg font-bold transition-all cursor-pointer border ${
+                          selectedClassViewId === cls.id
+                            ? "bg-slate-900 text-white border-slate-900 shadow-xs"
+                            : "bg-white text-slate-700 border-slate-200 hover:border-slate-300"
+                        }`}
+                      >
+                        {cls.name} ({getClassWeeklyHours(cls.id)}h)
+                      </button>
+                    {/each}
+                  </div>
+                </div>
+              </div>
+
+              <!-- Narzędzie: Grupowe przypisanie przedmiotu do całego rocznika -->
+              <div class="p-4 bg-gradient-to-r from-blue-50/70 to-indigo-50/70 border border-blue-200 rounded-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                <div>
+                  <h4 class="text-xs font-bold uppercase tracking-wider text-blue-950 flex items-center gap-1.5">
+                    <span>⚡ Grupowe przypisanie do wszystkich klas Rocznika {selectedGradeCurriculum}</span>
+                  </h4>
+                  <p class="text-[11px] text-blue-800 mt-0.5">
+                    Wszystkie klasy rocznika {selectedGradeCurriculum} otrzymają ten sam wymiar godzin z zachowaniem stałego nauczyciela.
+                  </p>
+                </div>
+
+                <div class="flex flex-wrap items-center gap-2 text-xs">
+                  <input
+                    type="text"
+                    bind:value={batchGradeSubject}
+                    placeholder="Przedmiot (np. Matematyka)"
+                    class="px-2.5 py-1.5 bg-white border border-blue-200 rounded-lg text-slate-900 focus:outline-none focus:border-blue-500 w-36"
+                  />
+                  <div class="flex items-center gap-1 bg-white px-2 py-1 border border-blue-200 rounded-lg">
+                    <input
+                      type="number"
+                      min="1"
+                      max="10"
+                      bind:value={batchGradeHours}
+                      class="w-10 text-center font-bold text-slate-900 focus:outline-none"
+                    />
+                    <span class="text-[11px] text-slate-500">h/tydz.</span>
+                  </div>
+                  <label class="flex items-center gap-1.5 text-[11px] font-semibold text-blue-950 cursor-pointer bg-white px-2.5 py-1.5 border border-blue-200 rounded-lg">
+                    <input type="checkbox" bind:checked={batchGradeIsBlock} class="rounded accent-blue-600" />
+                    Blok 2h
+                  </label>
+                  <button
+                    type="button"
+                    onclick={() => addSubjectToGrade(selectedGradeCurriculum, batchGradeSubject, batchGradeHours, batchGradeIsBlock)}
+                    class="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg cursor-pointer transition-all shadow-xs shrink-0"
+                  >
+                    Zastosuj dla Rocznika {selectedGradeCurriculum}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Karta aktywnej klasy i jej siatka -->
+            {#if activeViewClass}
+              {@const classLessons = getClassLessons(activeViewClass.id)}
+              <div class="bg-white border border-slate-200/90 rounded-2xl shadow-xs overflow-hidden flex flex-col">
+                <div class="p-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/60">
+                  <div class="flex items-center gap-3">
+                    <span class="w-10 h-10 rounded-xl bg-blue-600 text-white font-black text-sm flex items-center justify-center shadow-xs">
+                      {getClassGrade(activeViewClass)}
+                    </span>
+                    <div>
+                      <div class="flex items-center gap-2">
+                        <h4 class="text-sm font-bold text-slate-900">{activeViewClass.name}</h4>
+                        <span class="text-[10px] px-2 py-0.5 bg-blue-100 text-blue-800 font-bold rounded-full">
+                          Rocznik {getClassGrade(activeViewClass)}
+                        </span>
+                      </div>
+                      <span class="text-xs text-slate-500 mt-0.5 block">
+                        Wymiar godzin: <strong>{getClassWeeklyHours(activeViewClass.id)} godz./tydz.</strong> ({classLessons.length} przedmiotów)
+                      </span>
+                    </div>
+                  </div>
+
+                  <!-- Przycisk duplikowania siatki tej klasy -->
+                  <div class="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onclick={() => (duplicateModalTarget = activeViewClass)}
+                      class="px-3.5 py-2 bg-white hover:bg-blue-50 text-blue-700 border border-blue-200 text-xs font-bold rounded-xl cursor-pointer transition-all flex items-center gap-1.5 shadow-xs"
+                      title="Powiel siatkę tej klasy dla innych klas rocznika"
+                    >
+                      <span>📋 Duplikuj siatkę do innych klas ({getClassGrade(activeViewClass)})...</span>
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Tabela lekcji danej klasy -->
+                {#if classLessons.length === 0}
+                  <div class="p-8 text-center text-xs text-slate-400">
+                    Brak zaplanowanych zajęć dla tej klasy. Skorzystaj z narzędzia powyżej lub skopiuj plan z innej klasy.
+                  </div>
+                {:else}
+                  <div class="divide-y divide-slate-100 max-h-96 overflow-y-auto">
+                    {#each classLessons as l}
+                      {@const t = teachers.find((tch) => tch.id === l.teacherId)}
+                      {@const r = rooms.find((rm) => rm.id === l.roomId)}
+                      <div class="p-3.5 hover:bg-slate-50/80 flex items-center justify-between text-xs transition-colors">
+                        <div class="flex items-center gap-3">
+                          <span class="w-7 h-7 rounded-lg bg-slate-100 text-slate-700 flex items-center justify-center font-bold text-xs shrink-0">
+                            📖
+                          </span>
+                          <div>
+                            <span class="font-bold text-slate-900">{l.subject}</span>
+                            <div class="text-[11px] text-slate-500 flex items-center gap-2 mt-0.5">
+                              <span>Nauczyciel: <strong>{t ? t.name : l.teacherId}</strong></span>
+                              <span>•</span>
+                              <span>Sala: {r ? r.name : "Dowolna"}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div class="flex items-center gap-2.5">
+                          <button
+                            type="button"
+                            onclick={() => openLessonPrefModal(l)}
+                            class="px-2.5 py-1 rounded-lg border text-[11px] font-semibold transition-all cursor-pointer flex items-center gap-1 {l.timePreference === 'morning' ? 'bg-amber-50 text-amber-800 border-amber-200' : l.timePreference === 'afternoon' ? 'bg-indigo-50 text-indigo-800 border-indigo-200' : l.timePreference === 'custom' ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'}"
+                          >
+                            <span>🕒</span>
+                            <span>{l.timePreference || "Dowolna"}</span>
+                          </button>
+                          <span class="px-2.5 py-1 bg-slate-100 text-slate-800 rounded-full font-bold">
+                            {l.weeklyCount}h/tydz.
+                          </span>
+                          <button
+                            type="button"
+                            onclick={() => removeLesson(l.id)}
+                            class="text-slate-400 hover:text-rose-600 px-2 py-1 rounded cursor-pointer"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      </div>
+                    {/each}
+                  </div>
+                {/if}
+              </div>
+            {/if}
+          </div>
+        {:else}
+          <!-- ZAKŁADKA 3: WIDOK NAUCZYCIELI I SPÓJNOŚCI -->
+          <div class="flex flex-col gap-6">
+            <!-- Wybór nauczyciela -->
+            <div class="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs flex flex-col gap-3">
+              <span class="text-xs font-bold uppercase tracking-wider text-slate-500">Wybierz pedagoga:</span>
+              <div class="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto">
+                {#each teachers as t}
+                  {@const assigned = getTeacherAssignedHours(t.id)}
+                  <button
+                    type="button"
+                    onclick={() => (selectedTeacherViewId = t.id)}
+                    class={`px-3 py-1.5 text-xs rounded-xl font-bold transition-all cursor-pointer border flex items-center gap-1.5 ${
+                      (selectedTeacherViewId || teachers[0]?.id) === t.id
+                        ? "bg-slate-900 text-white border-slate-900 shadow-xs"
+                        : "bg-white text-slate-700 border-slate-200 hover:border-slate-300"
+                    }`}
+                  >
+                    <span>👨‍🏫 {t.name}</span>
+                    <span class="text-[10px] px-1.5 py-0.2 rounded font-semibold {assigned === t.workload ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-700'}">
+                      {assigned}/{t.workload}h
+                    </span>
+                  </button>
+                {/each}
+              </div>
+            </div>
+
+            <!-- Karta wybranego nauczyciela -->
+            {#if activeViewTeacher}
+              {@const teacherLessons = lessons.filter((l) => l.teacherId === activeViewTeacher.id)}
+              {@const tClasses = getTeacherClasses(activeViewTeacher.id)}
+              {@const assigned = getTeacherAssignedHours(activeViewTeacher.id)}
+              <div class="bg-white border border-slate-200/90 rounded-2xl shadow-xs overflow-hidden flex flex-col">
+                <div class="p-5 border-b border-slate-100 bg-slate-50/60 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                  <div>
+                    <div class="flex items-center gap-2">
+                      <h4 class="text-sm font-bold text-slate-900">👨‍🏫 {activeViewTeacher.name}</h4>
+                      <span class="text-[10px] px-2 py-0.5 bg-blue-100 text-blue-800 font-bold rounded-full">
+                        {activeViewTeacher.subject}
+                      </span>
+                    </div>
+                    <span class="text-xs text-slate-500 mt-0.5 block">
+                      Pensum: <strong>{activeViewTeacher.workload}h</strong> • Przydzielono: <strong>{assigned}h</strong>
+                      ({assigned === activeViewTeacher.workload ? "100% zbilansowane" : assigned > activeViewTeacher.workload ? `+${assigned - activeViewTeacher.workload}h nadgodziny` : `${assigned - activeViewTeacher.workload}h wakat`})
+                    </span>
+                  </div>
+
+                  <!-- Zasada spójności przydziału -->
+                  <div class="px-3.5 py-2 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center gap-2 text-xs text-emerald-900 font-medium">
+                    <span>✅</span>
+                    <span><strong>Zasada spójności:</strong> Stały nauczyciel dla klas: {tClasses.length > 0 ? tClasses.map((c) => c.className).join(", ") : "brak przydziału"}</span>
+                  </div>
+                </div>
+
+                <!-- Tabela zajęć nauczyciela -->
+                {#if teacherLessons.length === 0}
+                  <div class="p-8 text-center text-xs text-slate-400">
+                    Brak przypisanych lekcji do tego nauczyciela.
+                  </div>
+                {:else}
+                  <div class="divide-y divide-slate-100 max-h-96 overflow-y-auto">
+                    {#each teacherLessons as l}
+                      {@const cls = classes.find((c) => c.id === l.classId)}
+                      {@const r = rooms.find((rm) => rm.id === l.roomId)}
+                      <div class="p-3.5 hover:bg-slate-50/80 flex items-center justify-between text-xs transition-colors">
+                        <div class="flex items-center gap-3">
+                          <span class="w-7 h-7 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center font-bold text-xs shrink-0">
+                            👥
+                          </span>
+                          <div>
+                            <span class="font-bold text-slate-900">Klasa: {cls ? cls.name : l.classId}</span>
+                            <div class="text-[11px] text-slate-500 flex items-center gap-2 mt-0.5">
+                              <span>Przedmiot: <strong>{l.subject}</strong></span>
+                              <span>•</span>
+                              <span>Sala: {r ? r.name : "Dowolna"}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div class="flex items-center gap-2.5">
+                          <button
+                            type="button"
+                            onclick={() => openLessonPrefModal(l)}
+                            class="px-2.5 py-1 rounded-lg border text-[11px] font-semibold transition-all cursor-pointer flex items-center gap-1 {l.timePreference === 'morning' ? 'bg-amber-50 text-amber-800 border-amber-200' : l.timePreference === 'afternoon' ? 'bg-indigo-50 text-indigo-800 border-indigo-200' : l.timePreference === 'custom' ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'}"
+                          >
+                            <span>🕒</span>
+                            <span>{l.timePreference || "Dowolna"}</span>
+                          </button>
+                          <span class="px-2.5 py-1 bg-slate-100 text-slate-800 rounded-full font-bold">
+                            {l.weeklyCount}h/tydz.
+                          </span>
+                          <button
+                            type="button"
+                            onclick={() => removeLesson(l.id)}
+                            class="text-slate-400 hover:text-rose-600 px-2 py-1 rounded cursor-pointer"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      </div>
+                    {/each}
+                  </div>
+                {/if}
+              </div>
+            {/if}
+          </div>
+        {/if}
       </div>
 
     <!-- STEP 5: ZASADY PLANU (REGUŁY DYDAKTYCZNE) -->
@@ -3017,6 +3796,19 @@
         isLinkedModalOpen = false;
       }}
       onClose={() => (isLinkedModalOpen = false)}
+    />
+  {/if}
+
+  <!-- Modal Duplikowania Siatki Zajęć (Krok 2 & Krok 4) -->
+  {#if duplicateModalTarget}
+    {@const target = duplicateModalTarget}
+    <DuplicateCurriculumModal
+      sourceClass={target}
+      classes={classes}
+      sourceHours={getClassWeeklyHours(target.id)}
+      sourceLessonsCount={getClassLessons(target.id).length}
+      onDuplicate={(targetIds) => duplicateCurriculum(target.id, targetIds)}
+      onClose={() => (duplicateModalTarget = null)}
     />
   {/if}
 </div>
