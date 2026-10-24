@@ -55,6 +55,27 @@
     unavailableSet = next;
   }
 
+  // Row-level toggle: all days for a specific lesson period
+  function toggleWholePeriod(period: number) {
+    const next = new Set(unavailableSet);
+    const allBlocked = days.length > 0 && days.every((d) => next.has(getSlotId(d.id, period)));
+
+    days.forEach((d) => {
+      const slotId = getSlotId(d.id, period);
+      if (allBlocked) {
+        next.delete(slotId);
+      } else {
+        next.add(slotId);
+      }
+    });
+    unavailableSet = next;
+  }
+
+  function isPeriodFullyBlocked(period: number): boolean {
+    return days.length > 0 && days.every((d) => unavailableSet.has(getSlotId(d.id, period)));
+  }
+
+  // Column-level toggle: all periods for a specific day
   function toggleWholeDay(dayId: string) {
     const next = new Set(unavailableSet);
     let allBlocked = true;
@@ -76,28 +97,41 @@
     unavailableSet = next;
   }
 
-  function blockMorningSlots() {
-    const next = new Set(unavailableSet);
-    days.forEach((d) => {
-      for (let p = 1; p <= Math.min(2, periodsPerDay); p++) {
-        next.add(getSlotId(d.id, p));
-      }
-    });
-    unavailableSet = next;
+  function isDayFullyBlocked(dayId: string): boolean {
+    if (periodsPerDay === 0) return false;
+    for (let p = 1; p <= periodsPerDay; p++) {
+      if (!unavailableSet.has(getSlotId(dayId, p))) return false;
+    }
+    return true;
   }
 
-  function blockAfternoonSlots() {
-    const next = new Set(unavailableSet);
-    days.forEach((d) => {
-      for (let p = 6; p <= periodsPerDay; p++) {
-        next.add(getSlotId(d.id, p));
-      }
-    });
-    unavailableSet = next;
+  // Corner global toggle: all slots in the week
+  function toggleAllSlots() {
+    if (unavailableSet.size === totalSlots) {
+      unavailableSet = new Set();
+    } else {
+      const next = new Set<string>();
+      days.forEach((d) => {
+        for (let p = 1; p <= periodsPerDay; p++) {
+          next.add(getSlotId(d.id, p));
+        }
+      });
+      unavailableSet = next;
+    }
   }
 
   function clearAll() {
     unavailableSet = new Set();
+  }
+
+  function blockAll() {
+    const next = new Set<string>();
+    days.forEach((d) => {
+      for (let p = 1; p <= periodsPerDay; p++) {
+        next.add(getSlotId(d.id, p));
+      }
+    });
+    unavailableSet = next;
   }
 
   function invertSelection() {
@@ -158,7 +192,7 @@
             </span>
           </div>
           <p class="text-xs text-slate-500 mt-0.5">
-            Kliknij na komórki w siatce tygodnia, aby zablokować godziny, w których ten zasób nie może mieć zajęć (AvoidUnavailableTimesConstraint).
+            Kliknij na pojedyncze komórki, całe godziny lekcyjne (po lewej) lub całe dni (u góry), aby zablokować godziny (AvoidUnavailableTimesConstraint).
           </p>
         </div>
       </div>
@@ -176,34 +210,33 @@
     <!-- Quick Actions Toolbar -->
     <div class="px-6 py-2.5 bg-slate-100/70 border-b border-slate-200/80 flex flex-wrap items-center justify-between gap-3 text-xs shrink-0">
       <div class="flex items-center gap-1.5 flex-wrap">
-        <span class="text-slate-500 font-semibold text-[11px] mr-1">Szybkie akcje:</span>
+        <span class="text-slate-500 font-semibold text-[11px] mr-1">Narzędzia globalne:</span>
         <button
           type="button"
-          onclick={blockMorningSlots}
-          class="px-2.5 py-1 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-medium rounded-lg transition-colors cursor-pointer"
+          onclick={clearAll}
+          class="px-2.5 py-1 bg-white hover:bg-emerald-50 border border-slate-200 hover:border-emerald-200 text-emerald-700 font-medium rounded-lg transition-colors cursor-pointer flex items-center gap-1"
+          title="Odblokowuje wszystkie godziny w tygodniu"
         >
-          🌅 Zablokuj lekcje 1-2
+          <span>✨</span>
+          <span>Odblokuj wszystko</span>
         </button>
         <button
           type="button"
-          onclick={blockAfternoonSlots}
-          class="px-2.5 py-1 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-medium rounded-lg transition-colors cursor-pointer"
+          onclick={blockAll}
+          class="px-2.5 py-1 bg-white hover:bg-rose-50 border border-slate-200 hover:border-rose-200 text-rose-700 font-medium rounded-lg transition-colors cursor-pointer flex items-center gap-1"
+          title="Blokuje wszystkie godziny w tygodniu"
         >
-          🌇 Zablokuj od lekcji 6
+          <span>🚫</span>
+          <span>Zablokuj wszystko</span>
         </button>
         <button
           type="button"
           onclick={invertSelection}
-          class="px-2.5 py-1 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-medium rounded-lg transition-colors cursor-pointer"
+          class="px-2.5 py-1 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-medium rounded-lg transition-colors cursor-pointer flex items-center gap-1"
+          title="Odwraca obecne zaznaczenie"
         >
-          🔄 Odwróć zaznaczenie
-        </button>
-        <button
-          type="button"
-          onclick={clearAll}
-          class="px-2.5 py-1 bg-white hover:bg-rose-50 border border-slate-200 hover:border-rose-200 text-rose-600 font-medium rounded-lg transition-colors cursor-pointer"
-        >
-          ✨ Wyczyść (dostępny cały czas)
+          <span>🔄</span>
+          <span>Odwróć zaznaczenie</span>
         </button>
       </div>
 
@@ -230,32 +263,81 @@
         <table class="w-full text-center border-collapse text-xs select-none">
           <thead>
             <tr class="bg-slate-100/90 text-slate-700 border-b border-slate-200">
-              <th class="py-2.5 px-3 font-semibold text-left w-20 border-r border-slate-200 text-slate-500 text-[11px]">
-                Godzina
-              </th>
-              {#each days as day}
-                <th class="py-2.5 px-2 font-bold border-r border-slate-200 last:border-r-0">
-                  <div class="flex flex-col items-center gap-1">
-                    <span>{day.name}</span>
-                    <button
-                      type="button"
-                      onclick={() => toggleWholeDay(day.id)}
-                      class="text-[10px] text-blue-600 hover:text-blue-800 font-normal hover:underline cursor-pointer"
-                      title="Przełącz cały dzień"
-                    >
-                      (cały dzień)
-                    </button>
+              <!-- Corner header with all-slots toggle -->
+              <th class="p-1 text-left w-36 border-r border-slate-200 bg-slate-100/90">
+                <button
+                  type="button"
+                  onclick={toggleAllSlots}
+                  class="w-full py-2 px-2 text-[11px] font-bold rounded-lg border transition-all flex flex-col justify-center cursor-pointer hover:bg-white text-slate-700 border-slate-200"
+                  title="Kliknij, aby przełączyć cały tydzień naraz"
+                >
+                  <div class="flex items-center justify-between gap-1">
+                    <span>Godzina \ Dzień</span>
+                    <span>⚡</span>
                   </div>
+                  <span class="text-[9px] font-normal text-slate-400">
+                    {unavailableSet.size === totalSlots ? "kliknij: odblokuj cały tydzień" : "kliknij: zablokuj cały tydzień"}
+                  </span>
+                </button>
+              </th>
+
+              <!-- Day headers (column toggles) -->
+              {#each days as day}
+                {@const dayBlocked = isDayFullyBlocked(day.id)}
+                <th class="p-1 border-r border-slate-200 last:border-r-0">
+                  <button
+                    type="button"
+                    onclick={() => toggleWholeDay(day.id)}
+                    class={`w-full py-2 px-2 rounded-lg border font-bold text-xs transition-all flex flex-col items-center justify-center gap-0.5 cursor-pointer ${
+                      dayBlocked
+                        ? "bg-rose-50 text-rose-800 border-rose-300 hover:bg-rose-100"
+                        : "bg-white text-slate-800 border-slate-200 hover:border-slate-300 hover:bg-slate-50"
+                    }`}
+                    title={`Kliknij, aby przełączyć cały dzień: ${day.name}`}
+                  >
+                    <div class="flex items-center gap-1">
+                      <span>{day.name}</span>
+                      {#if dayBlocked}
+                        <span class="text-[11px] text-rose-600 font-bold">🚫</span>
+                      {/if}
+                    </div>
+                    <span class={`text-[9px] font-normal ${dayBlocked ? "text-rose-600 font-semibold" : "text-slate-400"}`}>
+                      {dayBlocked ? "cały zablokowany" : "kliknij: cały dzień"}
+                    </span>
+                  </button>
                 </th>
               {/each}
             </tr>
           </thead>
           <tbody class="divide-y divide-slate-200">
             {#each Array.from({ length: periodsPerDay }, (_, i) => i + 1) as period}
+              {@const periodBlocked = isPeriodFullyBlocked(period)}
               <tr class="hover:bg-slate-50/60 transition-colors">
-                <td class="py-2 px-3 font-semibold text-left bg-slate-50/80 border-r border-slate-200 text-slate-600 text-[11px]">
-                  Lekcja {period}
+                <!-- Period header (row toggle on the left side) -->
+                <td class="p-1 border-r border-slate-200 bg-slate-50/80">
+                  <button
+                    type="button"
+                    onclick={() => toggleWholePeriod(period)}
+                    class={`w-full py-2 px-2.5 rounded-lg border font-bold text-xs text-left transition-all flex flex-col justify-center cursor-pointer ${
+                      periodBlocked
+                        ? "bg-rose-50 text-rose-800 border-rose-300 hover:bg-rose-100"
+                        : "bg-white text-slate-700 border-slate-200 hover:border-slate-300 hover:bg-slate-50"
+                    }`}
+                    title={`Kliknij, aby zablokować/odblokować lekcję ${period} we wszystkich dniach roboczych`}
+                  >
+                    <div class="flex items-center justify-between gap-1">
+                      <span>Lekcja {period}</span>
+                      {#if periodBlocked}
+                        <span class="text-[11px] text-rose-600 font-bold">🚫</span>
+                      {/if}
+                    </div>
+                    <span class={`text-[9px] font-normal ${periodBlocked ? "text-rose-600 font-semibold" : "text-slate-400"}`}>
+                      {periodBlocked ? "zablokowana we wszystkich dniach" : "kliknij: cały rząd"}
+                    </span>
+                  </button>
                 </td>
+
+                <!-- Individual day x period cells -->
                 {#each days as day}
                   {@const unavailable = isSlotUnavailable(day.id, period)}
                   <td class="p-1 border-r border-slate-200 last:border-r-0">
