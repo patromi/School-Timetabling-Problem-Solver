@@ -1,5 +1,7 @@
 <script lang="ts">
   import LessonTimeSlotsGrid from "./preferences/LessonTimeSlotsGrid.svelte";
+  import LessonPresetSelector from "./preferences/LessonPresetSelector.svelte";
+  import LessonEnforcementCard from "./preferences/LessonEnforcementCard.svelte";
 
   interface Props {
     lessonId: string;
@@ -92,9 +94,7 @@
       });
       preferredSet = afternoonSlots;
     } else if (type === "custom") {
-      if (preferredSet.size === 0) {
-        selectAll();
-      }
+      if (preferredSet.size === 0) selectAll();
     } else {
       preferredSet = new Set();
     }
@@ -105,9 +105,7 @@
       const current = new Set<string>();
       days.forEach((d) => {
         for (let p = 1; p <= periodsPerDay; p++) {
-          if (isSlotPreferred(d.id, p)) {
-            current.add(getSlotId(d.id, p));
-          }
+          if (isSlotPreferred(d.id, p)) current.add(getSlotId(d.id, p));
         }
       });
       preferredSet = current;
@@ -116,11 +114,7 @@
 
     const slotId = getSlotId(dayId, period);
     const next = new Set(preferredSet);
-    if (next.has(slotId)) {
-      next.delete(slotId);
-    } else {
-      next.add(slotId);
-    }
+    if (next.has(slotId)) next.delete(slotId); else next.add(slotId);
     preferredSet = next;
   }
 
@@ -154,9 +148,7 @@
     preference = "custom";
     const all: string[] = [];
     days.forEach((d) => {
-      for (let p = 1; p <= periodsPerDay; p++) {
-        all.push(getSlotId(d.id, p));
-      }
+      for (let p = 1; p <= periodsPerDay; p++) all.push(getSlotId(d.id, p));
     });
     preferredSet = new Set(all);
   }
@@ -170,15 +162,11 @@
     let resultTimes: string[] = [];
     if (preference === "morning") {
       days.forEach((d) => {
-        for (let p = 1; p <= Math.min(4, periodsPerDay); p++) {
-          resultTimes.push(getSlotId(d.id, p));
-        }
+        for (let p = 1; p <= Math.min(4, periodsPerDay); p++) resultTimes.push(getSlotId(d.id, p));
       });
     } else if (preference === "afternoon") {
       days.forEach((d) => {
-        for (let p = 5; p <= periodsPerDay; p++) {
-          resultTimes.push(getSlotId(d.id, p));
-        }
+        for (let p = 5; p <= periodsPerDay; p++) resultTimes.push(getSlotId(d.id, p));
       });
     } else if (preference === "custom") {
       resultTimes = Array.from(preferredSet);
@@ -222,76 +210,7 @@
     <!-- Body -->
     <div class="p-6 flex flex-col gap-5 overflow-y-auto max-h-[75vh]">
       <!-- Quick Presets -->
-      <div>
-        <span class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">
-          Wybierz preferowaną porę zajęć (PreferTimesConstraint)
-        </span>
-        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-          <!-- Any -->
-          <button
-            type="button"
-            onclick={() => selectPreset("any")}
-            class="p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between {preference === 'any' ? 'bg-blue-50/80 border-blue-500 ring-2 ring-blue-500/20' : 'bg-slate-50 border-slate-200 hover:bg-slate-100'}"
-          >
-            <div class="flex items-center justify-between">
-              <span class="text-base">🕒</span>
-              {#if preference === "any"}<span class="w-2 h-2 rounded-full bg-blue-600"></span>{/if}
-            </div>
-            <div class="mt-2">
-              <span class="text-xs font-bold text-slate-900 block">Dowolna pora</span>
-              <span class="text-[10px] text-slate-500 leading-tight block mt-0.5">Brak preferencji godzinowych</span>
-            </div>
-          </button>
-
-          <!-- Morning -->
-          <button
-            type="button"
-            onclick={() => selectPreset("morning")}
-            class="p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between {preference === 'morning' ? 'bg-amber-50/80 border-amber-500 ring-2 ring-amber-500/20' : 'bg-slate-50 border-slate-200 hover:bg-slate-100'}"
-          >
-            <div class="flex items-center justify-between">
-              <span class="text-base">🌅</span>
-              {#if preference === 'morning'}<span class="w-2 h-2 rounded-full bg-amber-600"></span>{/if}
-            </div>
-            <div class="mt-2">
-              <span class="text-xs font-bold text-slate-900 block">Poranne lekcje</span>
-              <span class="text-[10px] text-slate-500 leading-tight block mt-0.5">Lekcje 1–4 (np. 8:00–11:30)</span>
-            </div>
-          </button>
-
-          <!-- Afternoon -->
-          <button
-            type="button"
-            onclick={() => selectPreset("afternoon")}
-            class="p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between {preference === 'afternoon' ? 'bg-indigo-50/80 border-indigo-500 ring-2 ring-indigo-500/20' : 'bg-slate-50 border-slate-200 hover:bg-slate-100'}"
-          >
-            <div class="flex items-center justify-between">
-              <span class="text-base">🌇</span>
-              {#if preference === 'afternoon'}<span class="w-2 h-2 rounded-full bg-indigo-600"></span>{/if}
-            </div>
-            <div class="mt-2">
-              <span class="text-xs font-bold text-slate-900 block">Popołudniowe</span>
-              <span class="text-[10px] text-slate-500 leading-tight block mt-0.5">Lekcje 5+ (od 11:45)</span>
-            </div>
-          </button>
-
-          <!-- Custom -->
-          <button
-            type="button"
-            onclick={() => selectPreset("custom")}
-            class="p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between {preference === 'custom' ? 'bg-emerald-50/80 border-emerald-500 ring-2 ring-emerald-500/20' : 'bg-slate-50 border-slate-200 hover:bg-slate-100'}"
-          >
-            <div class="flex items-center justify-between">
-              <span class="text-base">🎯</span>
-              {#if preference === 'custom'}<span class="w-2 h-2 rounded-full bg-emerald-600"></span>{/if}
-            </div>
-            <div class="mt-2">
-              <span class="text-xs font-bold text-slate-900 block">Własna siatka</span>
-              <span class="text-[10px] text-slate-500 leading-tight block mt-0.5">Zaznacz konkretne sloty</span>
-            </div>
-          </button>
-        </div>
-      </div>
+      <LessonPresetSelector {preference} onSelect={selectPreset} />
 
       <!-- Matrix Preview / Custom editor -->
       <LessonTimeSlotsGrid
@@ -308,50 +227,7 @@
 
       <!-- Constraint Enforcement (HARD vs SOFT) -->
       {#if preference !== 'any'}
-        <div class="p-4 bg-indigo-50/50 rounded-xl border border-indigo-100 flex flex-col gap-3">
-          <div class="flex items-center justify-between">
-            <div>
-              <span class="text-xs font-bold text-indigo-950">Charakter reguły preferencji</span>
-              <p class="text-[11px] text-indigo-700/80 mt-0.5">
-                Określ, czy solver musi bezwzględnie umieścić lekcję w tych godzinach, czy może naruszyć regułę w zamian za karę.
-              </p>
-            </div>
-            <div class="flex items-center bg-white p-0.5 rounded-lg border border-indigo-200 text-xs">
-              <button
-                type="button"
-                onclick={() => (isSoft = true)}
-                class="px-3 py-1 rounded-md font-semibold transition-all cursor-pointer {isSoft ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'}"
-              >
-                SOFT (Preferencja)
-              </button>
-              <button
-                type="button"
-                onclick={() => (isSoft = false)}
-                class="px-3 py-1 rounded-md font-semibold transition-all cursor-pointer {!isSoft ? 'bg-rose-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'}"
-              >
-                HARD (Wymóg)
-              </button>
-            </div>
-          </div>
-
-          {#if isSoft}
-            <div class="pt-3 border-t border-indigo-100/70 flex items-center justify-between gap-4">
-              <span class="text-xs text-indigo-900 font-medium">
-                Waga kary za umieszczenie poza preferowanymi godzinami:
-              </span>
-              <div class="flex items-center gap-2">
-                <input
-                  type="range"
-                  min="1"
-                  max="20"
-                  bind:value={weight}
-                  class="w-32 accent-indigo-600 cursor-pointer"
-                />
-                <span class="text-xs font-bold text-indigo-950 w-6 text-center">{weight}</span>
-              </div>
-            </div>
-          {/if}
-        </div>
+        <LessonEnforcementCard bind:isSoft bind:weight />
       {/if}
     </div>
 

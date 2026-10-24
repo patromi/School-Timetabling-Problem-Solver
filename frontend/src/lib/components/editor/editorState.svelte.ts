@@ -27,21 +27,18 @@ import {
   applyRoomUpdate,
 } from "./state/entityRenaming";
 import {
-  generateDefaultCurriculumForClasses,
-  duplicateClassWithLessons,
-  duplicateCurriculumBetweenClasses,
-  addSubjectToGradeClasses,
-} from "./state/curriculumPresets";
-import {
-  buildAvailabilityTarget,
-  updateResourceAvailability,
-  buildLessonPrefTarget,
-  updateLessonPreferences,
-} from "./state/modalHandlers";
-import {
   applyQuickPrefToLesson,
   applyBatchPrefToLessons,
 } from "./state/lessonPreferencesActions";
+import {
+  toggleIdInSet,
+  extractAllLessonIds,
+  resetFiltersState,
+} from "./state/lessonSelectionActions";
+import {
+  getHighSchoolPresetBasics,
+  generateDefaultCurriculumLessons,
+} from "./state/editorPresets";
 import {
   createDefaultBellTimes,
   createDefaultClasses,
@@ -52,16 +49,6 @@ import {
   loadInstanceIntoEditor,
   buildPayloadFromEditor,
 } from "./state/instanceSync";
-import {
-  addClassToState,
-  removeClassFromState,
-  addTeacherToState,
-  removeTeacherFromState,
-  addRoomToState,
-  removeRoomFromState,
-  addLessonToState,
-  removeLessonFromState,
-} from "./state/entityMutations";
 import {
   detectClassGrade,
   getAvailableGrades,
@@ -75,9 +62,24 @@ import {
   getClassesWithCustomDailyLimit,
 } from "./state/editorQueries";
 import {
-  createOrderRule,
-  removeOrderRuleFromList,
-} from "./state/orderRulesActions";
+  executeAddClass,
+  executeRemoveClass,
+  executeDuplicateClass,
+  executeDuplicateCurriculum,
+  executeAddSubjectToGrade,
+  executeAddTeacher,
+  executeRemoveTeacher,
+  executeAddRoom,
+  executeRemoveRoom,
+  executeAddCustomLesson,
+  executeRemoveLesson,
+  executeOpenAvailability,
+  executeSaveAvailability,
+  executeOpenLessonPref,
+  executeSaveLessonPref,
+  executeAddOrderRule,
+  executeRemoveOrderRule,
+} from "./state/editorMutationsBridge";
 
 export class EditorState {
   // Nawigacja kreatora
@@ -259,64 +261,29 @@ export class EditorState {
   }
 
   // MUTACJE KLAS
-  addClass() {
-    const res = addClassToState(this.classes, this.newClassName, this.newClassGrade);
-    if (res.error) return alert(res.error);
-    this.classes = res.classes; this.newClassName = "";
-  }
-  removeClass(id: string) {
-    const res = removeClassFromState(this.classes, this.lessons, this.orderRules, id);
-    this.classes = res.classes; this.lessons = res.lessons; this.orderRules = res.orderRules;
-  }
-  duplicateClass(sourceClassId: string) {
-    const res = duplicateClassWithLessons(sourceClassId, this.classes, this.lessons);
-    if (!res) return;
-    this.classes = res.newClasses; this.lessons = res.newLessons; this.selectedClassViewId = res.newClassId;
-  }
+  addClass() { executeAddClass(this); }
+  removeClass(id: string) { executeRemoveClass(this, id); }
+  duplicateClass(sourceClassId: string) { executeDuplicateClass(this, sourceClassId); }
   duplicateCurriculum(sourceClassId: string, targetClassIds: string[]) {
-    this.lessons = duplicateCurriculumBetweenClasses(
-      sourceClassId, targetClassIds, this.lessons, (cId, sub) => this.getConsistentTeacherForClassSubject(cId, sub)
-    );
+    executeDuplicateCurriculum(this, sourceClassId, targetClassIds);
   }
   addSubjectToGrade(grade: number, subject: string, weeklyCount: number, isBlock: boolean = false) {
-    this.lessons = addSubjectToGradeClasses({
-      grade, subject, weeklyCount, isBlock, classes: this.classes, teachers: this.teachers, rooms: this.rooms,
-      lessons: this.lessons, getClassGrade: (c) => this.getClassGrade(c),
-      getConsistentTeacher: (cId, sub) => this.getConsistentTeacherForClassSubject(cId, sub),
-    });
+    executeAddSubjectToGrade(this, grade, subject, weeklyCount, isBlock);
   }
 
   // MUTACJE NAUCZYCIELI I SAL
-  addTeacher() {
-    const res = addTeacherToState(this.teachers, this.newTeacherName, this.newTeacherSubject, this.newTeacherWorkload);
-    if (res.error) return alert(res.error);
-    this.teachers = res.teachers; this.newTeacherName = "";
-  }
-  removeTeacher(id: string) { this.teachers = removeTeacherFromState(this.teachers, id); }
+  addTeacher() { executeAddTeacher(this); }
+  removeTeacher(id: string) { executeRemoveTeacher(this, id); }
   updateTeacherWorkload(teacherId: string, newWorkload: number) {
     const val = Math.max(1, Number(newWorkload) || 18);
     this.teachers = this.teachers.map((t) => (t.id === teacherId ? { ...t, workload: val } : t));
   }
-  addRoom() {
-    const res = addRoomToState(this.rooms, this.newRoomName, this.newRoomType);
-    if (res.error) return alert(res.error);
-    this.rooms = res.rooms; this.newRoomName = "";
-  }
-  removeRoom(id: string) { this.rooms = removeRoomFromState(this.rooms, id); }
+  addRoom() { executeAddRoom(this); }
+  removeRoom(id: string) { executeRemoveRoom(this, id); }
 
   // MUTACJE LEKCJI
-  addCustomLesson() {
-    const res = addLessonToState(this.lessons, this.rooms, {
-      subject: this.lessonSubject, classId: this.lessonClassId, teacherId: this.lessonTeacherId,
-      roomId: this.lessonRoomId, duration: this.lessonIsBlock ? 2 : 1, weeklyCount: this.lessonCount,
-    });
-    if (res.error) return alert(res.error);
-    this.lessons = res.lessons;
-  }
-  removeLesson(id: string) {
-    const res = removeLessonFromState(this.lessons, this.orderRules, id);
-    this.lessons = res.lessons; this.orderRules = res.orderRules;
-  }
+  addCustomLesson() { executeAddCustomLesson(this); }
+  removeLesson(id: string) { executeRemoveLesson(this, id); }
   setQuickLessonPref(lessonId: string, pref: "any" | "morning" | "afternoon") {
     this.lessons = applyQuickPrefToLesson(lessonId, this.lessons, pref, this.currentDaysFormatted, this.periodsPerDay);
   }
@@ -325,67 +292,53 @@ export class EditorState {
     this.selectedLessonIds = new Set();
   }
   toggleLessonSelection(id: string) {
-    const next = new Set(this.selectedLessonIds);
-    if (next.has(id)) next.delete(id); else next.add(id);
-    this.selectedLessonIds = next;
+    this.selectedLessonIds = toggleIdInSet(this.selectedLessonIds, id);
   }
-  selectAllFilteredLessons() { this.selectedLessonIds = new Set(this.filteredLessons.map((l) => l.id)); }
+  selectAllFilteredLessons() {
+    this.selectedLessonIds = extractAllLessonIds(this.filteredLessons);
+  }
   clearSelectedLessons() { this.selectedLessonIds = new Set(); }
   clearLessonFilters() {
-    this.lessonSearchQuery = ""; this.lessonFilterClass = "all";
-    this.lessonFilterTeacher = "all"; this.lessonFilterGrade = null; this.lessonFilterPreference = "all";
+    const f = resetFiltersState();
+    this.lessonSearchQuery = f.searchQuery;
+    this.lessonFilterClass = f.filterClass;
+    this.lessonFilterTeacher = f.filterTeacher;
+    this.lessonFilterGrade = f.filterGrade;
+    this.lessonFilterPreference = f.filterPreference;
   }
 
   // MODALE DOSTĘPNOŚCI I PREFERENCJI
   openAvailabilityModal(id: string, name: string, type: "teacher" | "room" | "class") {
-    this.activeAvailabilityTarget = buildAvailabilityTarget({
-      id, name, type, teachers: this.teachers, classes: this.classes, rooms: this.rooms, lessons: this.lessons,
-      getTeacherAssignedHours: (tId) => this.getTeacherAssignedHours(tId),
-      getTeacherClasses: (tId) => this.getTeacherClasses(tId),
-      getClassLessons: (cId) => this.getClassLessons(cId),
-      getClassWeeklyHours: (cId) => this.getClassWeeklyHours(cId),
-    });
+    executeOpenAvailability(this, id, name, type);
   }
   handleSaveAvailability(
     unavailableTimes: string[], isSoft: boolean, weight: number,
     extraParams?: { maxDaysPerWeek?: number | null; minDaysPerWeek?: number | null; maxDailyLessons?: number | null; maxGapsPerWeek?: number | null; minDailyLessons?: number | null; }
   ) {
-    if (!this.activeAvailabilityTarget) return;
-    const res = updateResourceAvailability({
-      target: this.activeAvailabilityTarget, teachers: this.teachers, classes: this.classes, rooms: this.rooms,
-      unavailableTimes, isSoft, weight, extraParams,
-    });
-    this.teachers = res.teachers; this.classes = res.classes; this.rooms = res.rooms;
-    this.activeAvailabilityTarget = null;
+    executeSaveAvailability(this, unavailableTimes, isSoft, weight, extraParams);
   }
   openLessonPrefModal(lesson: SimpleLesson) {
-    this.activeLessonPrefTarget = buildLessonPrefTarget(lesson, this.classes);
+    executeOpenLessonPref(this, lesson);
   }
   handleSaveLessonPref(pref: "any" | "morning" | "afternoon" | "custom", times: string[], isSoft: boolean, weight: number) {
-    if (!this.activeLessonPrefTarget) return;
-    this.lessons = updateLessonPreferences(this.activeLessonPrefTarget.lessonId, this.lessons, pref, times, isSoft, weight);
-    this.activeLessonPrefTarget = null;
+    executeSaveLessonPref(this, pref, times, isSoft, weight);
   }
 
   // REGUŁY KOLEJNOŚCI
-  addOrderRule() {
-    const res = createOrderRule(this.lessons, this.newOrderFirstLesson, this.newOrderSecondLesson, this.newOrderSeparation, this.newOrderIsSoft, this.newOrderWeight);
-    if (res.error) return alert(res.error);
-    if (res.rule) this.orderRules = [...this.orderRules, res.rule];
-    this.newOrderFirstLesson = ""; this.newOrderSecondLesson = "";
-  }
-  removeOrderRule(ruleId: string) { this.orderRules = removeOrderRuleFromList(this.orderRules, ruleId); }
+  addOrderRule() { executeAddOrderRule(this); }
+  removeOrderRule(ruleId: string) { executeRemoveOrderRule(this, ruleId); }
 
   // PRESETY I ŁADOWANIE
   loadHighSchoolPreset() {
-    this.schoolName = "Liceum Ogólnokształcące (profilowane)";
-    this.schoolId = "LO_Profilowane";
-    this.selectedDays = ["Poniedziałek", "Wtorek", "Środa", "Czwartek", "Piątek"];
-    this.periodsPerDay = 8;
+    const p = getHighSchoolPresetBasics();
+    this.schoolName = p.schoolName;
+    this.schoolId = p.schoolId;
+    this.selectedDays = p.selectedDays;
+    this.periodsPerDay = p.periodsPerDay;
     this.generateDefaultCurriculum();
   }
   generateDefaultCurriculum() {
-    this.lessons = generateDefaultCurriculumForClasses(this.classes, this.teachers, this.rooms);
+    this.lessons = generateDefaultCurriculumLessons(this.classes, this.teachers, this.rooms);
   }
   loadFromExistingInstance(inst: InstanceDetail) { loadInstanceIntoEditor(this, inst); }
   buildXhsttPayload(): InstanceDetail { return buildPayloadFromEditor(this); }

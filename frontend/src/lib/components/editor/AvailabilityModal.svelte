@@ -2,6 +2,7 @@
   import AvailabilityGrid from "./availability/AvailabilityGrid.svelte";
   import AvailabilityAdvancedSettings from "./availability/AvailabilityAdvancedSettings.svelte";
   import AvailabilityContextDrawer from "./availability/AvailabilityContextDrawer.svelte";
+  import AvailabilityQuickToolbar from "./availability/AvailabilityQuickToolbar.svelte";
 
   export interface AvailabilityExtraParams {
     maxDaysPerWeek?: number | null;
@@ -88,11 +89,7 @@
   function toggleSlot(dayId: string, period: number) {
     const slotId = getSlotId(dayId, period);
     const next = new Set(unavailableSet);
-    if (next.has(slotId)) {
-      next.delete(slotId);
-    } else {
-      next.add(slotId);
-    }
+    if (next.has(slotId)) next.delete(slotId); else next.add(slotId);
     unavailableSet = next;
   }
 
@@ -102,11 +99,7 @@
 
     days.forEach((d) => {
       const slotId = getSlotId(d.id, period);
-      if (allBlocked) {
-        next.delete(slotId);
-      } else {
-        next.add(slotId);
-      }
+      if (allBlocked) next.delete(slotId); else next.add(slotId);
     });
     unavailableSet = next;
   }
@@ -123,11 +116,7 @@
 
     for (let p = 1; p <= periodsPerDay; p++) {
       const slotId = getSlotId(dayId, p);
-      if (allBlocked) {
-        next.delete(slotId);
-      } else {
-        next.add(slotId);
-      }
+      if (allBlocked) next.delete(slotId); else next.add(slotId);
     }
     unavailableSet = next;
   }
@@ -138,9 +127,7 @@
     } else {
       const next = new Set<string>();
       days.forEach((d) => {
-        for (let p = 1; p <= periodsPerDay; p++) {
-          next.add(getSlotId(d.id, p));
-        }
+        for (let p = 1; p <= periodsPerDay; p++) next.add(getSlotId(d.id, p));
       });
       unavailableSet = next;
     }
@@ -153,9 +140,7 @@
   function blockAll() {
     const next = new Set<string>();
     days.forEach((d) => {
-      for (let p = 1; p <= periodsPerDay; p++) {
-        next.add(getSlotId(d.id, p));
-      }
+      for (let p = 1; p <= periodsPerDay; p++) next.add(getSlotId(d.id, p));
     });
     unavailableSet = next;
   }
@@ -165,9 +150,7 @@
     days.forEach((d) => {
       for (let p = 1; p <= periodsPerDay; p++) {
         const slot = getSlotId(d.id, p);
-        if (!unavailableSet.has(slot)) {
-          next.add(slot);
-        }
+        if (!unavailableSet.has(slot)) next.add(slot);
       }
     });
     unavailableSet = next;
@@ -199,9 +182,7 @@
   aria-modal="true"
   aria-labelledby="availability-title"
 >
-  <div
-    class="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-5xl max-h-[92vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150"
-  >
+  <div class="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-5xl max-h-[92vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
     <!-- Modal Header -->
     <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between shrink-0 bg-slate-50/50">
       <div class="flex items-center gap-3">
@@ -240,54 +221,14 @@
     </div>
 
     <!-- Quick Actions Toolbar -->
-    <div class="px-6 py-2.5 bg-slate-100/70 border-b border-slate-200/80 flex flex-wrap items-center justify-between gap-3 text-xs shrink-0">
-      <div class="flex items-center gap-1.5 flex-wrap">
-        <span class="text-slate-500 font-semibold text-[11px] mr-1">Narzędzia globalne:</span>
-        <button
-          type="button"
-          onclick={clearAll}
-          class="px-2.5 py-1 bg-white hover:bg-emerald-50 border border-slate-200 hover:border-emerald-200 text-emerald-700 font-medium rounded-lg transition-colors cursor-pointer flex items-center gap-1"
-          title="Odblokowuje wszystkie godziny w tygodniu"
-        >
-          <span>✨</span>
-          <span>Odblokuj wszystko</span>
-        </button>
-        <button
-          type="button"
-          onclick={blockAll}
-          class="px-2.5 py-1 bg-white hover:bg-rose-50 border border-slate-200 hover:border-rose-200 text-rose-700 font-medium rounded-lg transition-colors cursor-pointer flex items-center gap-1"
-          title="Blokuje wszystkie godziny w tygodniu"
-        >
-          <span>🚫</span>
-          <span>Zablokuj wszystko</span>
-        </button>
-        <button
-          type="button"
-          onclick={invertSelection}
-          class="px-2.5 py-1 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-medium rounded-lg transition-colors cursor-pointer flex items-center gap-1"
-          title="Odwraca obecne zaznaczenie"
-        >
-          <span>🔄</span>
-          <span>Odwróć zaznaczenie</span>
-        </button>
-      </div>
-
-      <!-- Live Availability KPI -->
-      <div class="flex items-center gap-2">
-        <span class="text-slate-500">Dostępność:</span>
-        <span
-          class={`font-bold px-2 py-0.5 rounded-full text-[11px] border ${
-            availabilityPercent >= 80
-              ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-              : availabilityPercent >= 50
-              ? "bg-amber-50 text-amber-700 border-amber-200"
-              : "bg-rose-50 text-rose-700 border-rose-200"
-          }`}
-        >
-          {availableCount} / {totalSlots} godz. ({availabilityPercent}%)
-        </span>
-      </div>
-    </div>
+    <AvailabilityQuickToolbar
+      {availableCount}
+      {totalSlots}
+      {availabilityPercent}
+      onClearAll={clearAll}
+      onBlockAll={blockAll}
+      onInvertSelection={invertSelection}
+    />
 
     <!-- Main Content Layout (Left: Grid & Constraints, Right: Context Drawer) -->
     <div class="flex-1 overflow-hidden flex flex-col md:flex-row">
@@ -317,7 +258,7 @@
         />
       </div>
 
-      <!-- Right Column: Context Drawer (Podgląd klas i obciążenia) -->
+      <!-- Right Column: Context Drawer -->
       {#if contextInfo}
         <AvailabilityContextDrawer
           {resourceType}
