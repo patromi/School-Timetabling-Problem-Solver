@@ -7,9 +7,12 @@
     ResourceItem,
     ResourceTypeItem,
     TimeItem,
+    EventPairItem,
   } from "../../types";
   import { saveInstance } from "../../api";
   import AvailabilityModal from "./AvailabilityModal.svelte";
+  import LessonPreferencesModal from "./LessonPreferencesModal.svelte";
+  import LinkedLessonsModal, { type LinkedGroupItem } from "./LinkedLessonsModal.svelte";
 
   interface Props {
     initialInstance?: InstanceDetail | null;
@@ -123,8 +126,109 @@
     roomId: string;
     duration: number; // 1 or 2
     weeklyCount: number; // how many lessons per week
+    // Faza 3:
+    timePreference?: "any" | "morning" | "afternoon" | "custom";
+    preferredTimes?: string[];
+    preferenceSoft?: boolean;
+    preferenceWeight?: number;
   }
   let lessons = $state<SimpleLesson[]>([]);
+
+  // Faza 3: Lekcje równoległe (LinkEventsConstraint)
+  let linkedGroups = $state<LinkedGroupItem[]>([]);
+  let isLinkedModalOpen = $state(false);
+
+  // Faza 3: Modal preferencji godzinowych lekcji (PreferTimesConstraint)
+  let activeLessonPrefTarget = $state<{
+    lessonId: string;
+    subject: string;
+    className: string;
+    preference: "any" | "morning" | "afternoon" | "custom";
+    preferredTimes: string[];
+    isSoft: boolean;
+    weight: number;
+  } | null>(null);
+
+  function openLessonPrefModal(lesson: SimpleLesson) {
+    const cls = classes.find((c) => c.id === lesson.classId);
+    activeLessonPrefTarget = {
+      lessonId: lesson.id,
+      subject: lesson.subject,
+      className: cls ? cls.name : lesson.classId,
+      preference: lesson.timePreference || "any",
+      preferredTimes: lesson.preferredTimes || [],
+      isSoft: lesson.preferenceSoft ?? true,
+      weight: lesson.preferenceWeight ?? 4,
+    };
+  }
+
+  function handleSaveLessonPref(
+    pref: "any" | "morning" | "afternoon" | "custom",
+    times: string[],
+    isSoft: boolean,
+    weight: number
+  ) {
+    if (!activeLessonPrefTarget) return;
+    const { lessonId } = activeLessonPrefTarget;
+    lessons = lessons.map((l) =>
+      l.id === lessonId
+        ? {
+            ...l,
+            timePreference: pref,
+            preferredTimes: times,
+            preferenceSoft: isSoft,
+            preferenceWeight: weight,
+          }
+        : l
+    );
+    activeLessonPrefTarget = null;
+  }
+
+  // Faza 3: Reguły kolejności lekcji (OrderEventsConstraint)
+  interface OrderRuleItem {
+    id: string;
+    name: string;
+    firstLessonId: string;
+    secondLessonId: string;
+    minSeparation: number;
+    isSoft?: boolean;
+    weight?: number;
+  }
+  let orderRules = $state<OrderRuleItem[]>([]);
+  let ruleOrderLessons = $state(false);
+  let newOrderFirstLesson = $state("");
+  let newOrderSecondLesson = $state("");
+  let newOrderSeparation = $state(0);
+  let newOrderIsSoft = $state(false);
+  let newOrderWeight = $state(8);
+
+  function addOrderRule() {
+    if (!newOrderFirstLesson || !newOrderSecondLesson || newOrderFirstLesson === newOrderSecondLesson) {
+      alert("Wybierz dwie różne lekcje do określenia kolejności!");
+      return;
+    }
+    const l1 = lessons.find((l) => l.id === newOrderFirstLesson);
+    const l2 = lessons.find((l) => l.id === newOrderSecondLesson);
+    const ruleName = `${l1?.subject || "Lekcja 1"} przed ${l2?.subject || "Lekcja 2"}`;
+    orderRules = [
+      ...orderRules,
+      {
+        id: `order_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        name: ruleName,
+        firstLessonId: newOrderFirstLesson,
+        secondLessonId: newOrderSecondLesson,
+        minSeparation: Number(newOrderSeparation) || 0,
+        isSoft: newOrderIsSoft,
+        weight: newOrderWeight,
+      },
+    ];
+    newOrderFirstLesson = "";
+    newOrderSecondLesson = "";
+  }
+
+  function removeOrderRule(ruleId: string) {
+    orderRules = orderRules.filter((r) => r.id !== ruleId);
+  }
 
   // Krok 5: Reguły szkoły (Zasady dydaktyczne)
   let ruleAvoidClashes = $state(true); // Wymóg bezwzględny
@@ -144,8 +248,23 @@
   let teacherDailyWeight = $state(4); // Waga kary
   let ruleTeacherClusterDays = $state(true); // Kompaktowy tydzień pracy (ClusterBusyTimesConstraint)
   let teacherClusterWeight = $state(6); // Waga kary
-  let ruleSpreadSubjects = $state(true); // Równomierny rozkład w tygodniu
+
+  // Faza 3: Rozszerzony rozkład przedmiotów w tygodniu (SpreadEventsConstraint)
+  let ruleSpreadSubjects = $state(true);
+  let spreadSubjectsMode = $state<"single" | "blocks">("single");
+  let ruleSpreadSubjectsSoft = $state(true);
+  let spreadSubjectsWeight = $state(5);
+
   let ruleContinuousBlocks = $state(true); // Ciągłość bloków 2h
+
+  // Faza 3: Globalne reguły dydaktyczne pory dnia (PreferTimesConstraint)
+  let ruleMorningCoreSubjects = $state(true);
+  let morningCoreSubjectsSoft = $state(true);
+  let morningCoreSubjectsWeight = $state(4);
+
+  let ruleAfternoonFlexSubjects = $state(false);
+  let afternoonFlexSubjectsSoft = $state(true);
+  let afternoonFlexSubjectsWeight = $state(3);
 
   // Form helpers for adding single items
   let newClassName = $state("");
@@ -382,6 +501,28 @@
           teacherMaxGapsLimit = maxGaps;
           if (c.weight) teacherGapsWeight = c.weight;
         }
+      } else if (c.type === "SpreadEventsConstraint") {
+        ruleSpreadSubjects = true;
+        ruleSpreadSubjectsSoft = !c.required;
+        if (c.weight) spreadSubjectsWeight = c.weight;
+        const tgList = c.params?.TimeGroups as any[];
+        if (Array.isArray(tgList) && tgList.some((tg) => tg?.Maximum === 2 || tg?.Maximum === "2")) {
+          spreadSubjectsMode = "blocks";
+        } else {
+          spreadSubjectsMode = "single";
+        }
+      } else if (c.type === "PreferTimesConstraint") {
+        if (c.id === "Regula_PrzedmiotyScisleRano") {
+          ruleMorningCoreSubjects = true;
+          morningCoreSubjectsSoft = !c.required;
+          if (c.weight) morningCoreSubjectsWeight = c.weight;
+        } else if (c.id === "Regula_PrzedmiotyPopoludniowe") {
+          ruleAfternoonFlexSubjects = true;
+          afternoonFlexSubjectsSoft = !c.required;
+          if (c.weight) afternoonFlexSubjectsWeight = c.weight;
+        }
+      } else if (c.type === "OrderEventsConstraint") {
+        ruleOrderLessons = true;
       }
     });
 
@@ -1024,14 +1165,14 @@
       });
     }
 
-    // Reguła 6: Równomierny rozkład zajęć (XHSTT SpreadEventsConstraint)
+    // Reguła 6: Równomierny rozkład zajęć (XHSTT SpreadEventsConstraint - Faza 3)
     if (ruleSpreadSubjects && event_groups.length > 0) {
       constraints.push({
         type: "SpreadEventsConstraint",
         id: "Regula_RozkladPrzedmiotow",
         name: "Równomierny rozkład lekcji w poszczególne dni tygodnia",
-        required: false,
-        weight: 5,
+        required: !ruleSpreadSubjectsSoft,
+        weight: spreadSubjectsWeight,
         cost_function: "Linear",
         applies_to: {
           event_groups: event_groups.map((eg) => eg.id),
@@ -1046,7 +1187,7 @@
           TimeGroups: dayGroupRefs.map((d) => ({
             reference: d,
             Minimum: 0,
-            Maximum: 1,
+            Maximum: spreadSubjectsMode === "single" ? 1 : 2,
           })),
         },
       });
@@ -1077,6 +1218,191 @@
         });
       }
     });
+
+    // Reguła 8: Indywidualne preferencje godzinowe dla lekcji (XHSTT PreferTimesConstraint - Faza 3)
+    lessons.forEach((l) => {
+      if (l.timePreference && l.timePreference !== "any" && l.preferredTimes && l.preferredTimes.length > 0) {
+        const matchingEvents = events.filter((e) => e.id.startsWith(`${l.id}_`));
+        if (matchingEvents.length > 0) {
+          constraints.push({
+            type: "PreferTimesConstraint",
+            id: `PrefTimes_${l.id}`,
+            name: `Preferowane godziny: ${l.subject} (${classes.find((c) => c.id === l.classId)?.name || l.classId})`,
+            required: !l.preferenceSoft,
+            weight: l.preferenceWeight || 4,
+            cost_function: "Linear",
+            applies_to: {
+              events: matchingEvents.map((e) => e.id),
+              event_groups: [],
+              resource_groups: [],
+              resources: [],
+              time_groups: [],
+              times: [],
+              event_pairs: [],
+            },
+            params: {
+              Times: l.preferredTimes.map((t) => ({ reference: t })),
+            },
+          });
+        }
+      }
+    });
+
+    // Reguła 9: Przedmioty ścisłe i maturalne rano (XHSTT PreferTimesConstraint - Faza 3)
+    if (ruleMorningCoreSubjects) {
+      const coreKeywords = ["matemat", "fizyk", "chem", "polsk", "biolog"];
+      const morningEvents = events.filter((e) =>
+        coreKeywords.some((kw) => e.name.toLowerCase().includes(kw))
+      );
+      if (morningEvents.length > 0) {
+        const morningTimes: { reference: string }[] = [];
+        selectedDays.forEach((dName) => {
+          const dId = dayMap[dName] || dName.slice(0, 3);
+          for (let p = 1; p <= Math.min(4, periodsPerDay); p++) {
+            morningTimes.push({ reference: `${dId}_${p}` });
+          }
+        });
+        constraints.push({
+          type: "PreferTimesConstraint",
+          id: "Regula_PrzedmiotyScisleRano",
+          name: "Przedmioty ścisłe i maturalne rano (lekcje 1-4)",
+          required: !morningCoreSubjectsSoft,
+          weight: morningCoreSubjectsWeight,
+          cost_function: "Linear",
+          applies_to: {
+            events: morningEvents.map((e) => e.id),
+            event_groups: [],
+            resource_groups: [],
+            resources: [],
+            time_groups: [],
+            times: [],
+            event_pairs: [],
+          },
+          params: {
+            Times: morningTimes,
+          },
+        });
+      }
+    }
+
+    // Reguła 10: WF i przedmioty artystyczne po południu (XHSTT PreferTimesConstraint - Faza 3)
+    if (ruleAfternoonFlexSubjects) {
+      const flexKeywords = ["wychowanie", "wf", "plastyk", "muzyk", "relig", "etyk"];
+      const afternoonEvents = events.filter((e) =>
+        flexKeywords.some((kw) => e.name.toLowerCase().includes(kw))
+      );
+      if (afternoonEvents.length > 0) {
+        const afternoonTimes: { reference: string }[] = [];
+        selectedDays.forEach((dName) => {
+          const dId = dayMap[dName] || dName.slice(0, 3);
+          for (let p = 5; p <= periodsPerDay; p++) {
+            afternoonTimes.push({ reference: `${dId}_${p}` });
+          }
+        });
+        constraints.push({
+          type: "PreferTimesConstraint",
+          id: "Regula_PrzedmiotyPopoludniowe",
+          name: "WF i przedmioty artystyczne po południu (lekcje 5+)",
+          required: !afternoonFlexSubjectsSoft,
+          weight: afternoonFlexSubjectsWeight,
+          cost_function: "Linear",
+          applies_to: {
+            events: afternoonEvents.map((e) => e.id),
+            event_groups: [],
+            resource_groups: [],
+            resources: [],
+            time_groups: [],
+            times: [],
+            event_pairs: [],
+          },
+          params: {
+            Times: afternoonTimes,
+          },
+        });
+      }
+    }
+
+    // Reguła 11: Lekcje równoległe i jednoczesne (XHSTT LinkEventsConstraint - Faza 3)
+    linkedGroups.forEach((group) => {
+      const memberLessons = lessons.filter((l) => group.lessonIds.includes(l.id));
+      if (memberLessons.length < 2) return;
+      const minCount = Math.min(...memberLessons.map((l) => l.weeklyCount));
+      const linkedEgIds: string[] = [];
+      for (let i = 1; i <= minCount; i++) {
+        const egId = `EG_Linked_${group.id}_${i}`;
+        linkedEgIds.push(egId);
+        if (!event_groups.some((eg) => eg.id === egId)) {
+          event_groups.push({
+            id: egId,
+            name: `${group.name} (część ${i})`,
+            kind: "EventGroup",
+          });
+        }
+        memberLessons.forEach((l) => {
+          const ev = events.find((e) => e.id === `${l.id}_${i}`);
+          if (ev && !ev.group_refs.includes(egId)) {
+            ev.group_refs.push(egId);
+          }
+        });
+      }
+      if (linkedEgIds.length > 0) {
+        constraints.push({
+          type: "LinkEventsConstraint",
+          id: `Link_${group.id}`,
+          name: `Lekcje równoległe: ${group.name}`,
+          required: !group.isSoft,
+          weight: group.weight || 10,
+          cost_function: "Linear",
+          applies_to: {
+            event_groups: linkedEgIds,
+            events: [],
+            resource_groups: [],
+            resources: [],
+            time_groups: [],
+            times: [],
+            event_pairs: [],
+          },
+          params: {},
+        });
+      }
+    });
+
+    // Reguła 12: Następstwo i kolejność lekcji (XHSTT OrderEventsConstraint - Faza 3)
+    if (ruleOrderLessons && orderRules.length > 0) {
+      const pairs: EventPairItem[] = [];
+      orderRules.forEach((rule) => {
+        const firstEvents = events.filter((e) => e.id.startsWith(`${rule.firstLessonId}_`));
+        const secondEvents = events.filter((e) => e.id.startsWith(`${rule.secondLessonId}_`));
+        if (firstEvents.length > 0 && secondEvents.length > 0) {
+          pairs.push({
+            first_event: firstEvents[0].id,
+            second_event: secondEvents[0].id,
+            min_separation: rule.minSeparation,
+            max_separation: null,
+          });
+        }
+      });
+      if (pairs.length > 0) {
+        constraints.push({
+          type: "OrderEventsConstraint",
+          id: "Regula_KolejnoscLekcji",
+          name: "Kolejność i następstwo wybranych lekcji",
+          required: !newOrderIsSoft,
+          weight: newOrderWeight,
+          cost_function: "Linear",
+          applies_to: {
+            event_groups: [],
+            events: [],
+            resource_groups: [],
+            resources: [],
+            time_groups: [],
+            times: [],
+            event_pairs: pairs,
+          },
+          params: {},
+        });
+      }
+    }
 
     return {
       id: schoolId.trim() || `Szkola_${Date.now()}`,
@@ -1662,13 +1988,24 @@
             </p>
           </div>
 
-          <button
-            type="button"
-            onclick={generateDefaultCurriculum}
-            class="px-3.5 py-2 bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-200 text-xs font-semibold rounded-xl cursor-pointer transition-all flex items-center gap-1.5"
-          >
-            <span>⚡ Zrównoważ i wygeneruj pełną siatkę dla klas</span>
-          </button>
+          <div class="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onclick={() => (isLinkedModalOpen = true)}
+              class="px-3.5 py-2 bg-purple-50 hover:bg-purple-100 text-purple-900 border border-purple-200 text-xs font-semibold rounded-xl cursor-pointer transition-all flex items-center gap-1.5 shadow-xs"
+              title="Zarządzaj lekcjami równoległymi i jednoczesnymi (np. języki, WF)"
+            >
+              <span>🔗 Lekcje równoległe ({linkedGroups.length})</span>
+            </button>
+
+            <button
+              type="button"
+              onclick={generateDefaultCurriculum}
+              class="px-3.5 py-2 bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-200 text-xs font-semibold rounded-xl cursor-pointer transition-all flex items-center gap-1.5 shadow-xs"
+            >
+              <span>⚡ Zrównoważ i wygeneruj pełną siatkę dla klas</span>
+            </button>
+          </div>
         </div>
 
         <!-- Add lesson form -->
@@ -1764,20 +2101,28 @@
         <div class="bg-white border border-slate-200/90 rounded-2xl shadow-xs overflow-hidden">
           <div class="p-4 border-b border-slate-100 flex items-center justify-between text-xs">
             <span class="font-bold text-slate-800">Wykaz zaplanowanych zajęć ({lessons.length} pozycji)</span>
-            <span class="text-slate-400">Możesz usuwać lub modyfikować wpisy</span>
+            <span class="text-slate-400">Możesz ustalać preferencje godzinowe oraz usuwać wpisy</span>
           </div>
           <div class="divide-y divide-slate-100 max-h-96 overflow-y-auto">
             {#each lessons as l}
               {@const cls = classes.find((c) => c.id === l.classId)}
               {@const t = teachers.find((tch) => tch.id === l.teacherId)}
               {@const r = rooms.find((rm) => rm.id === l.roomId)}
-              <div class="p-3 hover:bg-slate-50/80 flex items-center justify-between text-xs">
+              {@const linkedGroup = linkedGroups.find((g) => g.lessonIds.includes(l.id))}
+              <div class="p-3 hover:bg-slate-50/80 flex items-center justify-between text-xs transition-colors">
                 <div class="flex items-center gap-3">
-                  <span class="w-8 h-8 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center font-bold text-xs">
+                  <span class="w-8 h-8 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center font-bold text-xs shrink-0">
                     📚
                   </span>
                   <div>
-                    <span class="font-bold text-slate-900">{l.subject}</span>
+                    <div class="flex items-center gap-2">
+                      <span class="font-bold text-slate-900">{l.subject}</span>
+                      {#if linkedGroup}
+                        <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-purple-50 text-purple-700 border border-purple-200">
+                          🔗 {linkedGroup.name}
+                        </span>
+                      {/if}
+                    </div>
                     <div class="text-[11px] text-slate-500 flex items-center gap-2 mt-0.5">
                       <span>Klasa: <strong>{cls ? cls.name : l.classId}</strong></span>
                       <span>•</span>
@@ -1788,7 +2133,29 @@
                   </div>
                 </div>
 
-                <div class="flex items-center gap-3">
+                <div class="flex items-center gap-2.5">
+                  <!-- Preference button (Phase 3: PreferTimesConstraint) -->
+                  <button
+                    type="button"
+                    onclick={() => openLessonPrefModal(l)}
+                    class="px-2.5 py-1 rounded-lg border text-[11px] font-semibold transition-all cursor-pointer flex items-center gap-1 {l.timePreference === 'morning' ? 'bg-amber-50 text-amber-800 border-amber-200' : l.timePreference === 'afternoon' ? 'bg-indigo-50 text-indigo-800 border-indigo-200' : l.timePreference === 'custom' ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'}"
+                    title="Ustal preferowane godziny lub porę dnia dla tej lekcji"
+                  >
+                    {#if l.timePreference === 'morning'}
+                      <span>🌅</span>
+                      <span>Rano (1–4)</span>
+                    {:else if l.timePreference === 'afternoon'}
+                      <span>🌇</span>
+                      <span>Popołudnie (5+)</span>
+                    {:else if l.timePreference === 'custom'}
+                      <span>⭐</span>
+                      <span>{l.preferredTimes?.length || 0} slotów</span>
+                    {:else}
+                      <span>🕒</span>
+                      <span class="text-slate-500">Dowolna pora</span>
+                    {/if}
+                  </button>
+
                   <span class="px-2.5 py-1 bg-slate-100 text-slate-800 rounded-full font-semibold">
                     {l.weeklyCount} godz./tydz.
                   </span>
@@ -1796,6 +2163,7 @@
                     type="button"
                     onclick={() => removeLesson(l.id)}
                     class="text-slate-400 hover:text-rose-600 px-2 py-1 rounded cursor-pointer"
+                    title="Usuń lekcję"
                   >
                     ✕
                   </button>
@@ -2077,19 +2445,67 @@
             {/if}
           </div>
 
-          <!-- Reguła 6: Rozkład przedmiotów -->
-          <label class="p-4 bg-white rounded-xl border border-slate-200 flex items-start justify-between gap-4 cursor-pointer hover:border-slate-300 transition-all">
-            <div class="flex items-start gap-3">
-              <span class="text-xl">🗓️</span>
-              <div>
-                <span class="text-xs font-bold text-slate-900">Równomierny rozkład przedmiotów w tygodniu</span>
-                <p class="text-xs text-slate-500 mt-0.5 leading-snug">
-                  Wielogodzinne przedmioty (np. 4h matematyki) są rozkładane na różne dni, a nie kumulowane w jeden dzień.
-                </p>
+          <!-- Reguła 6: Rozkład przedmiotów (SpreadEventsConstraint - Faza 3) -->
+          <div class="p-4 bg-white rounded-xl border border-slate-200 flex flex-col gap-3 transition-all {ruleSpreadSubjects ? 'border-blue-300 ring-2 ring-blue-500/10' : ''}">
+            <div class="flex items-start justify-between gap-4">
+              <div class="flex items-start gap-3">
+                <span class="text-xl">🗓️</span>
+                <div>
+                  <div class="flex items-center gap-2">
+                    <span class="text-xs font-bold text-slate-900">Równomierny rozkład przedmiotów w tygodniu (SpreadEventsConstraint)</span>
+                    <span class="text-[10px] font-semibold px-2 py-0.5 rounded-full {ruleSpreadSubjectsSoft ? 'bg-indigo-50 text-indigo-700 border border-indigo-200' : 'bg-rose-50 text-rose-700 border border-rose-200'}">
+                      {ruleSpreadSubjectsSoft ? `SOFT (waga ${spreadSubjectsWeight})` : 'HARD (Wymóg bezwzględny)'}
+                    </span>
+                  </div>
+                  <p class="text-xs text-slate-500 mt-0.5 leading-snug">
+                    Zapobiega kumulowaniu wielu godzin tego samego przedmiotu (np. 4h matematyki) w jeden dzień.
+                  </p>
+                </div>
               </div>
+              <input type="checkbox" bind:checked={ruleSpreadSubjects} class="w-4 h-4 accent-blue-600 cursor-pointer mt-1" />
             </div>
-            <input type="checkbox" bind:checked={ruleSpreadSubjects} class="w-4 h-4 accent-blue-600 cursor-pointer mt-1" />
-          </label>
+
+            {#if ruleSpreadSubjects}
+              <div class="pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3 text-xs">
+                <div class="flex items-center gap-2">
+                  <span class="text-slate-600 font-medium text-[11px]">Dopuszczalna liczba lekcji dziennie:</span>
+                  <select
+                    bind:value={spreadSubjectsMode}
+                    class="px-2 py-1 bg-slate-50 border border-slate-200 rounded text-xs font-bold text-slate-800 cursor-pointer"
+                  >
+                    <option value="single">Ściśle 1 lekcja dziennie (maks. 1h/dzień)</option>
+                    <option value="blocks">Dopuszczalne bloki 2-godzinne (maks. 2h/dzień)</option>
+                  </select>
+                </div>
+
+                <div class="flex items-center gap-3">
+                  <div class="flex items-center bg-slate-50 p-0.5 rounded-lg border border-slate-200 text-xs">
+                    <button
+                      type="button"
+                      onclick={() => (ruleSpreadSubjectsSoft = true)}
+                      class="px-2.5 py-0.5 rounded text-[11px] font-semibold transition-all cursor-pointer {ruleSpreadSubjectsSoft ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-600'}"
+                    >
+                      SOFT
+                    </button>
+                    <button
+                      type="button"
+                      onclick={() => (ruleSpreadSubjectsSoft = false)}
+                      class="px-2.5 py-0.5 rounded text-[11px] font-semibold transition-all cursor-pointer {!ruleSpreadSubjectsSoft ? 'bg-rose-600 text-white shadow-xs' : 'text-slate-600'}"
+                    >
+                      HARD
+                    </button>
+                  </div>
+
+                  {#if ruleSpreadSubjectsSoft}
+                    <div class="flex items-center gap-1.5">
+                      <span class="text-slate-500 text-[11px]">Waga:</span>
+                      <input type="number" min="1" max="20" bind:value={spreadSubjectsWeight} class="w-12 px-1.5 py-0.5 text-center bg-slate-50 border border-slate-200 rounded text-xs font-bold text-slate-800" />
+                    </div>
+                  {/if}
+                </div>
+              </div>
+            {/if}
+          </div>
 
           <!-- Reguła 7: Ciągłość bloków -->
           <label class="p-4 bg-white rounded-xl border border-slate-200 flex items-start justify-between gap-4 cursor-pointer hover:border-slate-300 transition-all">
@@ -2105,7 +2521,258 @@
             <input type="checkbox" bind:checked={ruleContinuousBlocks} class="w-4 h-4 accent-blue-600 cursor-pointer mt-1" />
           </label>
 
-          <!-- Reguła 8: Indywidualne niedostępności zasobów (AvoidUnavailableTimesConstraint - Faza 1) -->
+          <!-- Reguła 8: Poranne lekcje przedmiotów ścisłych i maturalnych (PreferTimesConstraint - Faza 3) -->
+          <div class="p-4 bg-white rounded-xl border border-slate-200 flex flex-col gap-3 transition-all {ruleMorningCoreSubjects ? 'border-amber-300 ring-2 ring-amber-500/10' : ''}">
+            <div class="flex items-start justify-between gap-4">
+              <div class="flex items-start gap-3">
+                <span class="text-xl">🌅</span>
+                <div>
+                  <div class="flex items-center gap-2">
+                    <span class="text-xs font-bold text-slate-900">Przedmioty ścisłe i maturalne rano (PreferTimesConstraint)</span>
+                    <span class="text-[10px] font-semibold px-2 py-0.5 rounded-full {morningCoreSubjectsSoft ? 'bg-amber-50 text-amber-800 border border-amber-200' : 'bg-rose-50 text-rose-700 border border-rose-200'}">
+                      {morningCoreSubjectsSoft ? `SOFT (waga ${morningCoreSubjectsWeight})` : 'HARD (Wymóg bezwzględny)'}
+                    </span>
+                  </div>
+                  <p class="text-xs text-slate-500 mt-0.5 leading-snug">
+                    Kieruje przedmioty wymagające koncentracji (Matematyka, Fizyka, Chemia, Polski, Biologia) na poranne godziny (lekcje 1–4).
+                  </p>
+                </div>
+              </div>
+              <input type="checkbox" bind:checked={ruleMorningCoreSubjects} class="w-4 h-4 accent-amber-600 cursor-pointer mt-1" />
+            </div>
+
+            {#if ruleMorningCoreSubjects}
+              <div class="pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3 text-xs">
+                <span class="text-slate-500 text-[11px]">
+                  Preferowane lekcje 1–4 każdego dnia (8:00–11:30).
+                </span>
+                <div class="flex items-center gap-3">
+                  <div class="flex items-center bg-slate-50 p-0.5 rounded-lg border border-slate-200 text-xs">
+                    <button
+                      type="button"
+                      onclick={() => (morningCoreSubjectsSoft = true)}
+                      class="px-2.5 py-0.5 rounded text-[11px] font-semibold transition-all cursor-pointer {morningCoreSubjectsSoft ? 'bg-amber-600 text-white shadow-xs' : 'text-slate-600'}"
+                    >
+                      SOFT
+                    </button>
+                    <button
+                      type="button"
+                      onclick={() => (morningCoreSubjectsSoft = false)}
+                      class="px-2.5 py-0.5 rounded text-[11px] font-semibold transition-all cursor-pointer {!morningCoreSubjectsSoft ? 'bg-rose-600 text-white shadow-xs' : 'text-slate-600'}"
+                    >
+                      HARD
+                    </button>
+                  </div>
+                  {#if morningCoreSubjectsSoft}
+                    <div class="flex items-center gap-1.5">
+                      <span class="text-slate-500 text-[11px]">Waga:</span>
+                      <input type="number" min="1" max="20" bind:value={morningCoreSubjectsWeight} class="w-12 px-1.5 py-0.5 text-center bg-slate-50 border border-slate-200 rounded text-xs font-bold text-slate-800" />
+                    </div>
+                  {/if}
+                </div>
+              </div>
+            {/if}
+          </div>
+
+          <!-- Reguła 9: Popołudniowe lekcje WF i przedmiotów artystycznych (PreferTimesConstraint - Faza 3) -->
+          <div class="p-4 bg-white rounded-xl border border-slate-200 flex flex-col gap-3 transition-all {ruleAfternoonFlexSubjects ? 'border-indigo-300 ring-2 ring-indigo-500/10' : ''}">
+            <div class="flex items-start justify-between gap-4">
+              <div class="flex items-start gap-3">
+                <span class="text-xl">🌇</span>
+                <div>
+                  <div class="flex items-center gap-2">
+                    <span class="text-xs font-bold text-slate-900">WF i zajęcia artystyczne po południu (PreferTimesConstraint)</span>
+                    <span class="text-[10px] font-semibold px-2 py-0.5 rounded-full {afternoonFlexSubjectsSoft ? 'bg-indigo-50 text-indigo-800 border border-indigo-200' : 'bg-rose-50 text-rose-700 border border-rose-200'}">
+                      {afternoonFlexSubjectsSoft ? `SOFT (waga ${afternoonFlexSubjectsWeight})` : 'HARD (Wymóg bezwzględny)'}
+                    </span>
+                  </div>
+                  <p class="text-xs text-slate-500 mt-0.5 leading-snug">
+                    Kieruje zajęcia sportowe i artystyczne (Wychowanie Fizyczne, Plastyka, Muzyka, Religia, Etyka) na godziny popołudniowe (od 5. lekcji).
+                  </p>
+                </div>
+              </div>
+              <input type="checkbox" bind:checked={ruleAfternoonFlexSubjects} class="w-4 h-4 accent-indigo-600 cursor-pointer mt-1" />
+            </div>
+
+            {#if ruleAfternoonFlexSubjects}
+              <div class="pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3 text-xs">
+                <span class="text-slate-500 text-[11px]">
+                  Preferowane lekcje 5+ każdego dnia (od 11:45).
+                </span>
+                <div class="flex items-center gap-3">
+                  <div class="flex items-center bg-slate-50 p-0.5 rounded-lg border border-slate-200 text-xs">
+                    <button
+                      type="button"
+                      onclick={() => (afternoonFlexSubjectsSoft = true)}
+                      class="px-2.5 py-0.5 rounded text-[11px] font-semibold transition-all cursor-pointer {afternoonFlexSubjectsSoft ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-600'}"
+                    >
+                      SOFT
+                    </button>
+                    <button
+                      type="button"
+                      onclick={() => (afternoonFlexSubjectsSoft = false)}
+                      class="px-2.5 py-0.5 rounded text-[11px] font-semibold transition-all cursor-pointer {!afternoonFlexSubjectsSoft ? 'bg-rose-600 text-white shadow-xs' : 'text-slate-600'}"
+                    >
+                      HARD
+                    </button>
+                  </div>
+                  {#if afternoonFlexSubjectsSoft}
+                    <div class="flex items-center gap-1.5">
+                      <span class="text-slate-500 text-[11px]">Waga:</span>
+                      <input type="number" min="1" max="20" bind:value={afternoonFlexSubjectsWeight} class="w-12 px-1.5 py-0.5 text-center bg-slate-50 border border-slate-200 rounded text-xs font-bold text-slate-800" />
+                    </div>
+                  {/if}
+                </div>
+              </div>
+            {/if}
+          </div>
+
+          <!-- Reguła 10: Lekcje równoległe i jednoczesne (LinkEventsConstraint - Faza 3) -->
+          <div class="p-4 bg-slate-50/80 rounded-xl border border-slate-200/70 flex items-start justify-between gap-4">
+            <div class="flex items-start gap-3">
+              <span class="text-xl">🔗</span>
+              <div>
+                <div class="flex items-center gap-2">
+                  <span class="text-xs font-bold text-slate-900">Lekcje równoległe i jednoczesne (LinkEventsConstraint)</span>
+                  {#if linkedGroups.length > 0}
+                    <span class="text-[10px] font-bold px-2 py-0.5 bg-purple-100 text-purple-800 rounded-full border border-purple-200">
+                      {linkedGroups.length} grup powiązanych
+                    </span>
+                  {/if}
+                </div>
+                <p class="text-xs text-slate-500 mt-0.5 leading-snug">
+                  Wymusza odbywanie się wybranych lekcji w tym samym slocie czasowym (np. grupy językowe z klas 1A i 1B).
+                  {#if linkedGroups.length > 0}
+                    <span class="text-purple-900 font-medium block mt-1">
+                      Aktywne powiązania: {linkedGroups.map((g) => g.name).join(", ")}.
+                    </span>
+                  {:else}
+                    <span class="text-slate-400 italic block mt-1">
+                      (Brak powiązań — możesz je skonfigurować w kroku 4 przyciskiem „Lekcje równoległe”).
+                    </span>
+                  {/if}
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onclick={() => (isLinkedModalOpen = true)}
+              class="text-[11px] font-semibold px-2.5 py-1 bg-purple-50 hover:bg-purple-100 text-purple-700 rounded-lg border border-purple-200 shrink-0 cursor-pointer transition-colors"
+            >
+              Zarządzaj powiązaniami
+            </button>
+          </div>
+
+          <!-- Reguła 11: Następstwo i kolejność lekcji (OrderEventsConstraint - Faza 3) -->
+          <div class="p-4 bg-white rounded-xl border border-slate-200 flex flex-col gap-3 transition-all {ruleOrderLessons ? 'border-blue-300 ring-2 ring-blue-500/10' : ''}">
+            <div class="flex items-start justify-between gap-4">
+              <div class="flex items-start gap-3">
+                <span class="text-xl">📐</span>
+                <div>
+                  <div class="flex items-center gap-2">
+                    <span class="text-xs font-bold text-slate-900">Następstwo i kolejność lekcji (OrderEventsConstraint)</span>
+                    {#if orderRules.length > 0}
+                      <span class="text-[10px] font-bold px-2 py-0.5 bg-blue-100 text-blue-800 rounded-full border border-blue-200">
+                        {orderRules.length} reguł kolejności
+                      </span>
+                    {/if}
+                  </div>
+                  <p class="text-xs text-slate-500 mt-0.5 leading-snug">
+                    Egzekwuje kolejność pomiędzy zajęciami (np. wykład teoretyczny musi odbyć się przed ćwiczeniami/laboratorium).
+                  </p>
+                </div>
+              </div>
+              <input type="checkbox" bind:checked={ruleOrderLessons} class="w-4 h-4 accent-blue-600 cursor-pointer mt-1" />
+            </div>
+
+            {#if ruleOrderLessons}
+              <div class="pt-3 border-t border-slate-100 flex flex-col gap-3 text-xs">
+                <!-- Add new order pair -->
+                <div class="p-3 bg-slate-50 rounded-xl border border-slate-200/80 flex flex-col gap-2.5">
+                  <span class="font-bold text-slate-800 text-[11px] uppercase tracking-wider">
+                    Dodaj parę sekwencji (Lekcja 1 musi być PRZED Lekcją 2):
+                  </span>
+                  <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <div>
+                      <span class="block text-[10px] font-semibold text-slate-600 mb-0.5">Lekcja pierwsza:</span>
+                      <select
+                        bind:value={newOrderFirstLesson}
+                        class="w-full px-2 py-1 bg-white border border-slate-200 rounded text-xs text-slate-800"
+                      >
+                        <option value="">Wybierz lekcję 1...</option>
+                        {#each lessons as l}
+                          <option value={l.id}>{l.subject} ({classes.find((c) => c.id === l.classId)?.name || l.classId})</option>
+                        {/each}
+                      </select>
+                    </div>
+
+                    <div>
+                      <span class="block text-[10px] font-semibold text-slate-600 mb-0.5">Lekcja następująca:</span>
+                      <select
+                        bind:value={newOrderSecondLesson}
+                        class="w-full px-2 py-1 bg-white border border-slate-200 rounded text-xs text-slate-800"
+                      >
+                        <option value="">Wybierz lekcję 2...</option>
+                        {#each lessons as l}
+                          <option value={l.id}>{l.subject} ({classes.find((c) => c.id === l.classId)?.name || l.classId})</option>
+                        {/each}
+                      </select>
+                    </div>
+
+                    <div class="flex items-end gap-2">
+                      <div class="flex-1">
+                        <span class="block text-[10px] font-semibold text-slate-600 mb-0.5">Min. odstęp:</span>
+                        <select
+                          bind:value={newOrderSeparation}
+                          class="w-full px-2 py-1 bg-white border border-slate-200 rounded text-xs text-slate-800"
+                        >
+                          <option value={0}>W tym samym tygodniu (wcześniej)</option>
+                          <option value={periodsPerDay}>Min. 1 dzień odstępu</option>
+                        </select>
+                      </div>
+
+                      <button
+                        type="button"
+                        onclick={addOrderRule}
+                        class="px-3 py-1 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded text-xs cursor-pointer transition-colors"
+                      >
+                        + Dodaj
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Existing order pairs -->
+                {#if orderRules.length > 0}
+                  <div class="divide-y divide-slate-100 border border-slate-200 rounded-lg overflow-hidden bg-white">
+                    {#each orderRules as rule}
+                      <div class="p-2.5 flex items-center justify-between text-xs hover:bg-slate-50">
+                        <div class="flex items-center gap-2">
+                          <span class="text-blue-600 font-bold">1.</span>
+                          <span class="font-bold text-slate-900">{lessons.find((l) => l.id === rule.firstLessonId)?.subject || rule.firstLessonId}</span>
+                          <span class="text-slate-400">➔</span>
+                          <span class="text-blue-600 font-bold">2.</span>
+                          <span class="font-bold text-slate-900">{lessons.find((l) => l.id === rule.secondLessonId)?.subject || rule.secondLessonId}</span>
+                          <span class="text-slate-400 text-[11px]">
+                            ({rule.minSeparation > 0 ? "min. 1 dzień odstępu" : "przed"})
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onclick={() => removeOrderRule(rule.id)}
+                          class="text-slate-400 hover:text-rose-600 p-1 cursor-pointer"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    {/each}
+                  </div>
+                {/if}
+              </div>
+            {/if}
+          </div>
+
+          <!-- Reguła 12: Indywidualne niedostępności zasobów (AvoidUnavailableTimesConstraint - Faza 1) -->
           <div class="p-4 bg-slate-50/80 rounded-xl border border-slate-200/70 flex items-start justify-between gap-4">
             <div class="flex items-start gap-3">
               <span class="text-xl">🗓️</span>
@@ -2211,6 +2878,30 @@
                 </span>
               </div>
             {/if}
+            {#if linkedGroups.length > 0}
+              <div class="flex items-center gap-2 text-purple-800">
+                <span>✓</span>
+                <span>
+                  Skonfigurowano {linkedGroups.length} grup lekcji równoległych / jednoczesnych (LinkEventsConstraint)
+                </span>
+              </div>
+            {/if}
+            {#if ruleOrderLessons && orderRules.length > 0}
+              <div class="flex items-center gap-2 text-blue-800">
+                <span>✓</span>
+                <span>
+                  Wymuszono reguły kolejności dla {orderRules.length} par zajęć (OrderEventsConstraint)
+                </span>
+              </div>
+            {/if}
+            {#if ruleMorningCoreSubjects || ruleAfternoonFlexSubjects}
+              <div class="flex items-center gap-2 text-amber-800">
+                <span>✓</span>
+                <span>
+                  Włączono dydaktyczne preferencje pory dnia dla przedmiotów (PreferTimesConstraint)
+                </span>
+              </div>
+            {/if}
           </div>
 
           <!-- Save CTA -->
@@ -2294,6 +2985,38 @@
       initialMinDailyLessons={activeAvailabilityTarget.minDailyLessons}
       onSave={handleSaveAvailability}
       onClose={() => (activeAvailabilityTarget = null)}
+    />
+  {/if}
+
+  <!-- Modal Preferencji Godzinowych dla Lekcji (Phase 3) -->
+  {#if activeLessonPrefTarget}
+    <LessonPreferencesModal
+      lessonId={activeLessonPrefTarget.lessonId}
+      lessonSubject={activeLessonPrefTarget.subject}
+      className={activeLessonPrefTarget.className}
+      days={currentDaysFormatted}
+      periodsPerDay={periodsPerDay}
+      initialPreference={activeLessonPrefTarget.preference}
+      initialPreferredTimes={activeLessonPrefTarget.preferredTimes}
+      initialIsSoft={activeLessonPrefTarget.isSoft}
+      initialWeight={activeLessonPrefTarget.weight}
+      onSave={handleSaveLessonPref}
+      onClose={() => (activeLessonPrefTarget = null)}
+    />
+  {/if}
+
+  <!-- Modal Lekcji Równoległych / Jednoczesnych (Phase 3) -->
+  {#if isLinkedModalOpen}
+    <LinkedLessonsModal
+      lessons={lessons}
+      classes={classes}
+      teachers={teachers}
+      initialGroups={linkedGroups}
+      onSave={(updatedGroups) => {
+        linkedGroups = updatedGroups;
+        isLinkedModalOpen = false;
+      }}
+      onClose={() => (isLinkedModalOpen = false)}
     />
   {/if}
 </div>
