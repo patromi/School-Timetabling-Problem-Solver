@@ -1,4 +1,8 @@
 <script lang="ts">
+  import AvailabilityGrid from "./availability/AvailabilityGrid.svelte";
+  import AvailabilityAdvancedSettings from "./availability/AvailabilityAdvancedSettings.svelte";
+  import AvailabilityContextDrawer from "./availability/AvailabilityContextDrawer.svelte";
+
   export interface AvailabilityExtraParams {
     maxDaysPerWeek?: number | null;
     minDaysPerWeek?: number | null;
@@ -77,13 +81,8 @@
     minDailyLessons = initialMinDailyLessons ?? null;
   });
 
-  // Helper to format slot ID
   function getSlotId(dayId: string, period: number): string {
     return `${dayId}_${period}`;
-  }
-
-  function isSlotUnavailable(dayId: string, period: number): boolean {
-    return unavailableSet.has(getSlotId(dayId, period));
   }
 
   function toggleSlot(dayId: string, period: number) {
@@ -97,7 +96,6 @@
     unavailableSet = next;
   }
 
-  // Row-level toggle: all days for a specific lesson period
   function toggleWholePeriod(period: number) {
     const next = new Set(unavailableSet);
     const allBlocked = days.length > 0 && days.every((d) => next.has(getSlotId(d.id, period)));
@@ -113,11 +111,6 @@
     unavailableSet = next;
   }
 
-  function isPeriodFullyBlocked(period: number): boolean {
-    return days.length > 0 && days.every((d) => unavailableSet.has(getSlotId(d.id, period)));
-  }
-
-  // Column-level toggle: all periods for a specific day
   function toggleWholeDay(dayId: string) {
     const next = new Set(unavailableSet);
     let allBlocked = true;
@@ -139,15 +132,6 @@
     unavailableSet = next;
   }
 
-  function isDayFullyBlocked(dayId: string): boolean {
-    if (periodsPerDay === 0) return false;
-    for (let p = 1; p <= periodsPerDay; p++) {
-      if (!unavailableSet.has(getSlotId(dayId, p))) return false;
-    }
-    return true;
-  }
-
-  // Corner global toggle: all slots in the week
   function toggleAllSlots() {
     if (unavailableSet.size === totalSlots) {
       unavailableSet = new Set();
@@ -309,444 +293,38 @@
     <div class="flex-1 overflow-hidden flex flex-col md:flex-row">
       <!-- Left Column: Matrix & Sliders -->
       <div class="p-6 overflow-y-auto flex-1 flex flex-col gap-6">
-      <div class="border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
-        <table class="w-full text-center border-collapse text-xs select-none">
-          <thead>
-            <tr class="bg-slate-100/90 text-slate-700 border-b border-slate-200">
-              <!-- Corner header with all-slots toggle -->
-              <th class="p-1 text-left w-36 border-r border-slate-200 bg-slate-100/90">
-                <button
-                  type="button"
-                  onclick={toggleAllSlots}
-                  class="w-full py-2 px-2 text-[11px] font-bold rounded-lg border transition-all flex flex-col justify-center cursor-pointer hover:bg-white text-slate-700 border-slate-200"
-                  title="Kliknij, aby przełączyć cały tydzień naraz"
-                >
-                  <div class="flex items-center justify-between gap-1">
-                    <span>Godzina \ Dzień</span>
-                    <span>⚡</span>
-                  </div>
-                  <span class="text-[9px] font-normal text-slate-400">
-                    {unavailableSet.size === totalSlots ? "kliknij: odblokuj cały tydzień" : "kliknij: zablokuj cały tydzień"}
-                  </span>
-                </button>
-              </th>
+        <AvailabilityGrid
+          {days}
+          {periodsPerDay}
+          {unavailableSet}
+          {totalSlots}
+          onToggleSlot={toggleSlot}
+          onToggleWholeDay={toggleWholeDay}
+          onToggleWholePeriod={toggleWholePeriod}
+          onToggleAllSlots={toggleAllSlots}
+        />
 
-              <!-- Day headers (column toggles) -->
-              {#each days as day}
-                {@const dayBlocked = isDayFullyBlocked(day.id)}
-                <th class="p-1 border-r border-slate-200 last:border-r-0">
-                  <button
-                    type="button"
-                    onclick={() => toggleWholeDay(day.id)}
-                    class={`w-full py-2 px-2 rounded-lg border font-bold text-xs transition-all flex flex-col items-center justify-center gap-0.5 cursor-pointer ${
-                      dayBlocked
-                        ? "bg-rose-50 text-rose-800 border-rose-300 hover:bg-rose-100"
-                        : "bg-white text-slate-800 border-slate-200 hover:border-slate-300 hover:bg-slate-50"
-                    }`}
-                    title={`Kliknij, aby przełączyć cały dzień: ${day.name}`}
-                  >
-                    <div class="flex items-center gap-1">
-                      <span>{day.name}</span>
-                      {#if dayBlocked}
-                        <span class="text-[11px] text-rose-600 font-bold">🚫</span>
-                      {/if}
-                    </div>
-                    <span class={`text-[9px] font-normal ${dayBlocked ? "text-rose-600 font-semibold" : "text-slate-400"}`}>
-                      {dayBlocked ? "cały zablokowany" : "kliknij: cały dzień"}
-                    </span>
-                  </button>
-                </th>
-              {/each}
-            </tr>
-          </thead>
-          <tbody class="divide-y divide-slate-200">
-            {#each Array.from({ length: periodsPerDay }, (_, i) => i + 1) as period}
-              {@const periodBlocked = isPeriodFullyBlocked(period)}
-              <tr class="hover:bg-slate-50/60 transition-colors">
-                <!-- Period header (row toggle on the left side) -->
-                <td class="p-1 border-r border-slate-200 bg-slate-50/80">
-                  <button
-                    type="button"
-                    onclick={() => toggleWholePeriod(period)}
-                    class={`w-full py-2 px-2.5 rounded-lg border font-bold text-xs text-left transition-all flex flex-col justify-center cursor-pointer ${
-                      periodBlocked
-                        ? "bg-rose-50 text-rose-800 border-rose-300 hover:bg-rose-100"
-                        : "bg-white text-slate-700 border-slate-200 hover:border-slate-300 hover:bg-slate-50"
-                    }`}
-                    title={`Kliknij, aby zablokować/odblokować lekcję ${period} we wszystkich dniach roboczych`}
-                  >
-                    <div class="flex items-center justify-between gap-1">
-                      <span>Lekcja {period}</span>
-                      {#if periodBlocked}
-                        <span class="text-[11px] text-rose-600 font-bold">🚫</span>
-                      {/if}
-                    </div>
-                    <span class={`text-[9px] font-normal ${periodBlocked ? "text-rose-600 font-semibold" : "text-slate-400"}`}>
-                      {periodBlocked ? "zablokowana we wszystkich dniach" : "kliknij: cały rząd"}
-                    </span>
-                  </button>
-                </td>
-
-                <!-- Individual day x period cells -->
-                {#each days as day}
-                  {@const unavailable = isSlotUnavailable(day.id, period)}
-                  <td class="p-1 border-r border-slate-200 last:border-r-0">
-                    <button
-                      type="button"
-                      onclick={() => toggleSlot(day.id, period)}
-                      class={`w-full py-2.5 px-2 rounded-lg font-medium text-xs transition-all flex flex-col items-center justify-center gap-0.5 cursor-pointer ${
-                        unavailable
-                          ? "bg-rose-100 hover:bg-rose-200 text-rose-800 border border-rose-300 shadow-2xs"
-                          : "bg-white hover:bg-emerald-50/60 text-slate-700 hover:text-emerald-800 border border-slate-100 hover:border-emerald-200"
-                      }`}
-                    >
-                      {#if unavailable}
-                        <span class="text-xs">🚫</span>
-                        <span class="text-[10px] font-bold">Niedostępny</span>
-                      {:else}
-                        <span class="text-xs text-slate-300 group-hover:text-emerald-500">✓</span>
-                        <span class="text-[10px] text-slate-400">Dostępny</span>
-                      {/if}
-                    </button>
-                  </td>
-                {/each}
-              </tr>
-            {/each}
-          </tbody>
-        </table>
-      </div>
-
-      <!-- Constraint Rigor / Priority Options -->
-      <div class="mt-5 p-4 bg-slate-50 rounded-xl border border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-xs">
-        <div>
-          <span class="font-bold text-slate-900 block">Rygor ograniczenia niedostępności (XHSTT):</span>
-          <p class="text-slate-500 text-[11px] mt-0.5">
-            Czy zaznaczone wykluczenia są kategorycznym zakazem czy silną preferencją?
-          </p>
-        </div>
-
-        <div class="flex items-center gap-4">
-          <label class="flex items-center gap-2 cursor-pointer">
-            <input
-              type="radio"
-              name="rigor"
-              checked={!isSoft}
-              onchange={() => (isSoft = false)}
-              class="w-4 h-4 accent-rose-600"
-            />
-            <span class="font-bold text-rose-700">Wymóg bezwzględny (HARD)</span>
-          </label>
-
-          <label class="flex items-center gap-2 cursor-pointer">
-            <input
-              type="radio"
-              name="rigor"
-              checked={isSoft}
-              onchange={() => (isSoft = true)}
-              class="w-4 h-4 accent-amber-600"
-            />
-            <span class="font-bold text-amber-700">Preferencja jakościowa (SOFT)</span>
-          </label>
-
-          {#if isSoft}
-            <div class="flex items-center gap-1.5 ml-2">
-              <span class="text-slate-500 text-[11px]">Waga kary:</span>
-              <input
-                type="number"
-                min="1"
-                max="100"
-                bind:value={weight}
-                class="w-14 px-2 py-1 text-center bg-white border border-slate-300 rounded font-bold text-slate-800"
-              />
-            </div>
-          {/if}
-        </div>
-      </div>
-
-      <!-- Phase 2: Parametry obciążenia i czasu pracy dla Nauczycieli -->
-      {#if resourceType === "teacher"}
-        <div class="mt-4 p-4 bg-white rounded-xl border border-indigo-100 shadow-2xs flex flex-col gap-3 text-xs">
-          <div class="flex items-center justify-between border-b border-indigo-50/80 pb-2">
-            <div class="flex items-center gap-2">
-              <span class="text-sm">⚡</span>
-              <span class="font-bold text-slate-900">Parametry czasu pracy i obciążenia (Faza 2)</span>
-              <span class="text-[10px] font-semibold px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded-full border border-indigo-200">
-                Indywidualne preferencje
-              </span>
-            </div>
-            <span class="text-[11px] text-slate-400">Nadpisuje domyślne reguły ogólnoszkolne</span>
-          </div>
-
-          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <!-- Maks dni roboczych (ClusterBusyTimes) -->
-            <div class="p-3 bg-slate-50/80 rounded-lg border border-slate-200/60 flex flex-col justify-between">
-              <div>
-                <label for="teacher-max-days-input" class="font-semibold text-slate-800 flex items-center gap-1.5 mb-1">
-                  <span>📅</span>
-                  <span>Dni w tygodniu:</span>
-                </label>
-                <p class="text-[11px] text-slate-500 leading-snug">
-                  Maks. liczba aktywnych dni (np. dla niepełnego etatu).
-                </p>
-              </div>
-              <div class="mt-2 flex items-center gap-2">
-                <select
-                  id="teacher-max-days-input"
-                  bind:value={maxDaysPerWeek}
-                  class="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-800 focus:outline-none focus:border-indigo-500"
-                >
-                  <option value={null}>Brak limitu (cały tydzień)</option>
-                  {#each days as d, i}
-                    {#if i + 1 < days.length}
-                      <option value={i + 1}>Maks. {i + 1} {i === 0 ? "dzień" : i < 4 ? "dni" : "dni"}</option>
-                    {/if}
-                  {/each}
-                </select>
-              </div>
-            </div>
-
-            <!-- Maks lekcji dziennie (LimitBusyTimes) -->
-            <div class="p-3 bg-slate-50/80 rounded-lg border border-slate-200/60 flex flex-col justify-between">
-              <div>
-                <label for="teacher-max-daily-input" class="font-semibold text-slate-800 flex items-center gap-1.5 mb-1">
-                  <span>⏱️</span>
-                  <span>Lekcji dziennie:</span>
-                </label>
-                <p class="text-[11px] text-slate-500 leading-snug">
-                  Maks. liczba zajęć w jednym dniu roboczym.
-                </p>
-              </div>
-              <div class="mt-2 flex items-center gap-2">
-                <select
-                  id="teacher-max-daily-input"
-                  bind:value={maxDailyLessons}
-                  class="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-800 focus:outline-none focus:border-indigo-500"
-                >
-                  <option value={null}>Domyślny limit ze szkoły</option>
-                  <option value={3}>Maks. 3 lekcje</option>
-                  <option value={4}>Maks. 4 lekcje</option>
-                  <option value={5}>Maks. 5 lekcji</option>
-                  <option value={6}>Maks. 6 lekcji</option>
-                  <option value={7}>Maks. 7 lekcji</option>
-                  <option value={8}>Maks. 8 lekcji</option>
-                </select>
-              </div>
-            </div>
-
-            <!-- Maks okienek w tygodniu (LimitIdleTimes) -->
-            <div class="p-3 bg-slate-50/80 rounded-lg border border-slate-200/60 flex flex-col justify-between">
-              <div>
-                <label for="teacher-max-gaps-input" class="font-semibold text-slate-800 flex items-center gap-1.5 mb-1">
-                  <span>☕</span>
-                  <span>Okienka (tydzień):</span>
-                </label>
-                <p class="text-[11px] text-slate-500 leading-snug">
-                  Dopuszczalna liczba wolnych godzin między lekcjami.
-                </p>
-              </div>
-              <div class="mt-2 flex items-center gap-2">
-                <select
-                  id="teacher-max-gaps-input"
-                  bind:value={maxGapsPerWeek}
-                  class="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-800 focus:outline-none focus:border-indigo-500"
-                >
-                  <option value={null}>Domyślny limit ze szkoły</option>
-                  <option value={0}>0 okienek (ciągły plan)</option>
-                  <option value={1}>Maks. 1 okienko</option>
-                  <option value={2}>Maks. 2 okienka</option>
-                  <option value={3}>Maks. 3 okienka</option>
-                  <option value={4}>Maks. 4 okienka</option>
-                </select>
-              </div>
-            </div>
-          </div>
-        </div>
-
-      <!-- Phase 2: Parametry obciążenia dla Klas -->
-      {:else if resourceType === "class"}
-        <div class="mt-4 p-4 bg-white rounded-xl border border-indigo-100 shadow-2xs flex flex-col gap-3 text-xs">
-          <div class="flex items-center justify-between border-b border-indigo-50/80 pb-2">
-            <div class="flex items-center gap-2">
-              <span class="text-sm">⚖️</span>
-              <span class="font-bold text-slate-900">Dzienne ramy lekcyjne oddziału (LimitBusyTimes)</span>
-              <span class="text-[10px] font-semibold px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded-full border border-indigo-200">
-                Higiena nauki
-              </span>
-            </div>
-            <span class="text-[11px] text-slate-400">Nadpisuje domyślne reguły ogólnoszkolne</span>
-          </div>
-
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <!-- Min lekcji dziennie -->
-            <div class="p-3 bg-slate-50/80 rounded-lg border border-slate-200/60 flex flex-col justify-between">
-              <div>
-                <label for="class-min-daily-input" class="font-semibold text-slate-800 flex items-center gap-1.5 mb-1">
-                  <span>📉</span>
-                  <span>Minimalna liczba lekcji w dniu:</span>
-                </label>
-                <p class="text-[11px] text-slate-500 leading-snug">
-                  Zapobiega przychodzeniu uczniów do szkoły na zbyt małą liczbę lekcji.
-                </p>
-              </div>
-              <div class="mt-2 flex items-center gap-2">
-                <select
-                  id="class-min-daily-input"
-                  bind:value={minDailyLessons}
-                  class="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-800 focus:outline-none focus:border-indigo-500"
-                >
-                  <option value={null}>Domyślny limit ze szkoły</option>
-                  <option value={2}>Min. 2 lekcje</option>
-                  <option value={3}>Min. 3 lekcje</option>
-                  <option value={4}>Min. 4 lekcje</option>
-                  <option value={5}>Min. 5 lekcji</option>
-                </select>
-              </div>
-            </div>
-
-            <!-- Maks lekcji dziennie -->
-            <div class="p-3 bg-slate-50/80 rounded-lg border border-slate-200/60 flex flex-col justify-between">
-              <div>
-                <label for="class-max-daily-input" class="font-semibold text-slate-800 flex items-center gap-1.5 mb-1">
-                  <span>📈</span>
-                  <span>Maksymalna liczba lekcji w dniu:</span>
-                </label>
-                <p class="text-[11px] text-slate-500 leading-snug">
-                  Chroni uczniów przed nadmiernym zmęczeniem zbyt długim dniem nauki.
-                </p>
-              </div>
-              <div class="mt-2 flex items-center gap-2">
-                <select
-                  id="class-max-daily-input"
-                  bind:value={maxDailyLessons}
-                  class="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-800 focus:outline-none focus:border-indigo-500"
-                >
-                  <option value={null}>Domyślny limit ze szkoły</option>
-                  <option value={5}>Maks. 5 lekcji</option>
-                  <option value={6}>Maks. 6 lekcji</option>
-                  <option value={7}>Maks. 7 lekcji</option>
-                  <option value={8}>Maks. 8 lekcji</option>
-                  <option value={9}>Maks. 9 lekcji</option>
-                </select>
-              </div>
-            </div>
-          </div>
-        </div>
-      {/if}
+        <AvailabilityAdvancedSettings
+          {resourceType}
+          {days}
+          bind:isSoft
+          bind:weight
+          bind:maxDaysPerWeek
+          bind:minDaysPerWeek
+          bind:maxDailyLessons
+          bind:maxGapsPerWeek
+          bind:minDailyLessons
+        />
       </div>
 
       <!-- Right Column: Context Drawer (Podgląd klas i obciążenia) -->
       {#if contextInfo}
-        <div class="w-full md:w-80 shrink-0 border-t md:border-t-0 md:border-l border-slate-200 bg-slate-50/70 p-5 flex flex-col gap-4 overflow-y-auto">
-          <div class="flex items-center justify-between pb-3 border-b border-slate-200">
-            <h4 class="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
-              <span>📊</span>
-              <span>Podgląd obciążenia</span>
-            </h4>
-            <span class="text-[10px] px-2 py-0.5 rounded-full font-bold bg-blue-100 text-blue-800">
-              {resourceType === "teacher" ? "Pedagog" : resourceType === "class" ? "Oddział" : "Sala"}
-            </span>
-          </div>
-
-          <!-- KPI Summary Card -->
-          <div class="p-3.5 bg-white rounded-xl border border-slate-200/90 shadow-2xs flex flex-col gap-2.5 text-xs">
-            {#if resourceType === "teacher"}
-              <div class="flex items-center justify-between">
-                <span class="text-slate-500">Pensum etatowe:</span>
-                <span class="font-bold text-slate-900">{contextInfo.workload ?? 18} godz./tydz.</span>
-              </div>
-              <div class="flex items-center justify-between">
-                <span class="text-slate-500">Przydzielone lekcje:</span>
-                <span class="font-bold text-blue-700">{contextInfo.totalAssignedHours ?? 0} godz.</span>
-              </div>
-              <div class="flex items-center justify-between pt-2 border-t border-slate-100">
-                <span class="text-slate-500">Dostępne sloty:</span>
-                <span class="font-bold {availableCount < (contextInfo.totalAssignedHours ?? 0) ? 'text-rose-600' : 'text-emerald-700'}">
-                  {availableCount} / {totalSlots}
-                </span>
-              </div>
-            {:else if resourceType === "class"}
-              <div class="flex items-center justify-between">
-                <span class="text-slate-500">Lekcje w tygodniu:</span>
-                <span class="font-bold text-blue-700">{contextInfo.totalAssignedHours ?? 0} godz.</span>
-              </div>
-              <div class="flex items-center justify-between pt-2 border-t border-slate-100">
-                <span class="text-slate-500">Dostępne sloty:</span>
-                <span class="font-bold {availableCount < (contextInfo.totalAssignedHours ?? 0) ? 'text-rose-600' : 'text-emerald-700'}">
-                  {availableCount} / {totalSlots}
-                </span>
-              </div>
-            {:else}
-              <div class="flex items-center justify-between">
-                <span class="text-slate-500">Zajętość sali:</span>
-                <span class="font-bold text-blue-700">{contextInfo.totalAssignedHours ?? 0} godz./tydz.</span>
-              </div>
-            {/if}
-          </div>
-
-          <!-- Conflict Live Warning -->
-          {#if (contextInfo.totalAssignedHours ?? 0) > availableCount}
-            <div class="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-900 text-xs flex items-start gap-2">
-              <span class="text-base shrink-0">⚠️</span>
-              <div class="leading-snug">
-                <strong class="font-bold block">Zbyt wiele wykluczeń!</strong>
-                Przydział wymaga <strong>{contextInfo.totalAssignedHours} godz.</strong>, a odblokowano tylko <strong>{availableCount} slotów</strong>.
-              </div>
-            </div>
-          {/if}
-
-          <!-- Assigned Classes / Lessons List -->
-          {#if resourceType === "teacher"}
-            <div>
-              <span class="text-[11px] font-bold uppercase tracking-wider text-slate-500 block mb-2">
-                Przydzielone oddziały ({contextInfo.classes?.length || 0}):
-              </span>
-              {#if !contextInfo.classes || contextInfo.classes.length === 0}
-                <p class="text-xs text-slate-400 italic bg-white p-3 rounded-xl border border-dashed border-slate-200 text-center">
-                  Brak przypisanych klas.
-                </p>
-              {:else}
-                <div class="flex flex-col gap-1.5 max-h-56 overflow-y-auto">
-                  {#each contextInfo.classes as c}
-                    <div class="p-2.5 bg-white border border-slate-200/90 rounded-xl flex items-center justify-between text-xs">
-                      <div>
-                        <span class="font-bold text-slate-900 block">{c.className}</span>
-                        <span class="text-[10px] text-slate-500">{c.subject}</span>
-                      </div>
-                      <span class="px-2 py-0.5 bg-blue-50 text-blue-700 font-bold rounded-md text-[11px]">
-                        {c.hours}h
-                      </span>
-                    </div>
-                  {/each}
-                </div>
-              {/if}
-            </div>
-          {:else if resourceType === "class"}
-            <div>
-              <span class="text-[11px] font-bold uppercase tracking-wider text-slate-500 block mb-2">
-                Przedmioty i nauczyciele ({contextInfo.lessons?.length || 0}):
-              </span>
-              {#if !contextInfo.lessons || contextInfo.lessons.length === 0}
-                <p class="text-xs text-slate-400 italic bg-white p-3 rounded-xl border border-dashed border-slate-200 text-center">
-                  Brak przypisanych lekcji.
-                </p>
-              {:else}
-                <div class="flex flex-col gap-1.5 max-h-56 overflow-y-auto">
-                  {#each contextInfo.lessons as l}
-                    <div class="p-2.5 bg-white border border-slate-200/90 rounded-xl flex items-center justify-between text-xs">
-                      <div>
-                        <span class="font-bold text-slate-900 block">{l.subject}</span>
-                        <span class="text-[10px] text-slate-500">{l.teacherName}</span>
-                      </div>
-                      <span class="px-2 py-0.5 bg-blue-50 text-blue-700 font-bold rounded-md text-[11px]">
-                        {l.hours}h
-                      </span>
-                    </div>
-                  {/each}
-                </div>
-              {/if}
-            </div>
-          {/if}
-        </div>
+        <AvailabilityContextDrawer
+          {resourceType}
+          {contextInfo}
+          {availableCount}
+          {totalSlots}
+        />
       {/if}
     </div>
 
