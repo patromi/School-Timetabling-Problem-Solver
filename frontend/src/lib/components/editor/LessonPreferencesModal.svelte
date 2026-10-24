@@ -32,28 +32,53 @@
     onClose,
   }: Props = $props();
 
-  let preference = $state<"any" | "morning" | "afternoon" | "custom">("any");
-  let preferredSet = $state<Set<string>>(new Set());
-  let isSoft = $state(true);
-  let weight = $state(4);
-
-  $effect(() => {
-    preference = initialPreference;
-    preferredSet = new Set(initialPreferredTimes || []);
-    isSoft = initialIsSoft ?? true;
-    weight = initialWeight ?? 4;
-
-    // If custom but empty, default to all periods
-    if (preference === "custom" && preferredSet.size === 0) {
+  function buildInitialSet(): Set<string> {
+    if (initialPreferredTimes && initialPreferredTimes.length > 0) {
+      return new Set(initialPreferredTimes);
+    }
+    if (initialPreference === "custom") {
       const all: string[] = [];
       days.forEach((d) => {
         for (let p = 1; p <= periodsPerDay; p++) {
           all.push(`${d.id}_${p}`);
         }
       });
-      preferredSet = new Set(all);
+      return new Set(all);
     }
-  });
+    return new Set();
+  }
+
+  let preference = $state<"any" | "morning" | "afternoon" | "custom">(initialPreference);
+  let preferredSet = $state<Set<string>>(buildInitialSet());
+  let isSoft = $state(initialIsSoft ?? true);
+  let weight = $state(initialWeight ?? 4);
+
+  function selectPreset(type: "any" | "morning" | "afternoon" | "custom") {
+    preference = type;
+    if (type === "morning") {
+      const morningSlots = new Set<string>();
+      days.forEach((d) => {
+        for (let p = 1; p <= Math.min(4, periodsPerDay); p++) {
+          morningSlots.add(getSlotId(d.id, p));
+        }
+      });
+      preferredSet = morningSlots;
+    } else if (type === "afternoon") {
+      const afternoonSlots = new Set<string>();
+      days.forEach((d) => {
+        for (let p = 5; p <= periodsPerDay; p++) {
+          afternoonSlots.add(getSlotId(d.id, p));
+        }
+      });
+      preferredSet = afternoonSlots;
+    } else if (type === "custom") {
+      if (preferredSet.size === 0) {
+        selectAll();
+      }
+    } else {
+      preferredSet = new Set();
+    }
+  }
 
   function getSlotId(dayId: string, period: number): string {
     return `${dayId}_${period}`;
@@ -197,7 +222,7 @@
           <!-- Any -->
           <button
             type="button"
-            onclick={() => (preference = "any")}
+            onclick={() => selectPreset("any")}
             class="p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between {preference === 'any' ? 'bg-blue-50/80 border-blue-500 ring-2 ring-blue-500/20' : 'bg-slate-50 border-slate-200 hover:bg-slate-100'}"
           >
             <div class="flex items-center justify-between">
@@ -213,7 +238,7 @@
           <!-- Morning -->
           <button
             type="button"
-            onclick={() => (preference = "morning")}
+            onclick={() => selectPreset("morning")}
             class="p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between {preference === 'morning' ? 'bg-amber-50/80 border-amber-500 ring-2 ring-amber-500/20' : 'bg-slate-50 border-slate-200 hover:bg-slate-100'}"
           >
             <div class="flex items-center justify-between">
@@ -229,7 +254,7 @@
           <!-- Afternoon -->
           <button
             type="button"
-            onclick={() => (preference = "afternoon")}
+            onclick={() => selectPreset("afternoon")}
             class="p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between {preference === 'afternoon' ? 'bg-indigo-50/80 border-indigo-500 ring-2 ring-indigo-500/20' : 'bg-slate-50 border-slate-200 hover:bg-slate-100'}"
           >
             <div class="flex items-center justify-between">
@@ -245,7 +270,7 @@
           <!-- Custom -->
           <button
             type="button"
-            onclick={() => (preference = "custom")}
+            onclick={() => selectPreset("custom")}
             class="p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between {preference === 'custom' ? 'bg-emerald-50/80 border-emerald-500 ring-2 ring-emerald-500/20' : 'bg-slate-50 border-slate-200 hover:bg-slate-100'}"
           >
             <div class="flex items-center justify-between">
