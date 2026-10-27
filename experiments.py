@@ -75,23 +75,31 @@ def _apply_preset(args: argparse.Namespace) -> None:
         args.exclude_heuristic.append("repair_clash")
 
 
-def _make_selector(selector_name: str) -> "HeuristicSelector":
+def _make_selector(
+    selector_name: str, initial_q_map: dict[str, float] | None = None
+) -> "HeuristicSelector":
     from src.selectors import EpsilonGreedySelector, RandomSelector, UCBSelector
 
     if selector_name == "epsilon-greedy":
-        return EpsilonGreedySelector()
+        return EpsilonGreedySelector(initial_q_map=initial_q_map)
     if selector_name == "ucb":
-        return UCBSelector()
+        return UCBSelector(initial_q_map=initial_q_map)
     if selector_name == "ucb-2state":
-        return UCBSelector(collapse_stagnation=True)
+        return UCBSelector(collapse_stagnation=True, initial_q_map=initial_q_map)
     if selector_name == "ucb-c03":
-        return UCBSelector(c=0.3)
+        return UCBSelector(c=0.3, initial_q_map=initial_q_map)
     if selector_name.startswith("ucb-a="):
         # e.g. "ucb-a=0.08" -- the Q forgetting rate (default 0.02)
-        return UCBSelector(alpha=float(selector_name.removeprefix("ucb-a=")))
+        return UCBSelector(
+            alpha=float(selector_name.removeprefix("ucb-a=")),
+            initial_q_map=initial_q_map,
+        )
     if selector_name.startswith("ucb-c="):
         # e.g. "ucb-c=0.01" -- used to calibrate the exploration constant
-        return UCBSelector(c=float(selector_name.removeprefix("ucb-c=")))
+        return UCBSelector(
+            c=float(selector_name.removeprefix("ucb-c=")),
+            initial_q_map=initial_q_map,
+        )
     return RandomSelector()
 
 
@@ -123,6 +131,7 @@ def _run_one(
     time_aware_reward: bool = False,
     exclude_heuristics: tuple[str, ...] = (),
     perturbations: bool = True,
+    adaptive: bool = False,
 ) -> RunResult:
     """Run one solver configuration. Imports inside so ProcessPoolExecutor
     can spawn cleanly without pickling the module-level state."""
@@ -145,7 +154,24 @@ def _run_one(
     initial = build(instance, rng)
     inf0, obj0 = evaluate_cost_components(instance, initial)
 
-    selector = _make_selector(selector_name)
+    initial_q_map = None
+    if adaptive:
+        from src.preprocessing import analyze_instance, get_recommended_solver_config
+
+        profile = analyze_instance(instance)
+        rec = get_recommended_solver_config(profile)
+        initial_q_map = rec["initial_q_map"]
+        active_heuristics = [
+            h for h in rec["heuristics"] if h.id not in exclude_heuristics
+        ]
+        if perturbations and not rec["perturbations"]:
+            perturbations = False
+    else:
+        active_heuristics = [
+            h for h in MANUAL_HEURISTICS if h.id not in exclude_heuristics
+        ]
+
+    selector = _make_selector(selector_name, initial_q_map=initial_q_map)
     acceptance = _make_acceptance(acceptance_name, time_limit)
 
     iters_done = [0]
@@ -177,7 +203,7 @@ def _run_one(
             min_relative_improvement=MIN_RELATIVE_IMPROVEMENT,
             select_perturbations=select_perturbations,
             time_aware_reward=time_aware_reward,
-            heuristics=[h for h in MANUAL_HEURISTICS if h.id not in exclude_heuristics],
+            heuristics=active_heuristics,
             perturbations=perturbations,
         )
     finally:
@@ -357,6 +383,11 @@ def main() -> None:
             "UCB alpha 0.08, no repair_clash"
         ),
     )
+    parser.add_argument(
+        "--adaptive",
+        action="store_true",
+        help="Dostosuj pule heurystyk i wagi selektora do profilu instancji",
+    )
     args = parser.parse_args()
     _apply_preset(args)
 
@@ -408,6 +439,7 @@ def main() -> None:
                 args.time_aware_reward,
                 tuple(args.exclude_heuristic),
                 not args.no_perturbations,
+                args.adaptive,
             ): (inst, sel, acc, seed)
             for inst, sel, acc, seed in jobs
         }

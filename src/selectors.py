@@ -69,9 +69,15 @@ class EpsilonGreedySelector:
     """Selects the best heuristic with probability 1-epsilon, else randomly.
     Uses Exponential Moving Average (EMA) to react to non-stationarity."""
 
-    def __init__(self, epsilon: float = 0.1, alpha: float = 0.05) -> None:
+    def __init__(
+        self,
+        epsilon: float = 0.1,
+        alpha: float = 0.05,
+        initial_q_map: dict[str, float] | None = None,
+    ) -> None:
         self.epsilon = epsilon
         self.alpha = alpha
+        self.initial_q_map = dict(initial_q_map) if initial_q_map is not None else {}
         self._q_values: dict[str, float] = {}
 
     def snapshot(self) -> dict[str, Any]:
@@ -93,7 +99,7 @@ class EpsilonGreedySelector:
 
         for h in heuristics:
             if h.id not in self._q_values:
-                self._q_values[h.id] = 0.0
+                self._q_values[h.id] = self.initial_q_map.get(h.id, 0.0)
 
         if rng.random() < self.epsilon:
             return rng.choice(heuristics)
@@ -151,6 +157,7 @@ class UCBSelector:
         min_pulls_before_removal: int = _MIN_PULLS_BEFORE_REMOVAL,
         initial_q: float = _OPTIMISTIC_Q,
         collapse_stagnation: bool = False,
+        initial_q_map: dict[str, float] | None = None,
     ) -> None:
         self.c = c
         self.alpha = alpha
@@ -158,6 +165,7 @@ class UCBSelector:
         self.min_pulls_before_removal = min_pulls_before_removal
         self.initial_q = initial_q
         self.collapse_stagnation = collapse_stagnation
+        self.initial_q_map = dict(initial_q_map) if initial_q_map is not None else {}
         # 2 states when collapse_stagnation=True, 6 otherwise
         self._all_states: tuple[SolverState, ...] = (
             _ALL_STATES_2 if collapse_stagnation else _ALL_STATES_6
@@ -190,6 +198,7 @@ class UCBSelector:
                 "c": self.c,
                 "alpha": self.alpha,
                 "initial_q": self.initial_q,
+                "initial_q_map": self.initial_q_map,
                 "collapse_stagnation": self.collapse_stagnation,
                 "pool_limit": self.pool_limit,
                 "min_pulls_before_removal": self.min_pulls_before_removal,
@@ -205,10 +214,11 @@ class UCBSelector:
 
     def _init_heuristic(self, h_id: str) -> None:
         """Lazily create state slots for a heuristic with optimistic Q."""
+        init_q = self.initial_q_map.get(h_id, self.initial_q)
         for s in self._all_states:
             key = (s, h_id)
             if key not in self._stats:
-                self._stats[key] = (self.initial_q, 0.0)
+                self._stats[key] = (init_q, 0.0)
 
     def add_heuristic(
         self, heuristic: Heuristic, initial_q: float | None = None
@@ -218,7 +228,11 @@ class UCBSelector:
         Called by the LLM pipeline (Etap 7) when a new heuristic enters the
         pool at a synchronisation point. The explicit `initial_q` overrides the
         instance default when a caller wants a specific value."""
-        q = initial_q if initial_q is not None else self.initial_q
+        q = (
+            initial_q
+            if initial_q is not None
+            else self.initial_q_map.get(heuristic.id, self.initial_q)
+        )
         for s in self._all_states:
             key = (s, heuristic.id)
             if key not in self._stats:

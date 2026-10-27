@@ -21,12 +21,18 @@ from pathlib import Path
 from src.acceptance import AcceptanceCriterion, AutoSAAcceptance, LAHCAcceptance
 from src.construct import build_greedy, build_initial
 from src.evaluator_ref import evaluate_constraint_costs, resolve_occurrences
+from src.heuristics import MANUAL_HEURISTICS, Heuristic
 from src.html_report import render_timetable_page
 from src.lahc import RunStats, run_lahc
-from src.selectors import EpsilonGreedySelector, RandomSelector, UCBSelector
-from src.solve_log import SolveLogger
 from src.model import Instance, Solution, SolutionGroup
 from src.parser import parse_archive
+from src.preprocessing import (
+    InstanceProfile,
+    analyze_instance,
+    get_recommended_solver_config,
+)
+from src.selectors import EpsilonGreedySelector, RandomSelector, UCBSelector
+from src.solve_log import SolveLogger
 from src.xml_writer import (
     extract_instance_archive,
     render_archive_with_solution_groups,
@@ -168,6 +174,7 @@ def solve(
     construct: str = "greedy",
     idle_limit: int | None = DEFAULT_IDLE_LIMIT,
     perturbations: bool = True,
+    heuristics: list[Heuristic] | None = None,
 ) -> SolveResult:
     """Buduje rozwiazanie poczatkowe i uruchamia solver; zwraca spakowany wynik."""
     build = build_greedy if construct == "greedy" else build_initial
@@ -188,6 +195,7 @@ def solve(
         initial,
         rng,
         history_length=history_length,
+        heuristics=heuristics,
         selector=selector,
         max_iterations=iterations,
         max_seconds=time_limit,
@@ -289,6 +297,14 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
                         help="Wylacz perturbacje przy stagnacji (sam SA z selektorem; "
                         "na duzych instancjach dalo to najlepsze wyniki 18.10.2026)")
     parser.add_argument(
+        "--adaptive",
+        action="store_true",
+        help=(
+            "Dostosuj pule heurystyk i wagi selektora (initial_q) do "
+            "profilu instancji (skala, ciasnosc)."
+        ),
+    )
+    parser.add_argument(
         "--output",
         type=Path,
         default=None,
@@ -307,6 +323,32 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         ),
     )
     return parser.parse_args(argv)
+
+
+def _setup_adaptive(
+    args: argparse.Namespace,
+    profile: InstanceProfile,
+) -> tuple[list[Heuristic] | None, dict[str, float] | None, bool]:
+    heuristics_pool = None
+    initial_q_map = None
+    perturbations = not args.no_perturbations
+
+    if args.adaptive:
+        recommended = get_recommended_solver_config(profile)
+        heuristics_pool = recommended["heuristics"]
+        initial_q_map = recommended["initial_q_map"]
+        if not args.no_perturbations and not recommended["perturbations"]:
+            perturbations = False
+            print("  Adaptacja: wylaczono perturbacje (duza instancja)")
+        excluded = [h.id for h in MANUAL_HEURISTICS if h not in heuristics_pool]
+        if excluded:
+            ex_str = ", ".join(sorted(excluded))
+            print(f"  Adaptacja: wykluczono {len(excluded)} heurystyk: {ex_str}")
+        print(
+            "  Adaptacja: wagi selektora dopasowane do ciasnosci "
+            f"({profile.tightness_category})\n"
+        )
+    return heuristics_pool, initial_q_map, perturbations
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -332,8 +374,12 @@ def main(argv: list[str] | None = None) -> None:
     print(f"Instancja: {instance.id} ({instance.name})")
     print(
         f"  Zdarzenia={len(instance.events)}  Czasy={len(instance.times)}  "
-        f"Zasoby={len(instance.resources)}  Ograniczenia={len(instance.constraints)}\n"
+        f"Zasoby={len(instance.resources)}  Ograniczenia={len(instance.constraints)}"
     )
+    profile = analyze_instance(instance)
+    print(f"  Profil: {profile.summary()}\n")
+
+    heuristics_pool, initial_q_map, perturbations = _setup_adaptive(args, profile)
 
     if args.acceptance == "sa":
         # SA z temperatura startowa wzgledem kosztu startowego, jak w
@@ -361,9 +407,9 @@ def main(argv: list[str] | None = None) -> None:
     )
     selector_obj: RandomSelector | EpsilonGreedySelector | UCBSelector
     if args.selector == "epsilon-greedy":
-        selector_obj = EpsilonGreedySelector()
+        selector_obj = EpsilonGreedySelector(initial_q_map=initial_q_map)
     elif args.selector == "ucb":
-        selector_obj = UCBSelector()
+        selector_obj = UCBSelector(initial_q_map=initial_q_map)
     else:
         selector_obj = RandomSelector()
 
@@ -392,7 +438,8 @@ def main(argv: list[str] | None = None) -> None:
             acceptance=acceptance_obj,
             construct=args.construct,
             idle_limit=resolve_idle_limit(args.idle_limit, instance),
-            perturbations=not args.no_perturbations,
+            perturbations=perturbations,
+            heuristics=heuristics_pool,
         )
         rate = (
             result.stats.steps_done / result.elapsed_seconds
