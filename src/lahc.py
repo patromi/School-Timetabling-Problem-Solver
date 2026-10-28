@@ -7,7 +7,7 @@ from typing import Any
 from src.acceptance import AcceptanceCriterion, SimulatedAnnealingAcceptance
 from src.cost import evaluate_cost
 from src.evaluator_ref import INFEASIBILITY_WEIGHT
-from src.heuristics import MANUAL_HEURISTICS, Heuristic
+from src.heuristics import Heuristic, default_pool
 from src.incremental import (
     IncrementalEvaluator,
     StructuralChangeError,
@@ -200,7 +200,7 @@ def run_lahc(
     """
     if evaluation not in (FULL, INCREMENTAL, VERIFY):
         raise ValueError(f"unknown evaluation mode: {evaluation!r}")
-    pool = heuristics if heuristics is not None else MANUAL_HEURISTICS
+    pool = heuristics if heuristics is not None else default_pool(instance)
 
     if selector is None:
         selector = UCBSelector()

@@ -212,8 +212,13 @@ def test_time_swap_move_swaps_two_events_times():
 
 
 def test_resource_reassign_move_changes_one_resource_to_a_same_type_alternative():
-    instance, solution = _sudoku_solution()
+    # Sudoku allows one room per event, so use a fixture with real choices.
+    instance = parse_archive(_load("ResourceAssignment.xml"))[0]
+    solution = build_initial(instance, random.Random(0))
     room_ids = {r.id for r in instance.resources if r.resource_type_ref == "Room"}
+    teacher_ids = {
+        r.id for r in instance.resources if r.resource_type_ref == "Teacher"
+    }
 
     new_solution = resource_reassign_move(instance, solution, random.Random(3))
 
@@ -229,10 +234,10 @@ def test_resource_reassign_move_changes_one_resource_to_a_same_type_alternative(
     ]
     assert len(old_flat) == len(new_flat)
     diffs = [(o, n) for o, n in zip(old_flat, new_flat) if o != n]
-    assert len(diffs) == 1
+    assert diffs
     (event_ref, role, old_ref), (_, _, new_ref) = diffs[0]
     assert new_ref != old_ref
-    assert new_ref in room_ids
+    assert new_ref in (room_ids if role == "Room" else teacher_ids)
 
 
 def test_time_reassign_move_never_overflows_a_day_boundary_or_the_time_array():

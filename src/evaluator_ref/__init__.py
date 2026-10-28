@@ -11,8 +11,10 @@ from src.evaluator_ref._cache import (
 )
 from src.evaluator_ref.constraints import (
     _event_resource_workload,
+    _occurrence_workload,
     _preferred_resource_ids,
     _preferred_time_ids,
+    _workload_deviation,
     evaluate_constraint,
 )
 from src.evaluator_ref.occurrences import (
@@ -36,6 +38,8 @@ __all__ = [
     "_assigned_resource",
     "_assigned_resource_ids",
     "_event_resource_workload",
+    "_occurrence_workload",
+    "_workload_deviation",
     "_shortfall_or_excess",
     "_build_occupancy_index",
     "_event_group_members",

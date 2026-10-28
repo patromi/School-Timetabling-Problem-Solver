@@ -1184,8 +1184,8 @@ def test_limit_workload_constraint_event_resource_falls_back_to_event_workload()
 def _workload_split_rounding_archive() -> str:
     # Event duration=2, Workload=1 (defaults through to EventResource).
     # Split into two duration-1 sub-events -> each contributes
-    # Workload(sr) = 1 * 1 / 2 = 0.5. Per-term rounding (spec) gives
-    # ceil(0.5)+ceil(0.5)=2; rounding the total once would give ceil(1.0)=1.
+    # Workload(sr) = 1 * 1 / 2 = 0.5. HSEval sums these unrounded (1.0);
+    # the spec's per-term rounding would give ceil(0.5)+ceil(0.5)=2.
     return """<HighSchoolTimetableArchive>
   <Instances>
     <Instance Id="I1">
@@ -1221,7 +1221,7 @@ def _workload_split_rounding_archive() -> str:
 </HighSchoolTimetableArchive>"""
 
 
-def test_limit_workload_constraint_rounds_each_solution_resource_before_summing():
+def test_limit_workload_constraint_sums_split_workloads_unrounded():
     instance = parse_archive(_workload_split_rounding_archive())[0]
     solution = Solution(
         instance_ref=instance.id,
@@ -1233,32 +1233,58 @@ def test_limit_workload_constraint_rounds_each_solution_resource_before_summing(
     occurrences = resolve_occurrences(instance, solution)
     constraint = instance.constraints[0]
 
-    # Per-term rounding gives total workload 2 -> within [Minimum=2,
-    # Maximum=2] -> deviation 0. (Rounding the raw sum 1.0 once would also
-    # give 1 -> deviation 1 (short of Minimum=2) -- this test only proves
-    # per-term rounding lands exactly on bounds where the wrong strategy
-    # wouldn't; see the shortfall-detecting variant below for a case that
-    # actually distinguishes the two strategies by an observable difference.)
-    assert evaluate_constraint(instance, occurrences, constraint) == 0
+    # Total workload 0.5 + 0.5 = 1, short of Minimum=2 by 1 -- as HSEval
+    # computes it (verified on AU-TE-99, where per-term rounding gave
+    # 37 000 against HSEval's 23 000).
+    assert evaluate_constraint(instance, occurrences, constraint) == 1
 
 
-def test_limit_workload_constraint_per_term_rounding_differs_from_total_rounding():
+def test_limit_workload_constraint_rounds_only_the_deviation_up():
     instance = parse_archive(_workload_split_rounding_archive())[0]
-    # Same split as above, but require exactly Minimum=Maximum=3: per-term
-    # rounding gives total=2 (short by 1); total-then-round would give
-    # ceil(0.5+0.5)=1 (short by 2). The two strategies disagree by 1.
-    instance.constraints[0].params["Minimum"] = "3"
-    instance.constraints[0].params["Maximum"] = "3"
+    # One duration-1 piece only: workload 0.5 against Minimum=Maximum=2
+    # -> shortfall 1.5, rounded up to 2 (KHE's KheLimitWorkloadMonitorDev).
     solution = Solution(
         instance_ref=instance.id,
-        events=[
-            SolutionEvent(event_ref="E1", time_ref="Day_1", duration=1),
-            SolutionEvent(event_ref="E1", time_ref="Day_2", duration=1),
-        ],
+        events=[SolutionEvent(event_ref="E1", time_ref="Day_1", duration=1)],
     )
     occurrences = resolve_occurrences(instance, solution)
     constraint = instance.constraints[0]
 
+    assert evaluate_constraint(instance, occurrences, constraint) == 2
+
+
+def test_limit_workload_constraint_reads_each_resources_own_workload():
+    # Two preassigned resources with the same empty role (as in AU-*): only
+    # T1 declares Workload=2, so R1 must fall back to the duration (3).
+    instance = parse_archive(
+        _workload_split_rounding_archive()
+        .replace(
+            "<Duration>2</Duration>\n          <Workload>1</Workload>",
+            "<Duration>3</Duration>",
+        )
+        .replace(
+            '<Resource Reference="T1"><Role>Teacher</Role></Resource>',
+            '<Resource Reference="T1"><Workload>2</Workload></Resource>'
+            '<Resource Reference="R1"></Resource>',
+        )
+        .replace(
+            '<AppliesTo><Resources><Resource Reference="T1"/></Resources></AppliesTo>',
+            '<AppliesTo><Resources><Resource Reference="R1"/></Resources></AppliesTo>',
+        )
+        .replace(
+            '<Resource Id="T1">',
+            '<Resource Id="R1"><Name>R1</Name><ResourceType Reference="Teacher"/>'
+            '<ResourceGroups></ResourceGroups></Resource><Resource Id="T1">',
+        )
+    )[0]
+    solution = Solution(
+        instance_ref=instance.id,
+        events=[SolutionEvent(event_ref="E1", time_ref="Day_1", duration=3)],
+    )
+    occurrences = resolve_occurrences(instance, solution)
+    constraint = instance.constraints[0]
+
+    # R1 workload 3 against Minimum=Maximum=2 -> excess 1 (2 would give 0).
     assert evaluate_constraint(instance, occurrences, constraint) == 1
 
 

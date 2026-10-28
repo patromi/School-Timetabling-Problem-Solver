@@ -334,7 +334,7 @@ def _perturbation_count(min_relative_improvement: float) -> int:
         idle_limit=50,
         min_relative_improvement=min_relative_improvement,
         logger=SolveLogger(out),
-        # pinned to the configuration the reference count (52) was taken with
+        # pinned to the configuration the reference count (55) was taken with
         acceptance=LAHCAcceptance(30),
         selector=RandomSelector(),
         heuristics=[h for h in MANUAL_HEURISTICS if h.id != "repair_clash"],
@@ -352,10 +352,12 @@ def test_small_improvements_do_not_reset_stagnation_when_a_minimum_is_set():
 
 
 def test_a_zero_minimum_improvement_keeps_the_original_stagnation_rule():
-    # 52 is the perturbation count of this seeded run before
+    # 55 is the perturbation count of this seeded run before
     # min_relative_improvement existed (every strictly better new best reset
     # the counter); the default 0 must reproduce that trajectory exactly.
-    assert _perturbation_count(0.0) == 52
+    # (Was 52 while resource_reassign could still move Sudoku rooms outside
+    # their one-room Required domain.)
+    assert _perturbation_count(0.0) == 55
 
 
 class _OfferedSelector(_RecordingSelector):

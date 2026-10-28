@@ -1,6 +1,7 @@
 import math
 from collections import Counter
 from collections.abc import Callable
+from fractions import Fraction
 
 from src.evaluator_ref._cache import (
     _event_group_members,
@@ -43,7 +44,7 @@ def _evaluate_assign_time_constraint(
         for deviation in unassigned_duration.values()
     )
 
-
+    
 def _evaluate_avoid_clashes_constraint(
     instance: Instance, occurrences: list[Occurrence], constraint: Constraint
 ) -> int:
@@ -261,40 +262,62 @@ _EVALUATORS: dict[str, _EvaluatorFn] = {
 }
 
 
-def _event_resource_workload(event_def: Event, role: str) -> int:
+def _event_resource_workload(event_def: Event, position: int) -> float:
     # Chain (spec, verbatim): EventResource.Workload if present, else the
     # enclosing Event's Workload if present, else the Event's Duration.
-    er = next((x for x in event_def.resources if x.role == role), None)
-    if er is not None and er.workload is not None:
-        return er.workload
+    # By position in Occurrence.resource_assignments, which starts as a copy
+    # of event_def.resources: preassigned resources often share an empty
+    # role (AU-*), so a role lookup returned another resource's workload.
+    if position < len(event_def.resources):
+        workload = event_def.resources[position].workload
+        if workload is not None:
+            return workload
     if event_def.workload is not None:
         return event_def.workload
     return event_def.duration
+
+
+def _occurrence_workload(event_def: Event, position: int, duration: int) -> Fraction:
+    """Workload(sr) = Duration(se) * Workload(er) / Duration(e), kept exact."""
+    workload = Fraction(_event_resource_workload(event_def, position))
+    return workload * Fraction(duration, event_def.duration)
+
+
+# HSEval compares workloads against the limits with this slack
+# (KheLimitWorkloadMonitorDev in KHE's khe_limit_workload_monitor.c).
+_WORKLOAD_SLACK = Fraction(1, 1000)
+
+
+def _workload_deviation(workload: Fraction, minimum: int, maximum: int) -> int:
+    if workload < minimum - _WORKLOAD_SLACK:
+        return math.ceil(minimum - _WORKLOAD_SLACK - workload)
+    if workload > maximum + _WORKLOAD_SLACK:
+        return math.ceil(workload - maximum - _WORKLOAD_SLACK)
+    return 0
 
 
 def _evaluate_limit_workload_constraint(
     instance: Instance, occurrences: list[Occurrence], constraint: Constraint
 ) -> int:
     # Point of application: one resource. Deviation = shortfall/excess of
-    # total assigned workload against Minimum/Maximum. Workload(sr) =
-    # Duration(se) * Workload(er) / Duration(e) for each solution resource
-    # sr, EACH rounded up to an integer before being summed (spec,
-    # verbatim: "Each amount is rounded up to the next integer before
-    # being added to the sum").
+    # total assigned workload against Minimum/Maximum, with the fractional
+    # Workload(sr) terms summed unrounded and only the deviation rounded up
+    # -- what HSEval computes. (The spec's per-term rounding over-counted
+    # split events on AU-TE-99: 37 000 vs HSEval's 23 000.)
     minimum = int(constraint.params.get("Minimum", 0))
     maximum = int(constraint.params.get("Maximum", 10**9))
     events_by_id = {e.id: e for e in instance.events}
     total = 0
     for resource_id in _resources_in_applies_to(instance, constraint.applies_to):
-        workload_sum = 0
+        workload_sum = Fraction(0)
         for o in occurrences:
             event_def = events_by_id[o.event_ref]
-            for role, assigned in o.resource_assignments:
-                if assigned != resource_id:
-                    continue
-                workload = _event_resource_workload(event_def, role)
-                workload_sum += math.ceil(workload * (o.duration / event_def.duration))
-        deviation = _shortfall_or_excess(workload_sum, minimum, maximum)
+            for position, (_, assigned) in enumerate(o.resource_assignments):
+                if assigned == resource_id:
+                    workload_sum += _occurrence_workload(
+                        event_def, position, o.duration
+                    )
+        deviation = _workload_deviation(workload_sum, minimum, maximum)
         total += constraint.weight * apply_cost_function(
             constraint.cost_function, deviation
         )

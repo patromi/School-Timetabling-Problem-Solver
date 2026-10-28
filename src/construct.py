@@ -16,6 +16,7 @@ from src.model import (
     SolutionEvent,
     SolutionEventResource,
 )
+from src.resource_domains import assignment_group, shared_domain, soft_preferred
 
 
 def _split_duration_bounds(instance: Instance, event: Event) -> tuple[int, int]:
@@ -80,8 +81,9 @@ def _split_durations(total: int, min_duration: int, max_duration: int) -> list[i
 def build_initial(instance: Instance, rng: random.Random) -> Solution:
     """Naive greedy constructor: every event slot (time or event resource)
     left unassigned by the Instance gets an arbitrary, structurally-valid
-    (matching ResourceType, non-overflowing time span, split according to
-    any applicable SplitEventsConstraint) but constraint-blind assignment.
+    (resource from resource_domains.resource_domain, non-overflowing time
+    span, split according to any applicable SplitEventsConstraint) but
+    otherwise constraint-blind assignment.
     Produces a *complete* solution (no None left anywhere) with no regard
     for constraint cost -- the starting point for local-search improvement
     (LAHC etc.), not a solution in its own right.
@@ -90,9 +92,7 @@ def build_initial(instance: Instance, rng: random.Random) -> Solution:
     are skipped entirely, matching the real-file convention (confirmed via
     HSEval reference solutions) that such events need no explicit
     SolutionEvent entry."""
-    resources_by_type: dict[str, list[str]] = {}
-    for r in instance.resources:
-        resources_by_type.setdefault(r.resource_type_ref, []).append(r.id)
+    group_choices: dict[tuple[str, frozenset[str]], str] = {}
 
     events = []
     for event in instance.events:
@@ -101,12 +101,15 @@ def build_initial(instance: Instance, rng: random.Random) -> Solution:
         if not needs_time and not unassigned_roles:
             continue
 
-        # One choice per role, reused across splits -- keeps teacher/room stable,
-        # a better start for AvoidSplitAssignmentsConstraint than re-rolling per piece.
-        role_choices = {
-            er.role: rng.choice(resources_by_type[er.resource_type_ref])
-            for er in unassigned_roles
-        }
+        # One choice per role and assignment group, reused across splits and
+        # across the group's events -- the start AvoidSplitAssignments wants.
+        role_choices = {}
+        for er in unassigned_roles:
+            group = assignment_group(instance, event.id, er.role)
+            key = (er.role, group)
+            if key not in group_choices:
+                group_choices[key] = rng.choice(shared_domain(instance, group, er.role))
+            role_choices[er.role] = group_choices[key]
 
         def _fresh_resources(
             # Default arg (not closure): binds role_choices at definition time (ruff B023).
@@ -158,10 +161,16 @@ def build_greedy(instance: Instance, rng: random.Random) -> Solution:
 
     Only clashes guide the choice: diagnostics on the in-scope instances
     show AvoidClashesConstraint as the dominant hard violation, and every
-    other constraint is left to local search."""
+    other constraint is left to local search.
+
+    Assignable resources are chosen here too, when the first piece of their
+    assignment group (resource_domains.assignment_group) is placed: the
+    piece is timed by its preassigned resources, then each open role gets
+    the domain resource with the fewest overlaps at that time, preferring
+    soft-preferred and then less loaded resources."""
     base = build_initial(instance, rng)
-    position = {t.id: k for k, t in enumerate(instance.times)}
-    event_defs = {e.id: e for e in instance.events}
+    table = _Bookings(instance, rng)
+    event_defs = table.event_defs
 
     movable = [
         i
@@ -170,50 +179,127 @@ def build_greedy(instance: Instance, rng: random.Random) -> Solution:
     ]
     movable_refs = {base.events[i].event_ref for i in movable}
 
-    busy: dict[tuple[str, int], int] = {}
-
-    def book(resources: list[str], time_ref: str, duration: int) -> None:
-        start = position[time_ref]
-        for r in resources:
-            for p in range(start, start + duration):
-                busy[(r, p)] = busy.get((r, p), 0) + 1
-
-    def resources_of(occurrence: Occurrence) -> list[str]:
-        return [r for _, r in occurrence.resource_assignments if r is not None]
-
     for occurrence in resolve_occurrences(instance, base):
         if occurrence.event_ref not in movable_refs and occurrence.time_ref:
-            book(resources_of(occurrence), occurrence.time_ref, occurrence.duration)
+            table.book(
+                table.preassigned(occurrence.event_ref),
+                occurrence.time_ref,
+                occurrence.duration,
+            )
+
+    events = list(base.events)
+    # Fixed-time events that only need resources: their time is known upfront.
+    for i, se in enumerate(base.events):
+        fixed_time = event_defs[se.event_ref].time_ref
+        if se.time_ref is None and se.resources and fixed_time is not None:
+            events[i] = table.place(se, fixed_time, event_defs[se.event_ref].duration)
 
     def difficulty(i: int) -> tuple[int, int]:
         se = base.events[i]
         occurrence = resolve_occurrence(event_defs[se.event_ref], se)
-        return (se.duration or 0, len(resources_of(occurrence)))
+        return (se.duration or 0, len(_resources_of(occurrence)))
 
     order = list(movable)
     rng.shuffle(order)  # random order among equally hard pieces
     order.sort(key=difficulty, reverse=True)
 
-    events = list(base.events)
     for i in order:
         se = events[i]
         assert se.duration is not None and se.time_ref is not None
-        resources = resources_of(resolve_occurrence(event_defs[se.event_ref], se))
+        time_ref = se.time_ref
+        resources = table.known_resources(se)
         candidates = list(valid_start_time_ids(instance, se.duration))
         if candidates:
-            counts = {
-                t: _overlaps(busy, resources, position[t], se.duration)
-                for t in candidates
-            }
+            counts = {t: table.overlaps(resources, t, se.duration) for t in candidates}
             fewest = min(counts.values())
-            se = replace(
-                se, time_ref=rng.choice([t for t in candidates if counts[t] == fewest])
-            )
-            events[i] = se
-        assert se.time_ref is not None and se.duration is not None
-        book(resources, se.time_ref, se.duration)
+            time_ref = rng.choice([t for t in candidates if counts[t] == fewest])
+        events[i] = table.place(se, time_ref, se.duration)
 
     return replace(base, events=events)
+
+
+def _resources_of(occurrence: Occurrence) -> list[str]:
+    return [r for _, r in occurrence.resource_assignments if r is not None]
+
+
+class _Bookings:
+    """build_greedy's state: how many placed pieces use each (resource,
+    period), each resource's booked periods, and the resource chosen for
+    each (role, assignment group) once its first piece is placed."""
+
+    def __init__(self, instance: Instance, rng: random.Random) -> None:
+        self.instance = instance
+        self.rng = rng
+        self.position = {t.id: k for k, t in enumerate(instance.times)}
+        self.event_defs = {e.id: e for e in instance.events}
+        self.busy: dict[tuple[str, int], int] = {}
+        self.load: dict[str, int] = {}
+        self.chosen: dict[tuple[str, frozenset[str]], str] = {}
+
+    def book(self, resources: list[str], time_ref: str, duration: int) -> None:
+        start = self.position[time_ref]
+        for r in resources:
+            self.load[r] = self.load.get(r, 0) + duration
+            for p in range(start, start + duration):
+                self.busy[(r, p)] = self.busy.get((r, p), 0) + 1
+
+    def overlaps(self, resources: list[str], time_ref: str, duration: int) -> int:
+        return _overlaps(self.busy, resources, self.position[time_ref], duration)
+
+    def preassigned(self, event_ref: str) -> list[str]:
+        return [
+            er.resource_ref
+            for er in self.event_defs[event_ref].resources
+            if er.resource_ref is not None
+        ]
+
+    def _key(self, event_ref: str, role: str) -> tuple[str, frozenset[str]]:
+        return (role, assignment_group(self.instance, event_ref, role))
+
+    def known_resources(self, se: SolutionEvent) -> list[str]:
+        """Preassigned resources plus those already chosen for its roles."""
+        known = self.preassigned(se.event_ref)
+        for sr in se.resources:
+            key = self._key(se.event_ref, sr.role)
+            if key in self.chosen:
+                known.append(self.chosen[key])
+        return known
+
+    def place(self, se: SolutionEvent, time_ref: str, duration: int) -> SolutionEvent:
+        """`se` at `time_ref`, its still open roles filled with the domain
+        resource that overlaps the fewest placed pieces there; booked."""
+        taken = self.preassigned(se.event_ref)
+        resources = []
+        for sr in se.resources:
+            key = self._key(se.event_ref, sr.role)
+            if key not in self.chosen:
+                self.chosen[key] = self._pick(
+                    se.event_ref, sr.role, taken, time_ref, duration
+                )
+            taken.append(self.chosen[key])
+            resources.append(
+                SolutionEventResource(role=sr.role, resource_ref=self.chosen[key])
+            )
+        self.book(taken, time_ref, duration)
+        if se.time_ref is None:
+            return replace(se, resources=resources) if resources else se
+        return replace(se, time_ref=time_ref, resources=resources)
+
+    def _pick(
+        self, event_ref: str, role: str, taken: list[str], time_ref: str, duration: int
+    ) -> str:
+        preferred = soft_preferred(self.instance, event_ref, role)
+        group = assignment_group(self.instance, event_ref, role)
+        scores = {
+            r: (
+                self.overlaps([r], time_ref, duration) + taken.count(r),
+                r not in preferred,
+                self.load.get(r, 0),
+            )
+            for r in shared_domain(self.instance, group, role)
+        }
+        best = min(scores.values())
+        return self.rng.choice([r for r, s in scores.items() if s == best])
 
 
 def _overlaps(

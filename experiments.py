@@ -131,7 +131,7 @@ def _run_one(
     from src.construct import build_greedy, build_initial
     from src.cost import cost_by_constraint_type
     from src.evaluator_ref import evaluate_cost_components
-    from src.heuristics import MANUAL_HEURISTICS
+    from src.heuristics import default_pool
     from src.lahc import run_lahc
     from src.parser import parse_archive
     from src.solve_log import SolveLogger
@@ -177,7 +177,9 @@ def _run_one(
             min_relative_improvement=MIN_RELATIVE_IMPROVEMENT,
             select_perturbations=select_perturbations,
             time_aware_reward=time_aware_reward,
-            heuristics=[h for h in MANUAL_HEURISTICS if h.id not in exclude_heuristics],
+            heuristics=[
+                h for h in default_pool(instance) if h.id not in exclude_heuristics
+            ],
             perturbations=perturbations,
         )
     finally:

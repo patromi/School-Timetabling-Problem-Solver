@@ -17,10 +17,16 @@ from src.moves import (
     kempe_chain_move,
     large_perturbation_move,
     resource_reassign_move,
+    resource_swap_move,
     small_perturbation_move,
     split_resize_move,
     time_reassign_move,
     time_swap_move,
+)
+from src.resource_domains import (
+    has_resource_choices,
+    resource_units,
+    with_unit_resource,
 )
 
 
@@ -162,6 +168,14 @@ def resource_reassign(
     apply(solution, instance, rng) argument order. Raises ValueError (via
     resource_reassign_move) if no event resource has a same-type alternative."""
     return resource_reassign_move(instance, solution, rng)
+
+
+def resource_swap(
+    solution: Solution, instance: Instance, rng: random.Random
+) -> Solution:
+    """Thin wrapper around moves.resource_swap_move, adapted to the pool's
+    apply(solution, instance, rng) argument order."""
+    return resource_swap_move(instance, solution, rng)
 
 
 def kempe_chain(solution: Solution, instance: Instance, rng: random.Random) -> Solution:
@@ -357,6 +371,9 @@ class _ClashTable:
         start = self._position[time_ref]
         return range(start, start + duration)
 
+    def count(self, resource: str, period: int) -> int:
+        return self._busy.get((resource, period), 0)
+
     def resources(self, event: SolutionEvent) -> list[str]:
         occurrence = resolve_occurrence(self._event_defs[event.event_ref], event)
         return self._watched_of(_assigned_resource_ids(occurrence))
@@ -451,6 +468,58 @@ def repair_clash(
     if max_probe is not None and len(best_times) > max_probe:
         best_times = rng.sample(best_times, max_probe)
     return _cheapest_time(instance, solution, index, best_times, evaluator)
+
+
+def repair_resource_clash(
+    solution: Solution,
+    instance: Instance,
+    rng: random.Random,
+    max_probe: int | None = None,
+    evaluator: IncrementalEvaluator | None = None,
+) -> Solution:
+    """Resource-side counterpart of repair_clash: picks a resource unit (see
+    resource_domains.resource_units) whose assigned resource is double-booked
+    at one of its times and gives it the domain resource with the fewest
+    overlaps over all those times -- the current one included, so the move
+    never adds clashes. Total cost breaks ties (sampled down to `max_probe`).
+
+    Raises ValueError if no Required AvoidClashesConstraint exists or no
+    assignable resource takes part in a clash."""
+    table = _ClashTable(instance, solution)
+    if not table.watched:
+        raise ValueError("the instance has no Required AvoidClashesConstraint")
+    event_defs = {e.id: e for e in instance.events}
+
+    clashing = []
+    for unit in resource_units(instance, solution):
+        if unit.resource not in table.watched or not unit.domain:
+            continue
+        periods: list[int] = []
+        for i, _ in unit.entries:
+            se = solution.events[i]
+            occurrence = resolve_occurrence(event_defs[se.event_ref], se)
+            if occurrence.time_ref is not None:
+                periods.extend(table.span(occurrence.time_ref, occurrence.duration))
+        if any(table.count(unit.resource, p) > 1 for p in periods):
+            clashing.append((unit, periods))
+    if not clashing:
+        raise ValueError("no assignable resource takes part in a clash")
+
+    unit, periods = rng.choice(clashing)
+    overlaps = {
+        r: sum(table.count(r, p) for p in periods)
+        - (len(periods) if r == unit.resource else 0)
+        for r in unit.domain
+    }
+    fewest = min(overlaps.values())
+    best = [r for r in unit.domain if overlaps[r] == fewest]
+    if max_probe is not None and len(best) > max_probe:
+        best = rng.sample(best, max_probe)
+    scorer = (
+        evaluator if evaluator is not None else IncrementalEvaluator(instance, solution)
+    )
+    candidates = [with_unit_resource(solution, unit, r) for r in best]
+    return min(candidates, key=lambda c: scorer.probe(c).as_scalar())
 
 
 # Probe cap used for the "fast" variants of exhaustive-search heuristics.
@@ -555,3 +624,35 @@ MANUAL_HEURISTICS: list[Heuristic] = [
         incremental_safe=False,
     ),
 ]
+
+# Operators on assignable resources only. Kept out of MANUAL_HEURISTICS so
+# that on fully preassigned instances the pool, and the results, stay as before.
+RESOURCE_HEURISTICS: list[Heuristic] = [
+    Heuristic(
+        id="resource_swap",
+        name="Swap the resources of two event resources",
+        protected=True,
+        apply=resource_swap,
+        incremental_safe=True,
+    ),
+    Heuristic(
+        id="repair_resource_clash",
+        name=f"Give a clashing event resource a free one (sample {_FAST_MAX_PROBE})",
+        protected=True,
+        apply=lambda sol, inst, rng: repair_resource_clash(
+            sol, inst, rng, max_probe=_FAST_MAX_PROBE
+        ),
+        incremental_safe=True,
+        apply_with_evaluator=lambda sol, inst, rng, ev: repair_resource_clash(
+            sol, inst, rng, max_probe=_FAST_MAX_PROBE, evaluator=ev
+        ),
+    ),
+]
+
+
+def default_pool(instance: Instance) -> list[Heuristic]:
+    """MANUAL_HEURISTICS, plus RESOURCE_HEURISTICS when the instance has
+    event resources left for the solver to assign."""
+    if has_resource_choices(instance):
+        return MANUAL_HEURISTICS + RESOURCE_HEURISTICS
+    return list(MANUAL_HEURISTICS)

@@ -1,0 +1,161 @@
+<HighSchoolTimetableArchive>
+	<Instances>
+		<Instance Id="ResourceAssignment">
+			<MetaData>
+				<Name>ResourceAssignment</Name>
+				<Contributor>School-Timetabling-Problem-Solver tests</Contributor>
+				<Date>28/10/2026</Date>
+				<Country>Artificial</Country>
+				<Description>Hand-made test instance: teachers and rooms left for the solver to assign.</Description>
+			</MetaData>
+			<Times>
+				<TimeGroups>
+					<Day Id="gr_Mon"><Name>Mon</Name></Day>
+					<Day Id="gr_Tue"><Name>Tue</Name></Day>
+				</TimeGroups>
+				<Time Id="Mon_1"><Name>Mon_1</Name><Day Reference="gr_Mon"/></Time>
+				<Time Id="Mon_2"><Name>Mon_2</Name><Day Reference="gr_Mon"/></Time>
+				<Time Id="Mon_3"><Name>Mon_3</Name><Day Reference="gr_Mon"/></Time>
+				<Time Id="Tue_1"><Name>Tue_1</Name><Day Reference="gr_Tue"/></Time>
+				<Time Id="Tue_2"><Name>Tue_2</Name><Day Reference="gr_Tue"/></Time>
+				<Time Id="Tue_3"><Name>Tue_3</Name><Day Reference="gr_Tue"/></Time>
+			</Times>
+			<Resources>
+				<ResourceTypes>
+					<ResourceType Id="Teacher"><Name>Teacher</Name></ResourceType>
+					<ResourceType Id="Room"><Name>Room</Name></ResourceType>
+					<ResourceType Id="Class"><Name>Class</Name></ResourceType>
+				</ResourceTypes>
+				<ResourceGroups>
+					<ResourceGroup Id="gr_Teachers"><Name>Teachers</Name><ResourceType Reference="Teacher"/></ResourceGroup>
+					<ResourceGroup Id="gr_Rooms"><Name>Rooms</Name><ResourceType Reference="Room"/></ResourceGroup>
+					<ResourceGroup Id="gr_Labs"><Name>Labs</Name><ResourceType Reference="Room"/></ResourceGroup>
+					<ResourceGroup Id="gr_Classes"><Name>Classes</Name><ResourceType Reference="Class"/></ResourceGroup>
+				</ResourceGroups>
+				<Resource Id="T1"><Name>T1</Name><ResourceType Reference="Teacher"/><ResourceGroups><ResourceGroup Reference="gr_Teachers"/></ResourceGroups></Resource>
+				<Resource Id="T2"><Name>T2</Name><ResourceType Reference="Teacher"/><ResourceGroups><ResourceGroup Reference="gr_Teachers"/></ResourceGroups></Resource>
+				<Resource Id="T3"><Name>T3</Name><ResourceType Reference="Teacher"/><ResourceGroups><ResourceGroup Reference="gr_Teachers"/></ResourceGroups></Resource>
+				<Resource Id="R1"><Name>R1</Name><ResourceType Reference="Room"/><ResourceGroups><ResourceGroup Reference="gr_Rooms"/></ResourceGroups></Resource>
+				<Resource Id="R2"><Name>R2</Name><ResourceType Reference="Room"/><ResourceGroups><ResourceGroup Reference="gr_Rooms"/></ResourceGroups></Resource>
+				<Resource Id="Lab1"><Name>Lab1</Name><ResourceType Reference="Room"/><ResourceGroups><ResourceGroup Reference="gr_Rooms"/><ResourceGroup Reference="gr_Labs"/></ResourceGroups></Resource>
+				<Resource Id="Lab2"><Name>Lab2</Name><ResourceType Reference="Room"/><ResourceGroups><ResourceGroup Reference="gr_Rooms"/><ResourceGroup Reference="gr_Labs"/></ResourceGroups></Resource>
+				<Resource Id="C1"><Name>C1</Name><ResourceType Reference="Class"/><ResourceGroups><ResourceGroup Reference="gr_Classes"/></ResourceGroups></Resource>
+				<Resource Id="C2"><Name>C2</Name><ResourceType Reference="Class"/><ResourceGroups><ResourceGroup Reference="gr_Classes"/></ResourceGroups></Resource>
+			</Resources>
+			<Events>
+				<EventGroups>
+					<EventGroup Id="gr_All"><Name>All</Name></EventGroup>
+					<EventGroup Id="gr_MathC1"><Name>MathC1</Name></EventGroup>
+				</EventGroups>
+				<Event Id="E1">
+					<Name>math-C1_1</Name>
+					<Duration>2</Duration>
+					<Resources>
+						<Resource Reference="C1"><Role>Class</Role><ResourceType Reference="Class"/></Resource>
+						<Resource><Role>Teacher</Role><ResourceType Reference="Teacher"/></Resource>
+						<Resource><Role>Room</Role><ResourceType Reference="Room"/></Resource>
+					</Resources>
+					<EventGroups><EventGroup Reference="gr_All"/><EventGroup Reference="gr_MathC1"/></EventGroups>
+				</Event>
+				<Event Id="E2">
+					<Name>math-C1_2</Name>
+					<Duration>1</Duration>
+					<Resources>
+						<Resource Reference="C1"><Role>Class</Role><ResourceType Reference="Class"/></Resource>
+						<Resource><Role>Teacher</Role><ResourceType Reference="Teacher"/></Resource>
+						<Resource><Role>Room</Role><ResourceType Reference="Room"/></Resource>
+					</Resources>
+					<EventGroups><EventGroup Reference="gr_All"/><EventGroup Reference="gr_MathC1"/></EventGroups>
+				</Event>
+				<Event Id="E3">
+					<Name>chem-C2</Name>
+					<Duration>1</Duration>
+					<Resources>
+						<Resource Reference="C2"><Role>Class</Role><ResourceType Reference="Class"/></Resource>
+						<Resource Reference="T3"><Role>Teacher</Role><ResourceType Reference="Teacher"/></Resource>
+						<Resource><Role>Room</Role><ResourceType Reference="Room"/></Resource>
+					</Resources>
+					<EventGroups><EventGroup Reference="gr_All"/></EventGroups>
+				</Event>
+				<Event Id="E4">
+					<Name>assembly</Name>
+					<Duration>1</Duration>
+					<Time Reference="Mon_1"/>
+					<Resources>
+						<Resource Reference="C1"><Role>Class1</Role><ResourceType Reference="Class"/></Resource>
+						<Resource Reference="C2"><Role>Class2</Role><ResourceType Reference="Class"/></Resource>
+						<Resource><Role>Room</Role><ResourceType Reference="Room"/></Resource>
+					</Resources>
+					<EventGroups><EventGroup Reference="gr_All"/></EventGroups>
+				</Event>
+				<Event Id="E5">
+					<Name>english-C2</Name>
+					<Duration>1</Duration>
+					<Resources>
+						<Resource Reference="C2"><Role>Class</Role><ResourceType Reference="Class"/></Resource>
+						<Resource><Role>Teacher</Role><ResourceType Reference="Teacher"/></Resource>
+						<Resource><Role>Room</Role><ResourceType Reference="Room"/></Resource>
+					</Resources>
+					<EventGroups><EventGroup Reference="gr_All"/></EventGroups>
+				</Event>
+				<Event Id="E6">
+					<Name>history-C1</Name>
+					<Duration>1</Duration>
+					<Resources>
+						<Resource Reference="C1"><Role>Class</Role><ResourceType Reference="Class"/></Resource>
+						<Resource><Role>Teacher</Role><ResourceType Reference="Teacher"/></Resource>
+						<Resource><Role>Room</Role><ResourceType Reference="Room"/></Resource>
+					</Resources>
+					<EventGroups><EventGroup Reference="gr_All"/></EventGroups>
+				</Event>
+			</Events>
+			<Constraints>
+				<AssignResourceConstraint Id="AssignTeachers">
+					<Name>AssignTeachers</Name><Required>true</Required><Weight>1</Weight><CostFunction>Linear</CostFunction>
+					<AppliesTo><EventGroups><EventGroup Reference="gr_All"/></EventGroups></AppliesTo>
+					<Role>Teacher</Role>
+				</AssignResourceConstraint>
+				<AssignResourceConstraint Id="AssignRooms">
+					<Name>AssignRooms</Name><Required>true</Required><Weight>1</Weight><CostFunction>Linear</CostFunction>
+					<AppliesTo><EventGroups><EventGroup Reference="gr_All"/></EventGroups></AppliesTo>
+					<Role>Room</Role>
+				</AssignResourceConstraint>
+				<AssignTimeConstraint Id="AssignTimes">
+					<Name>AssignTimes</Name><Required>true</Required><Weight>1</Weight><CostFunction>Linear</CostFunction>
+					<AppliesTo><EventGroups><EventGroup Reference="gr_All"/></EventGroups></AppliesTo>
+				</AssignTimeConstraint>
+				<SplitEventsConstraint Id="SplitMath">
+					<Name>SplitMath</Name><Required>true</Required><Weight>1</Weight><CostFunction>Linear</CostFunction>
+					<AppliesTo><Events><Event Reference="E1"/></Events></AppliesTo>
+					<MinimumDuration>1</MinimumDuration><MaximumDuration>1</MaximumDuration>
+					<MinimumAmount>2</MinimumAmount><MaximumAmount>2</MaximumAmount>
+				</SplitEventsConstraint>
+				<PreferResourcesConstraint Id="ChemInLab">
+					<Name>ChemInLab</Name><Required>true</Required><Weight>1</Weight><CostFunction>Linear</CostFunction>
+					<AppliesTo><Events><Event Reference="E3"/></Events></AppliesTo>
+					<ResourceGroups><ResourceGroup Reference="gr_Labs"/></ResourceGroups>
+					<Role>Room</Role>
+				</PreferResourcesConstraint>
+				<PreferResourcesConstraint Id="EnglishInR2">
+					<Name>EnglishInR2</Name><Required>false</Required><Weight>1</Weight><CostFunction>Linear</CostFunction>
+					<AppliesTo><Events><Event Reference="E5"/></Events></AppliesTo>
+					<Resources><Resource Reference="R2"/></Resources>
+					<Role>Room</Role>
+				</PreferResourcesConstraint>
+				<AvoidSplitAssignmentsConstraint Id="OneMathTeacher">
+					<Name>OneMathTeacher</Name><Required>true</Required><Weight>1</Weight><CostFunction>Linear</CostFunction>
+					<AppliesTo><EventGroups><EventGroup Reference="gr_MathC1"/></EventGroups></AppliesTo>
+					<Role>Teacher</Role>
+				</AvoidSplitAssignmentsConstraint>
+				<AvoidClashesConstraint Id="NoClashes">
+					<Name>NoClashes</Name><Required>true</Required><Weight>1</Weight><CostFunction>Linear</CostFunction>
+					<AppliesTo><ResourceGroups>
+						<ResourceGroup Reference="gr_Teachers"/>
+						<ResourceGroup Reference="gr_Rooms"/>
+						<ResourceGroup Reference="gr_Classes"/>
+					</ResourceGroups></AppliesTo>
+				</AvoidClashesConstraint>
+			</Constraints>
+		</Instance>
+	</Instances>
+</HighSchoolTimetableArchive>

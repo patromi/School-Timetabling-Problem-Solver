@@ -14,7 +14,7 @@ Priorytety projektu (w tej kolejności): poprawność > powtarzalność eksperym
 
 - Benchmark: XHSTT (archiwum XHSTT-2014, instancje XML ze strony projektu HSTT Uniwersytetu Twente).
 - Instancja = Times (sloty czasowe pogrupowane w dni), Resources (nauczyciele, klasy, sale), Events (lekcje z czasem trwania i przypisanymi zasobami), Constraints (~16 typów, twarde = Required i miękkie).
-- **Ograniczenie zakresu (celowe):** pracujemy wyłącznie na instancjach, w których podział zdarzeń jest ustalony, a zasoby preprzypisane. Jedyna decyzja to przypisanie czasu startu każdemu zdarzeniu. Rozwiązanie = tablica `event_id -> start_time`.
+- **Zakres:** decyzje solvera to czas startu każdego zdarzenia **oraz zasób dla każdej roli bez `Reference`** (zasoby do przypisania; decyzja z 28.10.2026 — wcześniej zakres obejmował wyłącznie instancje z zasobami preprzypisanymi). Podział zdarzeń jest ustalony przez konstruktor (`SplitEventsConstraint`). Rozwiązanie = `event_id -> (start_time, {rola: zasób})`. Łączenie zdarzeń (`LinkEventsConstraint`, AU-*, NL-KP-*) pozostaje poza zakresem.
 - Koszt rozwiązania to para (infeasibility, objective) porównywana leksykograficznie: suma kar za ograniczenia twarde, potem miękkie. Wagi i funkcje kosztu (Linear/Quadratic/Step) są zdefiniowane w XML-u instancji — implementujemy specyfikację, nie projektujemy własnej oceny.
 - Dla selektora RL koszt spłaszczamy do skalaru: `HARD_MULTIPLIER * infeasibility + objective`, ale w logach i raportach zawsze trzymamy parę osobno.
 
@@ -109,6 +109,17 @@ Pracuj etapami. Przed rozpoczęciem etapu przedstaw krótki plan plików i inter
 > `experiments.py --preset bazowy` (SA 1e-3, start losowy, perturbacje w puli selektora, UCB alpha 0.08,
 > bez `repair_clash`); każdy z tych elementów ma też osobną flagę. Skrót `sa` w kolumnie `acceptance`
 > oznaczał przed 18.10.2026 T0 = 1e-3 — nowe pliki mają jednoznaczną kolumnę `acceptance_detail`.
+>
+> **Przydział zasobów (28.10.2026).** Zasoby dla ról bez `Reference` (11/25 instancji archiwum)
+> wybierane są z *domeny* (`src/resource_domains.py`): zasoby typu roli zawężone przez Required
+> `PreferResourcesConstraint`. Zdarzenia objęte `AvoidSplitAssignmentsConstraint` zmieniają zasób
+> razem (`resource_units`). `build_greedy` dobiera zasób w chwili wstawiania zdarzenia (najmniej
+> kolizji, potem miękkie preferencje, potem najmniejsze obciążenie). `resource_reassign` losuje
+> z domeny; `resource_swap` i `repair_resource_clash` (`RESOURCE_HEURISTICS`) dochodzą do puli przez
+> `default_pool(instance)` tylko, gdy instancja ma rzeczywisty wybór zasobu — na instancjach
+> preprzypisanych pula i wyniki są bez zmian. Przy okazji `LimitWorkloadConstraint` liczy obciążenie
+> jak HSEval (suma ułamków bez zaokrąglania składników, zaokrąglane jest tylko odchylenie; workload
+> zasobu po pozycji, nie po roli). Koszty zgodne z HSEval na ES-SS-08, AU-TE-99, US-WS-09.
 
 Obecnie zaimplementowany pipeline to construct + Late Acceptance Hill Climbing (LAHC), czyli **etap
 przejściowy sprzed powyższej specyfikacji** — nie ma jeszcze selektora RL (Etap 6) ani generatora LLM
@@ -178,9 +189,12 @@ Module responsibilities inside `src/`:
   `Constraint` keeps type-specific parameters in a generic `params: dict` rather than per-type fields, since
   XHSTT defines 16 constraint types and explicitly allows extension.
 - `parser.py` — parses XHSTT archive XML (`<HighSchoolTimetableArchive>`) into `Instance`/`SolutionGroup` objects.
-- `construct.py` — greedy initial-solution builder; fills every unassigned time/resource slot arbitrarily but
-  structurally validly (respects `SplitEventsConstraint` bounds, resource types, non-overflowing time spans).
-- `moves.py` — local-search moves (`time_reassign_move`, `time_swap_move`, `resource_reassign_move`) used by
+- `construct.py` — initial-solution builders; fills every unassigned time/resource slot structurally validly
+  (respects `SplitEventsConstraint` bounds, resource domains, non-overflowing time spans).
+- `resource_domains.py` — allowed resources per assignable (event, role) slot and the `ResourceUnit`s that
+  must change resource together (AvoidSplitAssignments groups); shared by constructors and resource moves.
+- `moves.py` — local-search moves (`time_reassign_move`, `time_swap_move`, `resource_reassign_move`,
+  `resource_swap_move`, ...) used by
   LAHC. Each returns a *new* `Solution` built via `dataclasses.replace` + structural sharing rather than a deep
   copy — deep-copying the whole solution was profiled as a major hot spot on large instances.
 - `lahc.py` — Late Acceptance Hill Climbing search loop (Burke & Bykov).

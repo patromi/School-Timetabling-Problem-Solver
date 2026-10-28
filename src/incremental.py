@@ -35,7 +35,7 @@ per-constraint vector against it.
 
 from collections.abc import Hashable
 from dataclasses import dataclass, field
-from math import ceil
+from fractions import Fraction
 from typing import Any
 
 from src.cost import Cost
@@ -50,8 +50,9 @@ from src.evaluator_ref import (
     Occurrence,
     _assigned_resource,
     _event_group_members,
-    _event_resource_workload,
+    _occurrence_workload,
     _shortfall_or_excess,
+    _workload_deviation,
     apply_cost_function,
     resolve_occurrence,
     resolve_occurrences,
@@ -482,17 +483,14 @@ def _limit_workload(
 ) -> int:
     minimum, maximum = _bounds(cp)
     resource_ref = str(point)
-    workload_sum = 0
+    workload_sum = Fraction(0)
     for k in ev._occs_by_resource.get(resource_ref, {}):
         o = ev._occurrences[k]
         event_def = ev._index.events_by_id[o.event_ref]
-        for role, assigned in o.resource_assignments:
-            if assigned != resource_ref:
-                continue
-            workload = _event_resource_workload(event_def, role)
-            # Rounded per term before summing (spec, verbatim).
-            workload_sum += ceil(workload * (o.duration / event_def.duration))
-    return _shortfall_or_excess(workload_sum, minimum, maximum)
+        for position, (_, assigned) in enumerate(o.resource_assignments):
+            if assigned == resource_ref:
+                workload_sum += _occurrence_workload(event_def, position, o.duration)
+    return _workload_deviation(workload_sum, minimum, maximum)
 
 
 def _split_events(

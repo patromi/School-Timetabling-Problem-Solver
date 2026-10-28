@@ -10,6 +10,7 @@ from src.evaluator_ref import (
 )
 from src.heuristics import (
     MANUAL_HEURISTICS,
+    RESOURCE_HEURISTICS,
     Heuristic,
     move_best,
     repair_hard_violation,
@@ -31,6 +32,16 @@ def _sudoku_solution() -> tuple:
     return instance, solution
 
 
+# Sudoku allows one room per event, so these need a fixture with real choices.
+_RESOURCE_OPERATORS = {"resource_reassign"} | {h.id for h in RESOURCE_HEURISTICS}
+
+
+def _resource_solution() -> tuple:
+    instance = parse_archive(_load("ResourceAssignment.xml"))[0]
+    solution = build_initial(instance, random.Random(0))
+    return instance, solution
+
+
 def _snapshot(solution: Solution) -> list:
     return [
         (
@@ -45,7 +56,7 @@ def _snapshot(solution: Solution) -> list:
 
 @pytest.mark.parametrize(
     "heuristic",
-    [h for h in MANUAL_HEURISTICS if h.incremental_safe],
+    [h for h in MANUAL_HEURISTICS + RESOURCE_HEURISTICS if h.incremental_safe],
     ids=lambda h: h.id,
 )
 def test_heuristic_preserves_events_and_does_not_mutate_input(
@@ -53,7 +64,10 @@ def test_heuristic_preserves_events_and_does_not_mutate_input(
 ) -> None:
     """Covers structural-safe heuristics only. split_resize is structural
     (incremental_safe=False) and has its own test below."""
-    instance, solution = _sudoku_solution()
+    if heuristic.id in _RESOURCE_OPERATORS:
+        instance, solution = _resource_solution()
+    else:
+        instance, solution = _sudoku_solution()
     before = _snapshot(solution)
 
     new_solution = None
@@ -411,11 +425,14 @@ from src.incremental import IncrementalEvaluator, StructuralChangeError
 
 @pytest.mark.parametrize(
     "heuristic",
-    [h for h in MANUAL_HEURISTICS if h.incremental_safe],
+    [h for h in MANUAL_HEURISTICS + RESOURCE_HEURISTICS if h.incremental_safe],
     ids=lambda h: h.id,
 )
 def test_heuristic_incremental_safety(heuristic: Heuristic) -> None:
-    instance, solution = _sudoku_solution()
+    if heuristic.id in _RESOURCE_OPERATORS:
+        instance, solution = _resource_solution()
+    else:
+        instance, solution = _sudoku_solution()
 
     changed = False
     for seed in range(50):

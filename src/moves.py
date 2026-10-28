@@ -8,15 +8,18 @@ from src.model import (
     Instance,
     Solution,
     SolutionEvent,
-    SolutionEventResource,
 )
+from src.resource_domains import resource_units, with_unit_resource
+
 
 # Imported lazily inside split_resize_move to avoid a circular import at
 # module load time (construct imports evaluator_ref; moves imports construct).
 # The functions are stable and pure, so the lazy import is safe.
 def _get_split_helpers() -> tuple:  # type: ignore[return]
     from src.construct import _split_duration_bounds, _split_durations  # noqa: PLC0415
+
     return _split_duration_bounds, _split_durations
+
 
 # time_swap_move retries up to _MAX_SWAP_ATTEMPTS random pairs looking for one where
 # swapping keeps BOTH events in a valid span, rather than enumerating all O(n²) pairs.
@@ -112,42 +115,48 @@ def time_swap_move(
 def resource_reassign_move(
     instance: Instance, solution: Solution, rng: random.Random
 ) -> Solution:
-    """Picks one (solution event, event resource) pair at random and
-    reassigns it to a different resource of the same ResourceType. Returns
-    a new Solution; the input is untouched. Structural sharing as in
-    time_reassign_move -- only the touched SolutionEvent's resources list,
-    and the one changed SolutionEventResource in it, are rebuilt."""
-    resources_by_type: dict[str, list[str]] = {}
-    for r in instance.resources:
-        resources_by_type.setdefault(r.resource_type_ref, []).append(r.id)
-    events_by_id = {e.id: e for e in instance.events}
-
-    candidates = []  # (event index, resource index, ResourceType id)
-    for se_index, se in enumerate(solution.events):
-        event_def = events_by_id[se.event_ref]
-        for r_index, sr in enumerate(se.resources):
-            er = next((x for x in event_def.resources if x.role == sr.role), None)
-            type_ref = er.resource_type_ref if er else None
-            if type_ref and len(resources_by_type.get(type_ref, [])) > 1:
-                candidates.append((se_index, r_index, type_ref))
-    if not candidates:
-        raise ValueError("no reassignable event resource with a same-type alternative")
-
-    se_index, r_index, type_ref = rng.choice(candidates)
-    target_event = solution.events[se_index]
-    target_resource = target_event.resources[r_index]
-    alternatives = [
-        r for r in resources_by_type[type_ref] if r != target_resource.resource_ref
+    """Picks one resource unit (see resource_domains.resource_units: a single
+    piece, or all pieces an AvoidSplitAssignmentsConstraint ties together)
+    at random and moves it to a different resource of its domain. Returns
+    a new Solution; the input is untouched."""
+    units = [
+        u
+        for u in resource_units(instance, solution)
+        if any(r != u.resource for r in u.domain)
     ]
-    new_resource = SolutionEventResource(
-        role=target_resource.role, resource_ref=rng.choice(alternatives)
-    )
+    if not units:
+        raise ValueError("no reassignable event resource with an alternative")
 
-    new_resources = list(target_event.resources)
-    new_resources[r_index] = new_resource
-    new_events = list(solution.events)
-    new_events[se_index] = replace(target_event, resources=new_resources)
-    return replace(solution, events=new_events)
+    unit = rng.choice(units)
+    new_ref = rng.choice([r for r in unit.domain if r != unit.resource])
+    return with_unit_resource(solution, unit, new_ref)
+
+
+def resource_swap_move(
+    instance: Instance, solution: Solution, rng: random.Random
+) -> Solution:
+    """Exchanges the resources of two resource units whose domains admit
+    each other's resource (e.g. two lessons trading rooms or teachers).
+    Tries up to _MAX_SWAP_ATTEMPTS random first units."""
+    units = resource_units(instance, solution)
+    if len(units) < 2:
+        raise ValueError("fewer than 2 assignable event resources to swap")
+    for _ in range(_MAX_SWAP_ATTEMPTS):
+        a = rng.choice(units)
+        a_domain = set(a.domain)
+        partners = [
+            b
+            for b in units
+            if b.resource != a.resource
+            and b.resource in a_domain
+            and a.resource in b.domain
+        ]
+        if not partners:
+            continue
+        b = rng.choice(partners)
+        swapped = with_unit_resource(solution, a, b.resource)
+        return with_unit_resource(swapped, b, a.resource)
+    raise ValueError("no swappable pair of event resources found")
 
 
 def _kempe_resource_ids(event_def: Event, se: SolutionEvent) -> frozenset[str]:
@@ -333,7 +342,9 @@ def split_resize_move(
     for dur in new_durations:
         cands = valid_start_time_ids(instance, dur)
         time_ref = rng.choice(cands) if cands else rng.choice(instance.times).id
-        new_pieces.append(SolutionEvent(event_ref=event_ref, time_ref=time_ref, duration=dur))
+        new_pieces.append(
+            SolutionEvent(event_ref=event_ref, time_ref=time_ref, duration=dur)
+        )
 
     kept = [se for se in solution.events if se.event_ref != event_ref]
     return replace(solution, events=kept + new_pieces)
@@ -392,4 +403,3 @@ def large_perturbation_move(
             raise ValueError(f"event {se.event_ref!r} has no valid start time")
         new_events[i] = replace(se, time_ref=rng.choice(candidates))
     return replace(solution, events=new_events)
-
