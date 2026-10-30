@@ -18,15 +18,13 @@
 # ==============================================================================
 
 #SBATCH -J baseline_500k
-#SBATCH -p hgx
+#SBATCH -p obl
 #SBATCH -w obl2
-#SBATCH --cpus-per-task 64
+#SBATCH --cpus-per-task 120
 #SBATCH --mem 80G
 #SBATCH -t 05:00:00
 #SBATCH -o slurm_baseline_%j.out
 #SBATCH -e slurm_baseline_%j.err
-# Opcjonalne przypisanie konkretnego wezla (np. hgx1 lub obl2):
-# #SBATCH -w hgx1
 
 set -euo pipefail
 
