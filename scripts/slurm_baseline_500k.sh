@@ -19,7 +19,8 @@
 
 #SBATCH -J baseline_500k
 #SBATCH -p hgx
-#SBATCH --cpus-per-task 120
+#SBATCH -w obl2
+#SBATCH --cpus-per-task 64
 #SBATCH --mem 80G
 #SBATCH -t 05:00:00
 #SBATCH -o slurm_baseline_%j.out
