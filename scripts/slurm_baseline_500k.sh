@@ -28,6 +28,15 @@
 
 set -euo pipefail
 
+# Wczytaj srodowisko uzytkownika i dodaj typowe sciezki w PATH
+export PATH="$HOME/.local/bin:$HOME/.cargo/bin:/home/inz_school_tt/.local/bin:/home/inz_school_tt/.cargo/bin:$PATH"
+[ -f "$HOME/.local/bin/env" ] && source "$HOME/.local/bin/env" || true
+if [ -f "$HOME/.bashrc" ]; then
+    set +u
+    source "$HOME/.bashrc"
+    set -u
+fi
+
 # W SLURM skrypt wsadowy jest kopiowany do /var/spool/slurmd/...
 # Aby ustalic wlasciwy katalog repozytorium, uzywamy SLURM_SUBMIT_DIR
 if [ -n "${SLURM_SUBMIT_DIR:-}" ]; then
@@ -47,6 +56,18 @@ cd "$PROJECT_DIR"
 
 if [ ! -f "baseline_experiments.py" ]; then
     echo "BLAD: Nie znaleziono baseline_experiments.py w $(pwd)" >&2
+    exit 1
+fi
+
+# Wykryj dostepny interpreter Pythona (uv, repo .venv, lub python3)
+if command -v uv &>/dev/null; then
+    PY_CMD="uv run python"
+elif [ -x "${PROJECT_DIR}/.venv/bin/python" ]; then
+    PY_CMD="${PROJECT_DIR}/.venv/bin/python"
+elif command -v python3 &>/dev/null; then
+    PY_CMD="python3"
+else
+    echo "BLAD: Nie znaleziono ani 'uv', ani '.venv/bin/python', ani 'python3'!" >&2
     exit 1
 fi
 
@@ -70,10 +91,11 @@ echo "Eksperyment bazowy: 17 instancji x 10 seedow x 500 000 iteracji"
 echo "Wezel: $(hostname) | Data: $(date)"
 echo "Katalog projektu: $PROJECT_DIR"
 echo "Liczba procesow (workers): $WORKERS"
+echo "Interpreter: $PY_CMD"
 echo "Katalog logow: $LOG_DIR"
 echo "=============================================================================="
 
-uv run python baseline_experiments.py \
+$PY_CMD baseline_experiments.py \
   --iterations 500000 \
   --workers "$WORKERS" \
   --output-csv data/results/baseline_experiments_500k.csv \
