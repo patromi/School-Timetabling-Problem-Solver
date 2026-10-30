@@ -19,19 +19,40 @@
 
 #SBATCH -J baseline_500k
 #SBATCH -p hgx
-#SBATCH -w obl2
 #SBATCH --cpus-per-task 120
 #SBATCH --mem 80G
 #SBATCH -t 05:00:00
 #SBATCH -o slurm_baseline_%j.out
 #SBATCH -e slurm_baseline_%j.err
+# Opcjonalne przypisanie konkretnego wezla (np. hgx1 lub obl2):
+# #SBATCH -w hgx1
 
 set -euo pipefail
 
-# Automatyczne wykrycie katalogu projektu (repozytorium)
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+# W SLURM skrypt wsadowy jest kopiowany do /var/spool/slurmd/...
+# Aby ustalic wlasciwy katalog repozytorium, uzywamy SLURM_SUBMIT_DIR
+if [ -n "${SLURM_SUBMIT_DIR:-}" ]; then
+    if [ -f "${SLURM_SUBMIT_DIR}/baseline_experiments.py" ]; then
+        PROJECT_DIR="$SLURM_SUBMIT_DIR"
+    elif [ -f "${SLURM_SUBMIT_DIR}/../baseline_experiments.py" ]; then
+        PROJECT_DIR="$(cd "${SLURM_SUBMIT_DIR}/.." && pwd)"
+    else
+        PROJECT_DIR="$SLURM_SUBMIT_DIR"
+    fi
+else
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    PROJECT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+fi
+
 cd "$PROJECT_DIR"
+
+if [ ! -f "baseline_experiments.py" ]; then
+    echo "BLAD: Nie znaleziono baseline_experiments.py w $(pwd)" >&2
+    exit 1
+fi
+
+# Zapewnienie natychmiastowego buforowania wyjscia Pythona
+export PYTHONUNBUFFERED=1
 
 # Szybki katalog na logi w /raid (jeśli dostępny), w przeciwnym razie katalog lokalny
 if [ -d "/raid" ] && mkdir -p "/raid/$USER" 2>/dev/null; then
@@ -70,4 +91,3 @@ echo "==========================================================================
 echo "Gotowe: $(date)"
 echo "Wyniki zapisano w: data/results/baseline_experiments_500k.csv"
 echo "=============================================================================="
-

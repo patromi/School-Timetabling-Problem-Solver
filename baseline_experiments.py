@@ -258,7 +258,10 @@ def _print_run_log(idx: int, total: int, r: RunRecord) -> None:
         f"{r.iterations_done:,} it w {r.elapsed_s:.1f}s "
         f"({r.iterations_per_sec:,.0f} it/s)"
     )
-    print(f"{prefix} seed={r.seed:2d}: {hard_chg}, {soft_chg} | {perf} | {status}")
+    print(
+        f"{prefix} seed={r.seed:2d}: {hard_chg}, {soft_chg} | {perf} | {status}",
+        flush=True,
+    )
 
 
 def _print_summary_table(results: list[RunRecord]) -> None:
@@ -380,6 +383,9 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(line_buffering=True)
+
     args = parse_args()
 
     if not args.archive.exists():
