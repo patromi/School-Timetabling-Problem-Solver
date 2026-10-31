@@ -9,7 +9,7 @@
   import EventsTab from "../lib/components/EventsTab.svelte";
   import ConstraintsTab from "../lib/components/ConstraintsTab.svelte";
   import TechnicalTab from "../lib/components/TechnicalTab.svelte";
-  import InstanceEditor from "../lib/components/editor/InstanceEditor.svelte";
+  import InstanceStudio from "../lib/components/editor/studio/InstanceStudio.svelte";
   import SolverView from "../lib/components/SolverView.svelte";
   import TimetableView from "../lib/components/TimetableView.svelte";
 
@@ -209,7 +209,7 @@
   <!-- Main Content Layout -->
   {#if mainView === "editor"}
     <div class="flex-1 overflow-hidden">
-      <InstanceEditor
+      <InstanceStudio
         initialInstance={editorInitialInstance}
         onSaved={handleSchoolSaved}
         onCancel={handleCancelEditor}

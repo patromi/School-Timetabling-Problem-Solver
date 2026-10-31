@@ -88,6 +88,13 @@ export class EditorState {
   saveError = $state<string | null>(null);
   isSaving = $state<boolean>(false);
 
+  // Nawigacja w trybie Studio Workbench
+  studioSection = $state<"teachers" | "classes" | "rooms" | "structure" | "rules" | "summary">("teachers");
+  selectedStudioTeacherId = $state<string>("");
+  selectedStudioClassId = $state<string>("");
+  selectedStudioRoomId = $state<string>("");
+  studioSearchQuery = $state<string>("");
+
   // Krok 1: Parametry szkoły
   schoolName = $state("Liceum Ogólnokształcące nr 1");
   schoolId = $state("LO_1_Warszawa");
@@ -291,6 +298,159 @@ export class EditorState {
   getTeacherClasses(teacherId: string) { return getTeacherClassAssignments(this.lessons, this.classes, teacherId); }
   getConsistentTeacherForClassSubject(classId: string, subject: string): string | null {
     return findConsistentTeacherForClassSubject(this.lessons, this.teachers, classId, subject);
+  }
+  getRoomLessons(roomId: string): SimpleLesson[] {
+    return this.lessons.filter((l) => l.roomId === roomId);
+  }
+  getRoomAssignedHours(roomId: string): number {
+    return this.lessons.filter((l) => l.roomId === roomId).reduce((s, l) => s + l.weeklyCount, 0);
+  }
+
+  // NAWIGACJA W TRYBIE STUDIO WORKBENCH (CROSS-LINKING)
+  navigateToTeacher(teacherId: string) {
+    this.selectedStudioTeacherId = teacherId;
+    this.studioSection = "teachers";
+  }
+  navigateToClass(classId: string) {
+    this.selectedStudioClassId = classId;
+    this.studioSection = "classes";
+  }
+  navigateToRoom(roomId: string) {
+    this.selectedStudioRoomId = roomId;
+    this.studioSection = "rooms";
+  }
+
+  // BEZPOŚREDNIE PRZYPISANIE LEKCJI W KONTEKŚCIE OBIEKTU
+  assignLessonToTeacher(teacherId: string, classId: string, subject: string, roomId: string, hours: number, isBlock: boolean) {
+    const trimmed = subject?.trim();
+    if (!trimmed || !classId || hours < 1) return;
+    this.registerSubject(trimmed);
+    const lessonId = `L_${classId}_${teacherId}_${trimmed.replace(/[\s/]/g, "_")}_${Date.now()}`;
+    const newLesson: SimpleLesson = {
+      id: lessonId,
+      subject: trimmed,
+      classId,
+      teacherId,
+      roomId: roomId || "",
+      duration: isBlock ? 2 : 1,
+      weeklyCount: hours,
+      timePreference: "any",
+    };
+    this.lessons = [...this.lessons, newLesson];
+  }
+
+  assignLessonToClass(classId: string, subject: string, teacherId: string, roomId: string, hours: number, isBlock: boolean) {
+    const trimmed = subject?.trim();
+    if (!trimmed || !teacherId || hours < 1) return;
+    this.registerSubject(trimmed);
+    const lessonId = `L_${classId}_${teacherId}_${trimmed.replace(/[\s/]/g, "_")}_${Date.now()}`;
+    const newLesson: SimpleLesson = {
+      id: lessonId,
+      subject: trimmed,
+      classId,
+      teacherId,
+      roomId: roomId || "",
+      duration: isBlock ? 2 : 1,
+      weeklyCount: hours,
+      timePreference: "any",
+    };
+    this.lessons = [...this.lessons, newLesson];
+  }
+
+  deleteLesson(lessonId: string) {
+    this.lessons = this.lessons.filter((l) => l.id !== lessonId);
+  }
+
+  // BEZPOŚREDNIA EDYCJA DOSTĘPNOŚCI OBIEKTU W WIDOKU 360°
+  toggleEntitySlot(type: "teacher" | "class" | "room", entityId: string, slotId: string) {
+    if (type === "teacher") {
+      const t = this.teachers.find((x) => x.id === entityId);
+      if (!t) return;
+      const current = new Set(t.unavailableTimes || []);
+      if (current.has(slotId)) current.delete(slotId); else current.add(slotId);
+      t.unavailableTimes = Array.from(current);
+      this.teachers = [...this.teachers];
+    } else if (type === "class") {
+      const c = this.classes.find((x) => x.id === entityId);
+      if (!c) return;
+      const current = new Set(c.unavailableTimes || []);
+      if (current.has(slotId)) current.delete(slotId); else current.add(slotId);
+      c.unavailableTimes = Array.from(current);
+      this.classes = [...this.classes];
+    } else if (type === "room") {
+      const r = this.rooms.find((x) => x.id === entityId);
+      if (!r) return;
+      const current = new Set(r.unavailableTimes || []);
+      if (current.has(slotId)) current.delete(slotId); else current.add(slotId);
+      r.unavailableTimes = Array.from(current);
+      this.rooms = [...this.rooms];
+    }
+  }
+
+  toggleEntityDay(type: "teacher" | "class" | "room", entityId: string, dayId: string) {
+    const slotsForDay: string[] = [];
+    for (let p = 1; p <= this.periodsPerDay; p++) {
+      slotsForDay.push(`${dayId}_${p}`);
+    }
+    const getSet = () => {
+      if (type === "teacher") return new Set(this.teachers.find((x) => x.id === entityId)?.unavailableTimes || []);
+      if (type === "class") return new Set(this.classes.find((x) => x.id === entityId)?.unavailableTimes || []);
+      return new Set(this.rooms.find((x) => x.id === entityId)?.unavailableTimes || []);
+    };
+    const current = getSet();
+    const allBlocked = slotsForDay.every((s) => current.has(s));
+    slotsForDay.forEach((s) => {
+      if (allBlocked) current.delete(s); else current.add(s);
+    });
+    const arr = Array.from(current);
+    if (type === "teacher") {
+      const t = this.teachers.find((x) => x.id === entityId);
+      if (t) { t.unavailableTimes = arr; this.teachers = [...this.teachers]; }
+    } else if (type === "class") {
+      const c = this.classes.find((x) => x.id === entityId);
+      if (c) { c.unavailableTimes = arr; this.classes = [...this.classes]; }
+    } else if (type === "room") {
+      const r = this.rooms.find((x) => x.id === entityId);
+      if (r) { r.unavailableTimes = arr; this.rooms = [...this.rooms]; }
+    }
+  }
+
+  toggleEntityPeriod(type: "teacher" | "class" | "room", entityId: string, period: number) {
+    const slotsForPeriod = this.currentDaysFormatted.map((d) => `${d.id}_${period}`);
+    const getSet = () => {
+      if (type === "teacher") return new Set(this.teachers.find((x) => x.id === entityId)?.unavailableTimes || []);
+      if (type === "class") return new Set(this.classes.find((x) => x.id === entityId)?.unavailableTimes || []);
+      return new Set(this.rooms.find((x) => x.id === entityId)?.unavailableTimes || []);
+    };
+    const current = getSet();
+    const allBlocked = slotsForPeriod.every((s) => current.has(s));
+    slotsForPeriod.forEach((s) => {
+      if (allBlocked) current.delete(s); else current.add(s);
+    });
+    const arr = Array.from(current);
+    if (type === "teacher") {
+      const t = this.teachers.find((x) => x.id === entityId);
+      if (t) { t.unavailableTimes = arr; this.teachers = [...this.teachers]; }
+    } else if (type === "class") {
+      const c = this.classes.find((x) => x.id === entityId);
+      if (c) { c.unavailableTimes = arr; this.classes = [...this.classes]; }
+    } else if (type === "room") {
+      const r = this.rooms.find((x) => x.id === entityId);
+      if (r) { r.unavailableTimes = arr; this.rooms = [...this.rooms]; }
+    }
+  }
+
+  clearEntityAvailability(type: "teacher" | "class" | "room", entityId: string) {
+    if (type === "teacher") {
+      const t = this.teachers.find((x) => x.id === entityId);
+      if (t) { t.unavailableTimes = []; this.teachers = [...this.teachers]; }
+    } else if (type === "class") {
+      const c = this.classes.find((x) => x.id === entityId);
+      if (c) { c.unavailableTimes = []; this.classes = [...this.classes]; }
+    } else if (type === "room") {
+      const r = this.rooms.find((x) => x.id === entityId);
+      if (r) { r.unavailableTimes = []; this.rooms = [...this.rooms]; }
+    }
   }
 
   // MUTACJE: ZMIANA NAZW I EDYCJA
