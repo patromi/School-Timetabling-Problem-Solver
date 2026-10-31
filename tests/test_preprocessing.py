@@ -236,3 +236,70 @@ def test_epsilon_greedy_with_initial_q_map() -> None:
 
     assert selector._q_values["move_best"] == 0.9
     assert selector._q_values["move_random"] == 0.0
+
+
+def test_initial_q_map_structural_modifiers() -> None:
+    # 1. Unassigned resource roles (e.g. dynamic teacher/room assignment)
+    dyn_profile = InstanceProfile(
+        instance_id="generic_dyn",
+        instance_name="generic",
+        events_count=200,
+        times_count=40,
+        resources_count=30,
+        constraints_count=10,
+        max_resource_utilization=0.6,
+        mean_resource_utilization=0.4,
+        max_class_utilization=0.6,
+        mean_class_utilization=0.5,
+        max_teacher_utilization=0.5,
+        mean_teacher_utilization=0.4,
+        has_unassigned_resources=True,
+        unassigned_resources_ratio=0.35,
+        tightness_category="moderate",
+        scale="medium",
+    )
+    priors_dyn = get_initial_q_map(dyn_profile)
+    assert priors_dyn["resource_reassign"] == 0.85
+
+    # 2. Linked events interdependency (e.g. coupled simultaneous events)
+    linked_profile = InstanceProfile(
+        instance_id="generic_linked",
+        instance_name="generic",
+        events_count=200,
+        times_count=40,
+        resources_count=30,
+        constraints_count=10,
+        max_resource_utilization=0.6,
+        mean_resource_utilization=0.4,
+        max_class_utilization=0.6,
+        mean_class_utilization=0.5,
+        max_teacher_utilization=0.5,
+        mean_teacher_utilization=0.4,
+        has_link_events=True,
+        link_events_count=12,
+        tightness_category="moderate",
+        scale="medium",
+    )
+    priors_linked = get_initial_q_map(linked_profile)
+    assert priors_linked["kempe_chain"] == 0.80
+
+    # 3. Avoid clashes constraint
+    clash_profile = InstanceProfile(
+        instance_id="generic_clash",
+        instance_name="generic",
+        events_count=200,
+        times_count=40,
+        resources_count=30,
+        constraints_count=10,
+        max_resource_utilization=0.6,
+        mean_resource_utilization=0.4,
+        max_class_utilization=0.6,
+        mean_class_utilization=0.5,
+        max_teacher_utilization=0.5,
+        mean_teacher_utilization=0.4,
+        has_avoid_clashes=True,
+        tightness_category="moderate",
+        scale="medium",
+    )
+    priors_clash = get_initial_q_map(clash_profile)
+    assert priors_clash["repair_clash"] >= 0.80
