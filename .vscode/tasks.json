@@ -24,6 +24,17 @@
             "problemMatcher": []
         },
         {
+            "label": "UI: Run Web Server",
+            "type": "shell",
+            "command": "uv run python run_ui.py",
+            "group": "none",
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared"
+            },
+            "problemMatcher": []
+        },
+        {
             "label": "Snakemake: Run Workflow",
             "type": "shell",
             "command": "uv run snakemake --cores all",

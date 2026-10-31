@@ -131,7 +131,7 @@
       {#if target.type === 'class'}
         <EditClassFields bind:name bind:grade bind:id />
       {:else if target.type === 'teacher'}
-        <EditTeacherFields bind:name bind:subject bind:workload bind:id />
+        <EditTeacherFields bind:name bind:subject bind:workload bind:id subjects={editor.allKnownSubjects} />
       {:else if target.type === 'room'}
         <EditRoomFields bind:name bind:roomType bind:id />
       {:else if target.type === 'lesson'}
@@ -145,6 +145,7 @@
           classes={editor.classes}
           teachers={editor.teachers}
           rooms={editor.rooms}
+          subjects={editor.allKnownSubjects}
         />
       {/if}
     </div>

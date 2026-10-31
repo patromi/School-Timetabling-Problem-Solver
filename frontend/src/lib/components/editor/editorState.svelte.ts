@@ -136,6 +136,9 @@ export class EditorState {
   lessonCount = $state(4);
   lessonIsBlock = $state(false);
 
+  // Słownik przedmiotów
+  customSubjects = $state<string[]>([]);
+
   // Krok 5: Reguły dydaktyczne i ograniczenia
   ruleContinuousBlocks = $state(false);
   ruleAssignAllTimes = $state(true);
@@ -207,7 +210,30 @@ export class EditorState {
     });
   }
   get filteredLessonsHours(): number { return this.filteredLessons.reduce((s, l) => s + l.weeklyCount, 0); }
-  get uniqueSubjects(): SubjectSummary[] { return computeUniqueSubjects(this.lessons, this.teachers, this.classes); }
+  get uniqueSubjects(): SubjectSummary[] { return computeUniqueSubjects(this.lessons, this.teachers, this.classes, this.customSubjects); }
+  get allKnownSubjects(): string[] {
+    const set = new Set<string>();
+    // Domyślny kanon przedmiotów szkolnych
+    const defaults = [
+      "Język polski", "Język angielski", "Język niemiecki", "Matematyka", 
+      "Fizyka", "Chemia", "Biologia", "Geografia", "Historia", 
+      "Wiedza o społeczeństwie", "Informatyka", "Wychowanie Fizyczne", 
+      "Plastyka", "Muzyka", "Filozofia", "Religia / Etyka", "Edukacja dla bezpieczeństwa"
+    ];
+    defaults.forEach((s) => set.add(s));
+    this.customSubjects.forEach((s) => { if (s?.trim()) set.add(s.trim()); });
+    this.teachers.forEach((t) => { if (t.subject?.trim()) set.add(t.subject.trim()); });
+    this.lessons.forEach((l) => { if (l.subject?.trim()) set.add(l.subject.trim()); });
+    return Array.from(set).sort((a, b) => a.localeCompare(b, "pl"));
+  }
+
+  registerSubject(name: string) {
+    const trimmed = name?.trim();
+    if (!trimmed) return;
+    if (!this.allKnownSubjects.some((s) => s.toLowerCase() === trimmed.toLowerCase())) {
+      this.customSubjects = [...this.customSubjects, trimmed];
+    }
+  }
   get totalUnavailabilitiesCount(): number { return getTotalUnavailabilitiesCount(this.teachers, this.classes, this.rooms); }
   get resourcesWithUnavailability(): (SimpleTeacher | SimpleClass | SimpleRoom)[] {
     return getResourcesWithUnavailability(this.teachers, this.classes, this.rooms);

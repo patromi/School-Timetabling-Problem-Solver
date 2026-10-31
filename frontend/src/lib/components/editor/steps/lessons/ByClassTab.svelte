@@ -1,6 +1,7 @@
 <!-- frontend/src/lib/components/editor/steps/lessons/ByClassTab.svelte -->
 <script lang="ts">
   import type { EditorState } from "../../editorState.svelte";
+  import SubjectCombobox from "../../common/SubjectCombobox.svelte";
 
   interface Props {
     editor: EditorState;
@@ -77,12 +78,14 @@
       </div>
 
       <div class="flex flex-wrap items-center gap-2 w-full md:w-auto">
-        <input
-          type="text"
-          bind:value={editor.batchGradeSubject}
-          placeholder="Nazwa przedmiotu (np. Fizyka)"
-          class="px-2.5 py-1.5 bg-white border border-blue-200 rounded-lg text-xs text-slate-800 font-medium focus:outline-none focus:border-blue-500"
-        />
+        <div class="w-48">
+          <SubjectCombobox
+            bind:value={editor.batchGradeSubject}
+            subjects={editor.allKnownSubjects}
+            placeholder="Nazwa przedmiotu (np. Fizyka)"
+            onAddNew={(newSub) => editor.registerSubject(newSub)}
+          />
+        </div>
         <div class="flex items-center gap-1">
           <input
             type="number"

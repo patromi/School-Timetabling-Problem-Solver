@@ -1,9 +1,9 @@
 <script lang="ts">
-  import type { TimetableScore } from "../../types";
+  import type { ConstraintScore } from "../../types";
   import { CONSTRAINT_FRIENDLY_MAP } from "../../school_helpers";
 
   interface Props {
-    scores: TimetableScore[];
+    scores: ConstraintScore[];
     selectedViolationConstraint: string | null;
     onToggleViolation: (constraintId: string) => void;
     onClearViolation: () => void;

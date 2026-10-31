@@ -9,12 +9,26 @@ import type {
 export function computeUniqueSubjects(
   lessons: SimpleLesson[],
   teachers: SimpleTeacher[],
-  classes: SimpleClass[]
+  classes: SimpleClass[],
+  customSubjects: string[] = []
 ): SubjectSummary[] {
   const map = new Map<
     string,
     { totalHours: number; lessonCount: number; teachers: Set<string>; classes: Set<string> }
   >();
+
+  // Z zarejestrowanych własnych przedmiotów
+  for (const cs of customSubjects) {
+    const trimmed = cs?.trim();
+    if (trimmed && !map.has(trimmed)) {
+      map.set(trimmed, {
+        totalHours: 0,
+        lessonCount: 0,
+        teachers: new Set(),
+        classes: new Set(),
+      });
+    }
+  }
 
   // Z lekcji
   for (const l of lessons) {

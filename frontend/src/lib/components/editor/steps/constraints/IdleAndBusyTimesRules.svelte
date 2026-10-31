@@ -146,7 +146,7 @@
           <div class="flex items-center gap-2">
             <span class="text-xs font-bold text-slate-900">Maksymalny wymiar godzin dziennie (LimitBusyTimesConstraint)</span>
             <span class="text-[10px] font-semibold px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded-full border border-emerald-200">
-              Klasy: {editor.classMaxDailyLimit}h, Kadra: {editor.teacherMaxDailyLimit}h
+              Klasy: {editor.studentMaxDailyLimit}h, Kadra: {editor.teacherMaxDailyLimit}h
             </span>
           </div>
           <p class="text-xs text-slate-500 mt-0.5 leading-snug">
@@ -154,14 +154,14 @@
           </p>
         </div>
       </div>
-      <input type="checkbox" bind:checked={editor.ruleMaxDailyHours} class="w-4 h-4 accent-blue-600 cursor-pointer mt-1" />
+      <input type="checkbox" bind:checked={editor.ruleMaxLessonsDaily} class="w-4 h-4 accent-blue-600 cursor-pointer mt-1" />
     </div>
 
-    {#if editor.ruleMaxDailyHours}
+    {#if editor.ruleMaxLessonsDaily}
       <div class="pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-4 text-xs">
         <div class="flex items-center gap-2">
           <span class="text-slate-500 text-[11px]">Maks. dla oddziału:</span>
-          <input type="number" min="4" max="10" bind:value={editor.classMaxDailyLimit} class="w-14 px-2 py-0.5 text-center bg-slate-50 border border-slate-200 rounded text-xs font-bold text-slate-800" />
+          <input type="number" min="4" max="10" bind:value={editor.studentMaxDailyLimit} class="w-14 px-2 py-0.5 text-center bg-slate-50 border border-slate-200 rounded text-xs font-bold text-slate-800" />
           <span class="text-slate-400 text-[11px]">godz./dzień</span>
         </div>
         <div class="flex items-center gap-2">

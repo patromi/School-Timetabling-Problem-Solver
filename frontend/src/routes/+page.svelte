@@ -103,6 +103,13 @@
 
   onMount(() => {
     loadInstancesList();
+    if (typeof window !== "undefined") {
+      const urlParams = new URLSearchParams(window.location.search);
+      const v = urlParams.get("view");
+      if (v === "editor" || v === "solver" || v === "timetable" || v === "explorer") {
+        mainView = v as any;
+      }
+    }
   });
 </script>
 

@@ -1,12 +1,20 @@
 <!-- frontend/src/lib/components/editor/steps/classes/TeachersTab.svelte -->
 <script lang="ts">
   import type { EditorState } from "../../editorState.svelte";
+  import SubjectCombobox from "../../common/SubjectCombobox.svelte";
 
   interface Props {
     editor: EditorState;
   }
 
   let { editor }: Props = $props();
+
+  function handleAddTeacherWithSubject() {
+    if (editor.newTeacherSubject?.trim()) {
+      editor.registerSubject(editor.newTeacherSubject.trim());
+    }
+    editor.addTeacher();
+  }
 </script>
 
 <div class="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-xs flex flex-col gap-5">
@@ -57,12 +65,14 @@
       onkeydown={(e) => e.key === "Enter" && editor.addTeacher()}
       class="flex-1 min-w-[200px] px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:border-blue-500"
     />
-    <input
-      type="text"
-      bind:value={editor.newTeacherSubject}
-      placeholder="Domyślny przedmiot (np. Matematyka)..."
-      class="w-48 px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:border-blue-500"
-    />
+    <div class="w-56">
+      <SubjectCombobox
+        bind:value={editor.newTeacherSubject}
+        subjects={editor.allKnownSubjects}
+        placeholder="Przedmiot (wybierz lub wpisz)..."
+        onAddNew={(newSub) => editor.registerSubject(newSub)}
+      />
+    </div>
     <div class="flex items-center gap-1 bg-white px-2.5 py-1 rounded-lg border border-slate-200">
       <span class="text-[11px] text-slate-500">Pensum:</span>
       <input
@@ -76,7 +86,7 @@
     </div>
     <button
       type="button"
-      onclick={() => editor.addTeacher()}
+      onclick={handleAddTeacherWithSubject}
       class="px-4 py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-lg cursor-pointer transition-all shadow-2xs"
     >
       + Dodaj nauczyciela

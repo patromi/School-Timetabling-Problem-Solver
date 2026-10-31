@@ -1,5 +1,6 @@
 <!-- frontend/src/lib/components/editor/InstanceEditor.svelte -->
 <script lang="ts">
+  import { onMount } from "svelte";
   import type { InstanceDetail } from "../../types";
   import { saveInstance } from "../../api";
   import { EditorState } from "./editorState.svelte";
@@ -26,6 +27,24 @@
   let isSaving = $state(false);
   let saveError = $state<string | null>(null);
   let saveSuccess = $state<string | null>(null);
+
+  onMount(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const s = params.get("step");
+      if (s) {
+        const parsed = parseInt(s, 10);
+        if (parsed >= 1 && parsed <= 6) currentStep = parsed;
+      }
+      const tab = params.get("tab");
+      if (tab === "teachers" || tab === "classes") {
+        editor.step2ActiveTab = tab;
+      }
+      if (tab === "lessons" || tab === "byClass" || tab === "byTeacher") {
+        editor.step4ActiveTab = tab;
+      }
+    }
+  });
 
   $effect(() => {
     if (initialInstance) {

@@ -52,6 +52,7 @@
       alert("Przedmiot o tej nazwie już istnieje!");
       return;
     }
+    editor.registerSubject(name);
     editor.batchGradeSubject = name;
     editor.lessonSubject = name;
     newCustomSubjectName = "";

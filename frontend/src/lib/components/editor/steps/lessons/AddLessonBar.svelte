@@ -1,26 +1,44 @@
 <!-- frontend/src/lib/components/editor/steps/lessons/AddLessonBar.svelte -->
 <script lang="ts">
   import type { EditorState } from "../../editorState.svelte";
+  import SubjectCombobox from "../../common/SubjectCombobox.svelte";
 
   interface Props {
     editor: EditorState;
   }
 
   let { editor }: Props = $props();
+
+  function handleSubjectChange(sub: string) {
+    editor.lessonSubject = sub;
+    if (sub.trim()) {
+      editor.registerSubject(sub.trim());
+      // Jeśli wybrany nauczyciel nie uczy tego przedmiotu, spróbuj podpowiedzieć odpowiedniego pedagoga
+      const matchingTeacher = editor.teachers.find(
+        (t) => t.subject?.toLowerCase() === sub.toLowerCase()
+      );
+      if (matchingTeacher) {
+        editor.lessonTeacherId = matchingTeacher.id;
+      }
+    }
+  }
 </script>
 
 <div class="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs flex flex-col gap-3">
   <span class="text-xs font-bold text-slate-800">Dodaj nową pozycję do planu:</span>
   <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-6 gap-2.5 text-xs">
     <!-- Przedmiot -->
-    <div>
-      <label for="lesson-subject-input" class="block text-[10px] uppercase font-bold text-slate-400 mb-1">Przedmiot</label>
-      <input
+    <div class="md:col-span-1">
+      <label for="lesson-subject-input" class="block text-[10px] uppercase font-bold text-slate-400 mb-1">
+        Przedmiot (wybierz / dodaj)
+      </label>
+      <SubjectCombobox
         id="lesson-subject-input"
-        type="text"
         bind:value={editor.lessonSubject}
+        subjects={editor.allKnownSubjects}
+        onSelect={handleSubjectChange}
+        onAddNew={(newSub) => editor.registerSubject(newSub)}
         placeholder="np. Matematyka"
-        class="w-full py-1.5 px-2 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-800 focus:outline-none focus:border-blue-500"
       />
     </div>
 

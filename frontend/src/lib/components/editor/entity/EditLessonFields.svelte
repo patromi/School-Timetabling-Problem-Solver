@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { SimpleClass, SimpleTeacher, SimpleRoom } from "../types";
+  import SubjectCombobox from "../common/SubjectCombobox.svelte";
 
   interface Props {
     lessonSubject: string;
@@ -11,6 +12,7 @@
     classes: SimpleClass[];
     teachers: SimpleTeacher[];
     rooms: SimpleRoom[];
+    subjects?: string[];
   }
 
   let {
@@ -23,17 +25,17 @@
     classes,
     teachers,
     rooms,
+    subjects = [],
   }: Props = $props();
 </script>
 
 <div>
   <label for="edit-lesson-subject" class="block font-bold text-slate-700 mb-1">Nazwa przedmiotu:</label>
-  <input
+  <SubjectCombobox
     id="edit-lesson-subject"
-    type="text"
     bind:value={lessonSubject}
-    placeholder="np. Matematyka"
-    class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-slate-900"
+    {subjects}
+    placeholder="Wybierz lub wpisz..."
   />
 </div>
 
