@@ -54,19 +54,29 @@
   aria-modal="true"
   aria-labelledby="linked-lessons-title"
 >
-  <div class="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-3xl w-full overflow-hidden flex flex-col my-auto animate-in fade-in zoom-in-95 duration-150">
+  <div
+    class="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-3xl w-full overflow-hidden flex flex-col my-auto animate-in fade-in zoom-in-95 duration-150"
+  >
     <!-- Header -->
-    <div class="px-6 py-4 bg-gradient-to-r from-purple-900 to-indigo-950 text-white flex items-center justify-between">
+    <div
+      class="px-6 py-4 bg-gradient-to-r from-purple-900 to-indigo-950 text-white flex items-center justify-between"
+    >
       <div class="flex items-center gap-3">
-        <span class="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center text-xl">
+        <span
+          class="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center text-xl"
+        >
           🔗
         </span>
         <div>
-          <h3 id="linked-lessons-title" class="text-base font-bold leading-tight">
-            Lekcje równoległe i grupy jednoczesne
+          <h3
+            id="linked-lessons-title"
+            class="text-base font-bold leading-tight"
+          >
+            równoległe i grupy jednoczesne
           </h3>
           <p class="text-xs text-purple-200 mt-0.5">
-            Synchronizacja godzinowa lekcji między klasami (grupy językowe, łączony WF, wspólne wykłady).
+            Synchronizacja godzinowa lekcji między klasami (grupy językowe,
+            łączony WF, wspólne wykłady).
           </p>
         </div>
       </div>
@@ -101,7 +111,9 @@
     </div>
 
     <!-- Footer -->
-    <div class="px-6 py-3.5 bg-slate-50 border-t border-slate-200 flex items-center justify-between">
+    <div
+      class="px-6 py-3.5 bg-slate-50 border-t border-slate-200 flex items-center justify-between"
+    >
       <span class="text-xs text-slate-500">
         Po zapisaniu grupy zostaną dodane do ograniczeń instancji.
       </span>
