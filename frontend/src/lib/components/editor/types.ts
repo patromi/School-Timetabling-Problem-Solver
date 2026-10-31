@@ -1,6 +1,6 @@
 // frontend/src/lib/components/editor/types.ts
 
-export type RoomType = "general" | "gym" | "lab" | "it";
+export type RoomType = "general" | "gym" | "lab" | "it" | string;
 
 export interface SimpleClass {
   id: string;
@@ -17,6 +17,7 @@ export interface SimpleTeacher {
   id: string;
   name: string;
   subject: string;
+  subjects?: string[];
   workload: number;
   unavailableTimes?: string[];
   unavailableSoft?: boolean;
@@ -30,7 +31,7 @@ export interface SimpleTeacher {
 export interface SimpleRoom {
   id: string;
   name: string;
-  type: RoomType;
+  type: string;
   unavailableTimes?: string[];
   unavailableSoft?: boolean;
   unavailableWeight?: number;
@@ -40,7 +41,7 @@ export interface SimpleLesson {
   id: string;
   subject: string;
   classId: string;
-  teacherId: string;
+  teacherId: string; // puste "" oznacza wakat / nieprzypisany
   roomId: string;
   duration: number; // 1 or 2
   weeklyCount: number; // lessons per week

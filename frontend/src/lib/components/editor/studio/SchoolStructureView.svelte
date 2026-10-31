@@ -113,7 +113,7 @@
     </div>
 
     <div class="flex flex-wrap gap-2.5">
-      {#each ["Poniedziałek", "Wtorek", "Środa", "Czwartek", "Piątek", "Sobota"] as day}
+      {#each ["Poniedziałek", "Wtorek", "Środa", "Czwartek", "Piątek", "Sobota", "Niedziela"] as day}
         {@const isChecked = editor.selectedDays.includes(day)}
         <button
           type="button"
@@ -141,23 +141,23 @@
     <div class="mt-2 pt-4 border-t border-slate-100 grid grid-cols-1 md:grid-cols-2 gap-4">
       <div>
         <label for="studio-periods-range" class="block text-xs font-semibold text-slate-700 mb-1">
-          Liczba godzin lekcyjnych w dniu:
+          Liczba godzin lekcyjnych w dniu (do 16 – praca dwuzmianowa):
         </label>
         <div class="flex items-center gap-3">
           <input
             id="studio-periods-range"
             type="range"
-            min="5"
-            max="10"
+            min="4"
+            max="16"
             bind:value={editor.periodsPerDay}
             class="flex-1 cursor-pointer accent-blue-600"
           />
-          <span class="w-14 text-center font-bold text-slate-900 text-sm bg-slate-100 py-1.5 rounded-lg border border-slate-200">
+          <span class="w-16 text-center font-bold text-slate-900 text-sm bg-slate-100 py-1.5 rounded-lg border border-slate-200">
             {editor.periodsPerDay} lekcji
           </span>
         </div>
         <p class="text-[11px] text-slate-400 mt-1">
-          Standardowo 8 lekcji (np. 8:00 - 15:30)
+          Standardowo 8 lekcji (jednozmianowa), do 16 lekcji przy pracy dwuzmianowej / wieczorowej.
         </p>
       </div>
 

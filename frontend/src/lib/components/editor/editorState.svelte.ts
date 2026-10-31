@@ -267,9 +267,69 @@ export class EditorState {
     ];
     defaults.forEach((s) => set.add(s));
     this.customSubjects.forEach((s) => { if (s?.trim()) set.add(s.trim()); });
-    this.teachers.forEach((t) => { if (t.subject?.trim()) set.add(t.subject.trim()); });
+    this.teachers.forEach((t) => {
+      if (t.subject?.trim()) set.add(t.subject.trim());
+      if (Array.isArray(t.subjects)) {
+        t.subjects.forEach((s) => { if (s?.trim()) set.add(s.trim()); });
+      }
+    });
     this.lessons.forEach((l) => { if (l.subject?.trim()) set.add(l.subject.trim()); });
     return Array.from(set).sort((a, b) => a.localeCompare(b, "pl"));
+  }
+
+  get availableRoomCategories(): string[] {
+    const defaults = [
+      "Ogólna / Dydaktyczna",
+      "Sala gimnastyczna / Sportowa",
+      "Pracownia komputerowa",
+      "Laboratorium / Przyrodnicza",
+      "Pracownia językowa",
+    ];
+    const set = new Set<string>(defaults);
+    this.rooms.forEach((r) => {
+      if (r.type?.trim()) set.add(r.type.trim());
+    });
+    return Array.from(set);
+  }
+
+  getTeacherSubjects(teacher: SimpleTeacher): string[] {
+    const set = new Set<string>();
+    if (teacher.subject?.trim()) set.add(teacher.subject.trim());
+    if (Array.isArray(teacher.subjects)) {
+      teacher.subjects.forEach((s) => {
+        if (s?.trim()) set.add(s.trim());
+      });
+    }
+    this.lessons
+      .filter((l) => l.teacherId === teacher.id)
+      .forEach((l) => {
+        if (l.subject?.trim()) set.add(l.subject.trim());
+      });
+    return Array.from(set);
+  }
+
+  addSubjectToTeacher(teacherId: string, subject: string) {
+    const trimmed = subject.trim();
+    if (!trimmed) return;
+    this.registerSubject(trimmed);
+    const t = this.teachers.find((x) => x.id === teacherId);
+    if (!t) return;
+    const currentSubs = new Set(this.getTeacherSubjects(t));
+    currentSubs.add(trimmed);
+    t.subjects = Array.from(currentSubs);
+    if (!t.subject) t.subject = trimmed;
+    this.teachers = [...this.teachers];
+  }
+
+  removeSubjectFromTeacher(teacherId: string, subjectToRemove: string) {
+    const t = this.teachers.find((x) => x.id === teacherId);
+    if (!t) return;
+    const currentSubs = this.getTeacherSubjects(t).filter((s) => s !== subjectToRemove);
+    t.subjects = currentSubs;
+    if (t.subject === subjectToRemove) {
+      t.subject = currentSubs[0] || "";
+    }
+    this.teachers = [...this.teachers];
   }
 
   registerSubject(name: string) {
@@ -341,20 +401,40 @@ export class EditorState {
 
   assignLessonToClass(classId: string, subject: string, teacherId: string, roomId: string, hours: number, isBlock: boolean) {
     const trimmed = subject?.trim();
-    if (!trimmed || !teacherId || hours < 1) return;
+    if (!trimmed || hours < 1) return;
     this.registerSubject(trimmed);
-    const lessonId = `L_${classId}_${teacherId}_${trimmed.replace(/[\s/]/g, "_")}_${Date.now()}`;
+    const teacherPart = teacherId || "unassigned";
+    const lessonId = `L_${classId}_${teacherPart}_${trimmed.replace(/[\s/]/g, "_")}_${Date.now()}`;
     const newLesson: SimpleLesson = {
       id: lessonId,
       subject: trimmed,
       classId,
-      teacherId,
+      teacherId: teacherId || "",
       roomId: roomId || "",
       duration: isBlock ? 2 : 1,
       weeklyCount: hours,
       timePreference: "any",
     };
     this.lessons = [...this.lessons, newLesson];
+  }
+
+  updateLesson(lessonId: string, patch: Partial<SimpleLesson>) {
+    const index = this.lessons.findIndex((l) => l.id === lessonId);
+    if (index === -1) return;
+    const current = this.lessons[index];
+    if (patch.subject?.trim()) {
+      this.registerSubject(patch.subject.trim());
+    }
+    const updated: SimpleLesson = {
+      ...current,
+      ...patch,
+      weeklyCount: patch.weeklyCount !== undefined ? Math.max(1, patch.weeklyCount) : current.weeklyCount,
+    };
+    this.lessons = [
+      ...this.lessons.slice(0, index),
+      updated,
+      ...this.lessons.slice(index + 1),
+    ];
   }
 
   deleteLesson(lessonId: string) {
@@ -479,9 +559,6 @@ export class EditorState {
     const res = applyRoomUpdate(roomId, updated, this.rooms, this.lessons);
     this.rooms = res.rooms; this.lessons = res.lessons;
     if (this.lessonRoomId === roomId) this.lessonRoomId = res.newId;
-  }
-  updateLesson(lessonId: string, updated: Partial<SimpleLesson>) {
-    this.lessons = this.lessons.map((l) => (l.id === lessonId ? { ...l, ...updated } : l));
   }
 
   // MUTACJE KLAS

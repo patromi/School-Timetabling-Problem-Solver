@@ -101,7 +101,7 @@
   <div class="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-xs flex flex-col gap-5">
     <h3 class="text-sm font-bold text-slate-900">Dni nauki w tygodniu</h3>
     <div class="flex flex-wrap gap-2">
-      {#each ["Poniedziałek", "Wtorek", "Środa", "Czwartek", "Piątek", "Sobota"] as day}
+      {#each ["Poniedziałek", "Wtorek", "Środa", "Czwartek", "Piątek", "Sobota", "Niedziela"] as day}
         {@const isChecked = editor.selectedDays.includes(day)}
         <button
           type="button"
@@ -135,17 +135,17 @@
           <input
             id="periods-per-day-input"
             type="range"
-            min="5"
-            max="10"
+            min="4"
+            max="16"
             bind:value={editor.periodsPerDay}
             class="flex-1 cursor-pointer accent-blue-600"
           />
-          <span class="w-12 text-center font-bold text-slate-900 text-sm bg-slate-100 py-1 rounded-lg">
+          <span class="w-16 text-center font-bold text-slate-900 text-sm bg-slate-100 py-1 rounded-lg">
             {editor.periodsPerDay} lekcji
           </span>
         </div>
         <p class="text-[11px] text-slate-400 mt-1">
-          Typowo: 7–8 lekcji dziennie (np. 8:00 - 15:30)
+          Typowo: 7–8 lekcji dziennie (jednozmianowa), do 16 lekcji przy pracy dwuzmianowej
         </p>
       </div>
 

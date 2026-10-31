@@ -128,7 +128,7 @@ export function buildBaseStructure(options: {
         workload: 2,
         group_refs: [egId],
         resources: [
-          { role: "Teacher", resource_ref: l.teacherId, resource_type_ref: "Teacher", workload: 2 },
+          ...(l.teacherId ? [{ role: "Teacher", resource_ref: l.teacherId, resource_type_ref: "Teacher", workload: 2 }] : []),
           { role: "Class", resource_ref: l.classId, resource_type_ref: "Class", workload: 2 },
           ...(l.roomId ? [{ role: "Room", resource_ref: l.roomId, resource_type_ref: "Room", workload: 2 }] : []),
         ],
@@ -147,7 +147,7 @@ export function buildBaseStructure(options: {
         workload: 1,
         group_refs: [egId],
         resources: [
-          { role: "Teacher", resource_ref: l.teacherId, resource_type_ref: "Teacher", workload: 1 },
+          ...(l.teacherId ? [{ role: "Teacher", resource_ref: l.teacherId, resource_type_ref: "Teacher", workload: 1 }] : []),
           { role: "Class", resource_ref: l.classId, resource_type_ref: "Class", workload: 1 },
           ...(l.roomId ? [{ role: "Room", resource_ref: l.roomId, resource_type_ref: "Room", workload: 1 }] : []),
         ],

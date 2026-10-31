@@ -72,10 +72,12 @@
 
   // Sidebar filtering
   let filteredTeachers = $derived(
-    editor.teachers.filter((t) =>
-      t.name.toLowerCase().includes(editor.studioSearchQuery.toLowerCase()) ||
-      t.subject.toLowerCase().includes(editor.studioSearchQuery.toLowerCase())
-    )
+    editor.teachers.filter((t) => {
+      const q = editor.studioSearchQuery.toLowerCase();
+      if (t.name.toLowerCase().includes(q)) return true;
+      if (t.subject?.toLowerCase().includes(q)) return true;
+      return editor.getTeacherSubjects(t).some((s) => s.toLowerCase().includes(q));
+    })
   );
 
   let filteredClasses = $derived(
@@ -85,9 +87,10 @@
   );
 
   let filteredRooms = $derived(
-    editor.rooms.filter((r) =>
-      r.name.toLowerCase().includes(editor.studioSearchQuery.toLowerCase())
-    )
+    editor.rooms.filter((r) => {
+      const q = editor.studioSearchQuery.toLowerCase();
+      return r.name.toLowerCase().includes(q) || (r.type || "").toLowerCase().includes(q);
+    })
   );
 
   function handleQuickAdd() {
@@ -409,7 +412,7 @@
                   <div class="overflow-hidden">
                     <span class="font-bold text-xs truncate block">{teacher.name}</span>
                     <span class={`text-[10px] block truncate ${isSelected ? 'text-slate-300' : 'text-slate-400'}`}>
-                      {teacher.subject}
+                      {editor.getTeacherSubjects(teacher).join(", ") || teacher.subject}
                     </span>
                   </div>
                 </div>
@@ -483,7 +486,7 @@
                   <div class="overflow-hidden">
                     <span class="font-bold text-xs truncate block">{room.name}</span>
                     <span class={`text-[10px] block truncate ${isSelected ? 'text-slate-300' : 'text-slate-400'}`}>
-                      {room.type}
+                      {room.type || "Ogólna"}
                     </span>
                   </div>
                 </div>
@@ -508,22 +511,22 @@
             <TeacherStudioView
               {editor}
               teacher={selectedTeacher}
-              onNavigateToClass={(classId) => editor.navigateToClass(classId)}
-              onNavigateToRoom={(roomId) => editor.navigateToRoom(roomId)}
+              onNavigateToClass={(classId: string) => editor.navigateToClass(classId)}
+              onNavigateToRoom={(roomId: string) => editor.navigateToRoom(roomId)}
             />
           {:else if editor.studioSection === "classes" && selectedClass}
             <ClassStudioView
               {editor}
               cls={selectedClass}
-              onNavigateToTeacher={(teacherId) => editor.navigateToTeacher(teacherId)}
-              onNavigateToRoom={(roomId) => editor.navigateToRoom(roomId)}
+              onNavigateToTeacher={(teacherId: string) => editor.navigateToTeacher(teacherId)}
+              onNavigateToRoom={(roomId: string) => editor.navigateToRoom(roomId)}
             />
           {:else if editor.studioSection === "rooms" && selectedRoom}
             <RoomStudioView
               {editor}
               room={selectedRoom}
-              onNavigateToClass={(classId) => editor.navigateToClass(classId)}
-              onNavigateToTeacher={(teacherId) => editor.navigateToTeacher(teacherId)}
+              onNavigateToClass={(classId: string) => editor.navigateToClass(classId)}
+              onNavigateToTeacher={(teacherId: string) => editor.navigateToTeacher(teacherId)}
             />
           {:else}
             <div class="p-12 text-center bg-white rounded-2xl border border-slate-200 text-slate-400 text-xs">

@@ -11,6 +11,14 @@ export function createDefaultBellTimes(): BellTime[] {
     { period: 6, start: "12:55", end: "13:40" },
     { period: 7, start: "13:50", end: "14:35" },
     { period: 8, start: "14:45", end: "15:30" },
+    { period: 9, start: "15:35", end: "16:20" },
+    { period: 10, start: "16:25", end: "17:10" },
+    { period: 11, start: "17:15", end: "18:00" },
+    { period: 12, start: "18:05", end: "18:50" },
+    { period: 13, start: "18:55", end: "19:40" },
+    { period: 14, start: "19:45", end: "20:30" },
+    { period: 15, start: "20:35", end: "21:20" },
+    { period: 16, start: "21:25", end: "22:10" },
   ];
 }
 

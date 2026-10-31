@@ -21,13 +21,56 @@
   let newLessonHours = $state<number>(4);
   let newLessonIsBlock = $state<boolean>(false);
 
+  // Inline row editing state
+  let editingLessonId = $state<string | null>(null);
+  let editSubject = $state("");
+  let editTeacherId = $state("");
+  let editRoomId = $state("");
+  let editWeeklyCount = $state(1);
+  let editIsBlock = $state(false);
+
+  function startEditingLesson(lesson: typeof editor.lessons[0]) {
+    editingLessonId = lesson.id;
+    editSubject = lesson.subject;
+    editTeacherId = lesson.teacherId || "";
+    editRoomId = lesson.roomId || "";
+    editWeeklyCount = lesson.weeklyCount;
+    editIsBlock = lesson.duration === 2;
+  }
+
+  function cancelEditingLesson() {
+    editingLessonId = null;
+  }
+
+  function saveEditedLesson(lessonId: string) {
+    if (!editSubject.trim() || editWeeklyCount < 1) return;
+    editor.updateLesson(lessonId, {
+      subject: editSubject.trim(),
+      teacherId: editTeacherId,
+      roomId: editRoomId,
+      weeklyCount: editWeeklyCount,
+      duration: editIsBlock ? 2 : 1,
+    });
+    editingLessonId = null;
+  }
+
+  let roomsByCategory = $derived.by(() => {
+    const map = new Map<string, typeof editor.rooms>();
+    for (const r of editor.rooms) {
+      const cat = r.type?.trim() || "Ogólna / Dydaktyczna";
+      if (!map.has(cat)) map.set(cat, []);
+      map.get(cat)!.push(r);
+    }
+    return map;
+  });
+
   // Sync default teacher when subject changes
   function handleSubjectChange(sub: string) {
     newLessonSubject = sub;
     if (sub.trim()) {
       editor.registerSubject(sub.trim());
-      const match = editor.teachers.find(
-        (t) => t.subject?.toLowerCase() === sub.toLowerCase()
+      const match = editor.teachers.find((t) =>
+        editor.getTeacherSubjects(t).some((s) => s.toLowerCase() === sub.toLowerCase())
       );
       if (match) {
         newLessonTeacherId = match.id;
@@ -35,18 +78,12 @@
     }
   }
 
-  $effect(() => {
-    if (editor.teachers.length > 0 && !newLessonTeacherId) {
-      newLessonTeacherId = editor.teachers[0].id;
-    }
-  });
-
   let classLessons = $derived(editor.lessons.filter((l) => l.classId === cls.id));
   let totalHours = $derived(editor.getClassWeeklyHours(cls.id));
   let unavailableSet = $derived(new Set(cls.unavailableTimes || []));
 
   function handleAddLesson() {
-    if (!newLessonSubject.trim() || !newLessonTeacherId || newLessonHours < 1) return;
+    if (!newLessonSubject.trim() || newLessonHours < 1) return;
     editor.assignLessonToClass(
       cls.id,
       newLessonSubject.trim(),
@@ -149,76 +186,187 @@
           <div class="col-span-4">Przedmiot</div>
           <div class="col-span-3">Prowadzący nauczyciel</div>
           <div class="col-span-2">Dedykowana sala</div>
-          <div class="col-span-2 text-center">Wymiar</div>
-          <div class="col-span-1 text-right">Akcja</div>
+          <div class="col-span-1 text-center">Wymiar</div>
+          <div class="col-span-2 text-right">Akcje</div>
         </div>
 
         {#each classLessons as lesson}
           {@const assignedTeacher = editor.teachers.find((t) => t.id === lesson.teacherId)}
           {@const assignedRoom = editor.rooms.find((r) => r.id === lesson.roomId)}
-          <div class="px-4 py-3 text-xs grid grid-cols-12 gap-3 items-center hover:bg-slate-50/80 transition-colors">
-            <!-- Przedmiot -->
-            <div class="col-span-4">
-              <span class="font-bold text-slate-900 block">{lesson.subject}</span>
-              {#if lesson.duration === 2}
-                <span class="inline-block mt-0.5 text-[10px] font-semibold px-1.5 py-0.2 bg-blue-50 text-blue-700 rounded border border-blue-200">
-                  Blok 2h (podwójna lekcja)
+          {#if editingLessonId === lesson.id}
+            <!-- Inline Row Editor -->
+            <div class="p-3.5 bg-blue-50/70 border-y border-blue-200/90 flex flex-col gap-3">
+              <div class="flex items-center justify-between text-xs font-bold text-blue-900">
+                <span class="flex items-center gap-1.5">
+                  <span>✏️</span>
+                  <span>Edycja przedmiotu: {lesson.subject}</span>
                 </span>
-              {/if}
-            </div>
-
-            <!-- Nauczyciel (Klikalny Cross-Link!) -->
-            <div class="col-span-3">
-              {#if assignedTeacher}
+                <span class="text-[11px] text-blue-700 font-normal">Zmień dane i kliknij Zapisz</span>
+              </div>
+              <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-2.5 text-xs">
+                <!-- Przedmiot -->
+                <div class="lg:col-span-4">
+                  <label for="class-edit-sub-{lesson.id}" class="block text-[10px] font-bold text-slate-600 uppercase mb-1">Przedmiot:</label>
+                  <input
+                    id="class-edit-sub-{lesson.id}"
+                    type="text"
+                    bind:value={editSubject}
+                    list="class-edit-sub-list-{lesson.id}"
+                    class="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <datalist id="class-edit-sub-list-{lesson.id}">
+                    {#each editor.allKnownSubjects as s}
+                      <option value={s}></option>
+                    {/each}
+                  </datalist>
+                </div>
+                <!-- Nauczyciel -->
+                <div class="lg:col-span-3">
+                  <label for="class-edit-teacher-{lesson.id}" class="block text-[10px] font-bold text-slate-600 uppercase mb-1">Nauczyciel:</label>
+                  <select
+                    id="class-edit-teacher-{lesson.id}"
+                    bind:value={editTeacherId}
+                    class="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 font-semibold"
+                  >
+                    <option value="">(Brak / Wakat - do ustalenia)</option>
+                    {#each editor.teachers as t}
+                      <option value={t.id}>{t.name} ({editor.getTeacherSubjects(t).join(", ") || t.subject})</option>
+                    {/each}
+                  </select>
+                </div>
+                <!-- Sala -->
+                <div class="lg:col-span-3">
+                  <label for="class-edit-room-{lesson.id}" class="block text-[10px] font-bold text-slate-600 uppercase mb-1">Sala:</label>
+                  <select
+                    id="class-edit-room-{lesson.id}"
+                    bind:value={editRoomId}
+                    class="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">(Dowolna / brak)</option>
+                    {#each Array.from(roomsByCategory.entries()) as [category, rms]}
+                      <optgroup label={category}>
+                        {#each rms as r}
+                          <option value={r.id}>{r.name}</option>
+                        {/each}
+                      </optgroup>
+                    {/each}
+                  </select>
+                </div>
+                <!-- Wymiar i blok -->
+                <div class="lg:col-span-2 flex items-center gap-2">
+                  <div class="w-16">
+                    <label for="class-edit-count-{lesson.id}" class="block text-[10px] font-bold text-slate-600 uppercase mb-1">Godz./tydz:</label>
+                    <input
+                      id="class-edit-count-{lesson.id}"
+                      type="number"
+                      min="1"
+                      max="16"
+                      bind:value={editWeeklyCount}
+                      class="w-full px-1.5 py-1.5 bg-white border border-slate-300 rounded-lg font-bold text-slate-900 text-center"
+                    />
+                  </div>
+                  <div class="pt-4">
+                    <label class="inline-flex items-center gap-1 text-[11px] text-slate-700 font-semibold cursor-pointer">
+                      <input type="checkbox" bind:checked={editIsBlock} class="rounded text-blue-600" />
+                      <span>Blok 2h</span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+              <div class="flex justify-end gap-2 pt-2 border-t border-blue-200/60">
                 <button
                   type="button"
-                  onclick={() => onNavigateToTeacher(assignedTeacher.id)}
-                  class="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-800 rounded-lg font-bold border border-blue-200/80 transition-all cursor-pointer flex items-center gap-1.5 shadow-2xs group text-left"
-                  title="Przejdź do profilu tego nauczyciela"
+                  onclick={cancelEditingLesson}
+                  class="px-3 py-1 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded-lg text-xs font-semibold cursor-pointer"
                 >
-                  <span>👨‍🏫</span>
-                  <span class="group-hover:underline truncate max-w-[150px]">{assignedTeacher.name}</span>
-                  <span class="text-blue-400 group-hover:text-blue-600 text-[10px]">➔</span>
+                  Anuluj
                 </button>
-              {:else}
-                <span class="text-rose-500 font-semibold italic text-[11px]">Brak nauczyciela</span>
-              {/if}
-            </div>
-
-            <!-- Sala (Klikalny Cross-Link!) -->
-            <div class="col-span-2">
-              {#if assignedRoom}
                 <button
                   type="button"
-                  onclick={() => onNavigateToRoom(assignedRoom.id)}
-                  class="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-medium border border-slate-200 transition-all cursor-pointer flex items-center gap-1 text-[11px]"
-                  title="Przejdź do widoku tej sali"
+                  onclick={() => saveEditedLesson(lesson.id)}
+                  class="px-3.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold cursor-pointer shadow-2xs flex items-center gap-1"
                 >
-                  <span>🚪</span>
-                  <span>{assignedRoom.name}</span>
+                  <span>✓</span>
+                  <span>Zapisz zmiany</span>
                 </button>
-              {:else}
-                <span class="text-slate-400 italic text-[11px]">Dowolna</span>
-              {/if}
+              </div>
             </div>
+          {:else}
+            <div class="px-4 py-3 text-xs grid grid-cols-12 gap-3 items-center hover:bg-slate-50/80 transition-colors">
+              <!-- Przedmiot -->
+              <div class="col-span-4">
+                <span class="font-bold text-slate-900 block">{lesson.subject}</span>
+                {#if lesson.duration === 2}
+                  <span class="inline-block mt-0.5 text-[10px] font-semibold px-1.5 py-0.2 bg-blue-50 text-blue-700 rounded border border-blue-200">
+                    Blok 2h (podwójna lekcja)
+                  </span>
+                {/if}
+              </div>
 
-            <!-- Wymiar -->
-            <div class="col-span-2 text-center font-bold text-slate-800">
-              {lesson.weeklyCount}h / tydz.
-            </div>
+              <!-- Nauczyciel (Klikalny Cross-Link lub Wakat) -->
+              <div class="col-span-3">
+                {#if assignedTeacher}
+                  <button
+                    type="button"
+                    onclick={() => onNavigateToTeacher(assignedTeacher.id)}
+                    class="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-800 rounded-lg font-bold border border-blue-200/80 transition-all cursor-pointer flex items-center gap-1.5 shadow-2xs group text-left"
+                    title="Przejdź do profilu tego nauczyciela"
+                  >
+                    <span>👨‍🏫</span>
+                    <span class="group-hover:underline truncate max-w-[150px]">{assignedTeacher.name}</span>
+                    <span class="text-blue-400 group-hover:text-blue-600 text-[10px]">➔</span>
+                  </button>
+                {:else}
+                  <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md bg-slate-100 text-slate-600 font-medium text-[11px] border border-slate-200 shadow-2xs">
+                    <span>👤</span>
+                    <span>Wakat (do ustalenia)</span>
+                  </span>
+                {/if}
+              </div>
 
-            <!-- Usuwanie -->
-            <div class="col-span-1 text-right">
-              <button
-                type="button"
-                onclick={() => editor.deleteLesson(lesson.id)}
-                class="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                title="Usuń ten przedmiot z planu oddziału"
-              >
-                ✕
-              </button>
+              <!-- Sala (Klikalny Cross-Link!) -->
+              <div class="col-span-2">
+                {#if assignedRoom}
+                  <button
+                    type="button"
+                    onclick={() => onNavigateToRoom(assignedRoom.id)}
+                    class="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-medium border border-slate-200 transition-all cursor-pointer flex items-center gap-1 text-[11px]"
+                    title="Przejdź do widoku tej sali"
+                  >
+                    <span>🚪</span>
+                    <span>{assignedRoom.name}</span>
+                  </button>
+                {:else}
+                  <span class="text-slate-400 italic text-[11px]">Dowolna</span>
+                {/if}
+              </div>
+
+              <!-- Wymiar -->
+              <div class="col-span-1 text-center font-bold text-slate-800">
+                {lesson.weeklyCount}h / tydz.
+              </div>
+
+              <!-- Akcje: Edycja i Usuwanie -->
+              <div class="col-span-2 text-right flex items-center justify-end gap-1">
+                <button
+                  type="button"
+                  onclick={() => startEditingLesson(lesson)}
+                  class="p-1.5 text-slate-500 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
+                  title="Edytuj ten przedmiot"
+                >
+                  ✏️
+                </button>
+                <button
+                  type="button"
+                  onclick={() => editor.deleteLesson(lesson.id)}
+                  class="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                  title="Usuń ten przedmiot z planu oddziału"
+                >
+                  ✕
+                </button>
+              </div>
             </div>
-          </div>
+          {/if}
         {/each}
       </div>
     {/if}
@@ -256,8 +404,9 @@
             bind:value={newLessonTeacherId}
             class="w-full py-1.5 px-2 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-800 focus:outline-none focus:border-blue-500 cursor-pointer"
           >
+            <option value="">(Brak nauczyciela / wakat)</option>
             {#each editor.teachers as t}
-              <option value={t.id}>{t.name} ({t.subject})</option>
+              <option value={t.id}>{t.name} ({editor.getTeacherSubjects(t).join(", ") || t.subject})</option>
             {/each}
           </select>
         </div>
@@ -273,8 +422,12 @@
             class="w-full py-1.5 px-2 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-800 focus:outline-none focus:border-blue-500 cursor-pointer"
           >
             <option value="">Dowolna</option>
-            {#each editor.rooms as r}
-              <option value={r.id}>{r.name}</option>
+            {#each Array.from(roomsByCategory.entries()) as [category, rms]}
+              <optgroup label={category}>
+                {#each rms as r}
+                  <option value={r.id}>{r.name}</option>
+                {/each}
+              </optgroup>
             {/each}
           </select>
         </div>
@@ -288,7 +441,7 @@
             id="class-hours-input-{cls.id}"
             type="number"
             min="1"
-            max="12"
+            max="16"
             bind:value={newLessonHours}
             class="w-full py-1.5 px-1 bg-white border border-slate-200 rounded-lg text-xs font-bold text-center text-slate-800"
           />
