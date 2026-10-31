@@ -36,11 +36,32 @@ if TYPE_CHECKING:
     from src.selectors import HeuristicSelector
 
 DEFAULT_ARCHIVE = Path(__file__).parent / "data" / "xhstt2014" / "XHSTT-2014.xml"
-DEFAULT_INSTANCES = ["BR-SA-00", "GR-PA-08", "GR-H1-97", "ZA-WD-09"]
-DEFAULT_MODES = ["adaptive", "baseline"]
+DEFAULT_INSTANCES = [
+    # Small (< 200 events)
+    "BR-SA-00",
+    "BR-SM-00",
+    "BR-SN-00",
+    "FI-WP-06",
+    "GR-P3-10",
+    "ZA-LW-09",
+    # Medium (200 - 500 events)
+    "GR-PA-08",
+    "ZA-WD-09",
+    "FI-MP-06",
+    "AU-SA-96",
+    "GR-H1-97",
+    "FI-PB-98",
+    "AU-BG-98",
+    # Large & Very Large (> 500 events)
+    "IT-I4-96",
+    "KS-PR-11",
+    "DK-FG-12",
+    "NL-KP-05",
+]
+DEFAULT_MODES = ["adaptive"]
 DEFAULT_SEEDS = list(range(10))
 DEFAULT_ITERATIONS = 500_000
-DEFAULT_CSV_PATH = Path("data/results/preprocessing_experiments.csv")
+DEFAULT_CSV_PATH = Path("data/results/preprocessing_experiments_500k.csv")
 DEFAULT_LOG_DIR = Path("data/logs/preprocessing_experiments")
 LOG_WINDOW_SIZE = 2000
 STAGNATION_LIMIT = 3000
@@ -49,7 +70,7 @@ MIN_RELATIVE_IMPROVEMENT = 0.0
 
 @dataclass(frozen=True)
 class ExperimentResult:
-    """Detailed result of a single experiment run."""
+    """Detailed result of a single experiment run, directly comparable to baseline."""
 
     instance_id: str
     mode: str
@@ -65,6 +86,10 @@ class ExperimentResult:
     is_feasible: bool
     elapsed_s: float
     iterations_per_sec: float
+    events_count: int
+    times_count: int
+    resources_count: int
+    constraints_count: int
     scale: str
     tightness: str
     selector: str
@@ -207,6 +232,10 @@ def _run_single_task(
         is_feasible=inf1 == 0,
         elapsed_s=round(elapsed, 2),
         iterations_per_sec=round(it_per_sec, 1),
+        events_count=profile.events_count,
+        times_count=profile.times_count,
+        resources_count=profile.resources_count,
+        constraints_count=profile.constraints_count,
         scale=scale,
         tightness=tightness,
         selector=selector_name,
@@ -248,7 +277,10 @@ def _print_run_log(idx: int, total: int, r: ExperimentResult) -> None:
         f"{r.iterations_done:,} it w {r.elapsed_s:.1f}s "
         f"({r.iterations_per_sec:,.0f} it/s)"
     )
-    print(f"{prefix} seed={r.seed:2d}: {hard_chg}, {soft_chg} | {perf} | {status}")
+    print(
+        f"{prefix} seed={r.seed:2d}: {hard_chg}, {soft_chg} | {perf} | {status}",
+        flush=True,
+    )
 
 
 def _print_summary_table(results: list[ExperimentResult]) -> None:
@@ -373,6 +405,9 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(line_buffering=True)
+
     args = parse_args()
 
     if not args.archive.exists():
