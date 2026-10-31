@@ -10,32 +10,29 @@
 </script>
 
 <div class="flex flex-col gap-6">
-  <!-- Baner Menedżera Przedmiotów (Kluczowy wymóg użytkownika) -->
-  <div class="bg-gradient-to-r from-purple-50 via-indigo-50 to-blue-50 border border-purple-200/90 rounded-2xl p-5 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+  <!-- Nagłówek bazy lokalowej -->
+  <div class="bg-gradient-to-r from-slate-900 to-slate-800 text-white rounded-2xl p-5 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
     <div class="flex items-center gap-3.5">
-      <div class="w-11 h-11 rounded-2xl bg-purple-600 text-white flex items-center justify-center text-xl font-bold shadow-xs shrink-0">
-        📚
+      <div class="w-11 h-11 rounded-2xl bg-white/10 flex items-center justify-center text-xl shrink-0">
+        🚪
       </div>
       <div>
         <div class="flex items-center gap-2">
-          <h3 class="text-sm font-bold text-purple-950">Menedżer Przedmiotów ({editor.uniqueSubjects.length})</h3>
-          <span class="text-[10px] px-2 py-0.5 rounded-full font-bold bg-purple-100 text-purple-800">
-            Kaskadowa zmiana nazw
+          <h3 class="text-sm font-bold text-white">Baza lokalowa szkoły ({editor.rooms.length} sal)</h3>
+          <span class="text-[10px] px-2 py-0.5 rounded-full font-bold bg-white/20 text-white">
+            Krok 3 z 6
           </span>
         </div>
-        <p class="text-xs text-purple-800/80 mt-0.5">
-          Zmieniaj nazwy przedmiotów, scalaj duplikaty i weryfikuj przydział nauczycieli na poziomie całej szkoły.
+        <p class="text-xs text-slate-300 mt-0.5">
+          Zdefiniuj sale ogólne, pracownie profilowane (laboratoria, sale komputerowe) oraz obiekty sportowe.
         </p>
       </div>
     </div>
 
-    <button
-      type="button"
-      onclick={() => (editor.isSubjectManagerOpen = true)}
-      class="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs rounded-xl shadow-xs transition-all cursor-pointer flex items-center gap-1.5 shrink-0"
-    >
-      <span>⚙️ Zarządzaj przedmiotami...</span>
-    </button>
+    <div class="flex items-center gap-2 text-xs bg-white/10 px-3.5 py-2 rounded-xl border border-white/10 text-slate-200">
+      <span>Łączna liczba sal:</span>
+      <strong class="text-white text-sm font-bold">{editor.rooms.length}</strong>
+    </div>
   </div>
 
   <!-- Baza lokalowa szkoły -->

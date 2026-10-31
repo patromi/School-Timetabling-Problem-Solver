@@ -77,6 +77,27 @@
       isSaving = false;
     }
   }
+
+  function handleNextStep() {
+    if (currentStep === 2 && editor.step2ActiveTab === "classes") {
+      editor.step2ActiveTab = "teachers";
+      return;
+    }
+    currentStep = Math.min(6, currentStep + 1);
+  }
+
+  function handlePrevStep() {
+    if (currentStep === 2 && editor.step2ActiveTab === "teachers") {
+      editor.step2ActiveTab = "classes";
+      return;
+    }
+    if (currentStep === 3) {
+      currentStep = 2;
+      editor.step2ActiveTab = "teachers";
+      return;
+    }
+    currentStep = Math.max(1, currentStep - 1);
+  }
 </script>
 
 <div class="h-full flex flex-col bg-slate-50 font-sans text-slate-800 antialiased overflow-hidden">
@@ -105,13 +126,21 @@
 
     <!-- Actions -->
     <div class="flex items-center gap-2">
-      <button
-        type="button"
-        onclick={() => editor.loadHighSchoolPreset()}
-        class="px-3.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200/70 text-xs font-semibold rounded-lg transition-all cursor-pointer flex items-center gap-1.5 shadow-2xs"
-      >
-        <span>⚡ Wstaw gotowy szablon szkoły</span>
-      </button>
+      {#if !editor.isSchoolValid}
+        <button
+          type="button"
+          onclick={() => {
+            if (editor.validationIssues.length > 0) {
+              currentStep = editor.validationIssues[0].step;
+            }
+          }}
+          class="px-2.5 py-1.5 text-xs text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200/80 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 font-medium shadow-2xs"
+          title="Kliknij, aby przejść do brakujących danych"
+        >
+          <span>⚠️</span>
+          <span>Do uzupełnienia ({editor.validationIssues.length})</span>
+        </button>
+      {/if}
 
       <button
         type="button"
@@ -119,9 +148,10 @@
         disabled={isSaving || !editor.isSchoolValid}
         class={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all shadow-xs flex items-center gap-1.5 cursor-pointer ${
           editor.isSchoolValid
-            ? "bg-blue-600 hover:bg-blue-700 text-white"
+            ? "bg-blue-600 hover:bg-blue-700 text-white active:scale-[0.99]"
             : "bg-slate-200 text-slate-400 cursor-not-allowed"
         }`}
+        title={editor.isSchoolValid ? "Zapisz szkołę w systemie" : "Uzupełnij wymagane dane przed zapisem"}
       >
         {#if isSaving}
           <span class="animate-spin">⏳</span>
@@ -162,7 +192,12 @@
     {:else if currentStep === 5}
       <Step5Constraints {editor} />
     {:else if currentStep === 6}
-      <Step6SummaryExport {editor} {isSaving} onSave={handleSaveSchool} />
+      <Step6SummaryExport
+        {editor}
+        {isSaving}
+        onSave={handleSaveSchool}
+        onNavigateStep={(step) => (currentStep = step)}
+      />
     {/if}
   </main>
 
@@ -171,9 +206,9 @@
     <button
       type="button"
       disabled={currentStep === 1}
-      onclick={() => (currentStep = Math.max(1, currentStep - 1))}
+      onclick={handlePrevStep}
       class={`px-4 py-2 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
-        currentStep > 1
+        currentStep > 1 || (currentStep === 2 && editor.step2ActiveTab === 'teachers')
           ? "bg-slate-100 hover:bg-slate-200 text-slate-700"
           : "bg-slate-50 text-slate-300 cursor-not-allowed"
       }`}
@@ -181,24 +216,32 @@
       ← Wstecz
     </button>
 
-    <div class="text-xs text-slate-400 font-medium">
-      Krok {currentStep} z 6
+    <div class="flex items-center gap-2 text-xs text-slate-500 font-medium">
+      <span>Krok {currentStep} z 6</span>
+      {#if currentStep === 2}
+        <span class="text-slate-300">•</span>
+        <span class="font-bold text-blue-700">
+          {editor.step2ActiveTab === 'classes' ? 'Część 1: Klasy' : 'Część 2: Kadra'}
+        </span>
+      {/if}
     </div>
 
     {#if currentStep < 6}
       <button
         type="button"
-        onclick={() => (currentStep = Math.min(6, currentStep + 1))}
-        class="px-5 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-lg transition-all cursor-pointer"
+        onclick={handleNextStep}
+        class="px-5 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-lg transition-all cursor-pointer shadow-xs active:scale-[0.99]"
       >
-        Dalej →
+        {currentStep === 2 && editor.step2ActiveTab === 'classes' ? 'Przejdź do kadry →' : 'Dalej →'}
       </button>
     {:else}
       <button
         type="button"
         onclick={handleSaveSchool}
         disabled={isSaving || !editor.isSchoolValid}
-        class="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg transition-all cursor-pointer shadow-xs"
+        class={`px-5 py-2 text-white text-xs font-bold rounded-lg transition-all cursor-pointer shadow-xs ${
+          editor.isSchoolValid ? "bg-blue-600 hover:bg-blue-700 active:scale-[0.99]" : "bg-slate-300 cursor-not-allowed"
+        }`}
       >
         💾 Zapisz szkołę
       </button>

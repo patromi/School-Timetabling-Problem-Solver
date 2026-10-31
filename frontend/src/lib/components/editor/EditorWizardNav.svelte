@@ -38,7 +38,12 @@
       }`}
     >
       <span class="w-5 h-5 rounded-full flex items-center justify-center text-[10px] {currentStep === 2 ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700'}">2</span>
-      <span>👥 Klasy i Nauczyciele</span>
+      <span>👥 Klasy i Kadra</span>
+      {#if currentStep === 2}
+        <span class="text-[10px] px-1.5 py-0.5 bg-blue-100 text-blue-800 rounded font-normal">
+          {editor.step2ActiveTab === 'classes' ? 'Klasy' : 'Nauczyciele'}
+        </span>
+      {/if}
     </button>
 
     <span class="text-slate-300">›</span>
@@ -109,13 +114,24 @@
   <!-- Health indicator -->
   <div class="text-xs font-semibold flex items-center gap-2">
     {#if editor.isSchoolValid}
-      <span class="px-2.5 py-1 bg-emerald-50 text-emerald-800 rounded-full border border-emerald-200/70 text-[11px]">
-        ● Kompletny arkusz
+      <span class="px-2.5 py-1 bg-emerald-50 text-emerald-800 rounded-full border border-emerald-200/70 text-[11px] flex items-center gap-1.5 font-bold">
+        <span>●</span>
+        <span>Arkusz gotowy</span>
       </span>
     {:else}
-      <span class="px-2.5 py-1 bg-amber-50 text-amber-800 rounded-full border border-amber-200/70 text-[11px]">
-        ● Wymaga uzupełnienia
-      </span>
+      <button
+        type="button"
+        onclick={() => {
+          if (editor.validationIssues.length > 0) {
+            currentStep = editor.validationIssues[0].step;
+          }
+        }}
+        class="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 rounded-full border border-amber-200/70 text-[11px] flex items-center gap-1.5 cursor-pointer transition-colors font-medium shadow-2xs"
+        title="Kliknij, aby przejść do brakujących danych"
+      >
+        <span>●</span>
+        <span>Wymaga uzupełnienia ({editor.validationIssues.length})</span>
+      </button>
     {/if}
   </div>
 </nav>

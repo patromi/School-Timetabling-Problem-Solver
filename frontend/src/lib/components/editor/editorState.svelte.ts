@@ -201,6 +201,44 @@ export class EditorState {
   get isSchoolValid(): boolean {
     return Boolean(this.schoolName.trim()) && this.classes.length > 0 && this.teachers.length > 0 && this.lessons.length > 0;
   }
+  get classesWithoutLessons(): SimpleClass[] {
+    return this.classes.filter((c) => !this.lessons.some((l) => l.classId === c.id));
+  }
+  get validationIssues(): { step: number; text: string; action: string }[] {
+    const issues: { step: number; text: string; action: string }[] = [];
+    if (!this.schoolName.trim()) {
+      issues.push({ step: 1, text: "Brak nazwy szkoły", action: "Wpisz nazwę w Kroku 1" });
+    }
+    if (this.classes.length === 0) {
+      issues.push({ step: 2, text: "Brak oddziałów klasowych", action: "Dodaj klasy w Kroku 2" });
+    }
+    if (this.teachers.length === 0) {
+      issues.push({ step: 2, text: "Brak kadry pedagogicznej", action: "Dodaj nauczycieli w Kroku 2" });
+    }
+    if (this.rooms.length === 0) {
+      issues.push({ step: 3, text: "Brak sal lekcyjnych", action: "Dodaj sale w Kroku 3" });
+    }
+    if (this.lessons.length === 0) {
+      issues.push({ step: 4, text: "Siatka lekcji jest pusta", action: "Wprowadź zajęcia w Kroku 4" });
+    } else if (this.classesWithoutLessons.length > 0) {
+      issues.push({
+        step: 4,
+        text: `Klasy bez lekcji: ${this.classesWithoutLessons.map((c) => c.name).join(", ")}`,
+        action: "Przydziel lekcje dla tych klas w Kroku 4",
+      });
+    }
+    return issues;
+  }
+
+  clearToEmptySchool() {
+    this.schoolName = "";
+    this.schoolId = "";
+    this.classes = [];
+    this.teachers = [];
+    this.rooms = [];
+    this.lessons = [];
+    this.customSubjects = [];
+  }
   get filteredLessons(): SimpleLesson[] {
     return filterLessons({
       lessons: this.lessons, classes: this.classes, teachers: this.teachers, rooms: this.rooms,

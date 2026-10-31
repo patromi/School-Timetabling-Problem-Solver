@@ -34,7 +34,7 @@
       </div>
     </div>
 
-    <div class="flex items-center gap-6 text-xs">
+    <div class="flex items-center gap-4 flex-wrap text-xs">
       <div>
         <span class="text-slate-500 block text-[11px]">Łączne pensum:</span>
         <span class="font-black text-slate-900 text-sm">{editor.totalTeacherWorkload} godz.</span>
@@ -53,6 +53,14 @@
           <span class="font-black text-amber-600 text-sm">-{editor.totalTeacherWorkload - editor.totalHoursAssigned}h (wakat)</span>
         {/if}
       </div>
+      <button
+        type="button"
+        onclick={() => (editor.isSubjectManagerOpen = true)}
+        class="ml-auto px-3 py-1.5 bg-white hover:bg-purple-50 text-purple-900 border border-purple-200 text-xs font-semibold rounded-xl cursor-pointer transition-all flex items-center gap-1.5 shadow-2xs"
+        title="Zarządzaj nazwami przedmiotów i scalaj duplikaty"
+      >
+        <span>📚 Słownik przedmiotów ({editor.uniqueSubjects.length})</span>
+      </button>
     </div>
   </div>
 
