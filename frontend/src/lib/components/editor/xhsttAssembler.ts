@@ -89,6 +89,7 @@ export function assembleXhsttPayload(options: XhsttAssemblerOptions): InstanceDe
     teachers,
     classes,
     rooms,
+    lessons,
     selectedDays,
     ruleAssignAllTimes: options.ruleAssignAllTimes,
     ruleAvoidClashes: options.ruleAvoidClashes,

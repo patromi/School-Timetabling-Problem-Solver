@@ -2,6 +2,8 @@
 
 export type RoomType = "general" | "gym" | "lab" | "it" | string;
 
+export const ANY_TEACHER = "__ANY__";
+
 export interface SimpleClass {
   id: string;
   name: string;

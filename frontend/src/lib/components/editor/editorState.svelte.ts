@@ -332,6 +332,15 @@ export class EditorState {
     this.teachers = [...this.teachers];
   }
 
+  getQualifiedTeachersForSubject(subject: string): SimpleTeacher[] {
+    const trimmed = subject?.trim().toLowerCase();
+    if (!trimmed) return [];
+    return this.teachers.filter((t) => {
+      const subs = this.getTeacherSubjects(t).map((s) => s.toLowerCase());
+      return subs.includes(trimmed);
+    });
+  }
+
   registerSubject(name: string) {
     const trimmed = name?.trim();
     if (!trimmed) return;

@@ -235,10 +235,13 @@
                     bind:value={editTeacherId}
                     class="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
-                    <option value="">(Brak / Wakat)</option>
-                    {#each editor.teachers as t}
-                      <option value={t.id}>{t.name} ({editor.getTeacherSubjects(t).join(", ") || t.subject})</option>
-                    {/each}
+                    <option value="__ANY__">🎲 Dowolny nauczyciel (dobiera system)</option>
+                    <option value="">👤 Brak nauczyciela (wakat)</option>
+                    <optgroup label="Przypisz konkretnego pedagoga:">
+                      {#each editor.teachers as t}
+                        <option value={t.id}>{t.name} ({editor.getTeacherSubjects(t).join(", ") || t.subject})</option>
+                      {/each}
+                    </optgroup>
                   </select>
                 </div>
                 <!-- Sala (można zmienić salę lub odpiąć) -->
@@ -316,9 +319,14 @@
                 </button>
               </div>
 
-              <!-- Nauczyciel (Klikalny Cross-Link!) -->
+              <!-- Nauczyciel (Klikalny Cross-Link, Dowolny nauczyciel lub Wakat) -->
               <div class="col-span-3">
-                {#if assignedTeacher}
+                {#if lesson.teacherId === "__ANY__"}
+                  <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md bg-indigo-50 text-indigo-900 font-bold text-[11px] border border-indigo-200 shadow-2xs">
+                    <span>🎲</span>
+                    <span>Dowolny nauczyciel</span>
+                  </span>
+                {:else if assignedTeacher}
                   <button
                     type="button"
                     onclick={() => onNavigateToTeacher(assignedTeacher.id)}

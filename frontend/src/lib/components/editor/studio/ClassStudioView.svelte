@@ -228,10 +228,13 @@
                     bind:value={editTeacherId}
                     class="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 font-semibold"
                   >
-                    <option value="">(Brak / Wakat - do ustalenia)</option>
-                    {#each editor.teachers as t}
-                      <option value={t.id}>{t.name} ({editor.getTeacherSubjects(t).join(", ") || t.subject})</option>
-                    {/each}
+                    <option value="__ANY__">🎲 Dowolny nauczyciel (dobiera system)</option>
+                    <option value="">👤 Brak nauczyciela (wakat)</option>
+                    <optgroup label="Przypisz konkretnego pedagoga:">
+                      {#each editor.teachers as t}
+                        <option value={t.id}>{t.name} ({editor.getTeacherSubjects(t).join(", ") || t.subject})</option>
+                      {/each}
+                    </optgroup>
                   </select>
                 </div>
                 <!-- Sala -->
@@ -303,9 +306,24 @@
                 {/if}
               </div>
 
-              <!-- Nauczyciel (Klikalny Cross-Link lub Wakat) -->
+              <!-- Nauczyciel (Klikalny Cross-Link, Dowolny nauczyciel lub Wakat) -->
               <div class="col-span-3">
-                {#if assignedTeacher}
+                {#if lesson.teacherId === "__ANY__"}
+                  {@const qualified = editor.getQualifiedTeachersForSubject(lesson.subject)}
+                  <div class="flex flex-col gap-0.5">
+                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-900 font-bold text-xs border border-indigo-200 shadow-2xs">
+                      <span>🎲</span>
+                      <span>Dowolny nauczyciel</span>
+                    </span>
+                    <span class="text-[10px] text-indigo-600 truncate max-w-[170px]" title={qualified.map((t) => t.name).join(", ")}>
+                      {#if qualified.length > 0}
+                        Kandydaci ({qualified.length}): {qualified.map((t) => t.name).join(", ")}
+                      {:else}
+                        Dowolny pedagog z kadry
+                      {/if}
+                    </span>
+                  </div>
+                {:else if assignedTeacher}
                   <button
                     type="button"
                     onclick={() => onNavigateToTeacher(assignedTeacher.id)}
@@ -319,7 +337,7 @@
                 {:else}
                   <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md bg-slate-100 text-slate-600 font-medium text-[11px] border border-slate-200 shadow-2xs">
                     <span>👤</span>
-                    <span>Wakat (do ustalenia)</span>
+                    <span>Wakat (brak nauczyciela)</span>
                   </span>
                 {/if}
               </div>
@@ -404,10 +422,13 @@
             bind:value={newLessonTeacherId}
             class="w-full py-1.5 px-2 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-800 focus:outline-none focus:border-blue-500 cursor-pointer"
           >
-            <option value="">(Brak nauczyciela / wakat)</option>
-            {#each editor.teachers as t}
-              <option value={t.id}>{t.name} ({editor.getTeacherSubjects(t).join(", ") || t.subject})</option>
-            {/each}
+            <option value="__ANY__">🎲 Dowolny nauczyciel (dobiera system)</option>
+            <option value="">👤 Brak nauczyciela (wakat)</option>
+            <optgroup label="Przypisz konkretnego pedagoga:">
+              {#each editor.teachers as t}
+                <option value={t.id}>{t.name} ({editor.getTeacherSubjects(t).join(", ") || t.subject})</option>
+              {/each}
+            </optgroup>
           </select>
         </div>
 

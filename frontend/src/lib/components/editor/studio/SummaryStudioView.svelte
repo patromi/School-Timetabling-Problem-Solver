@@ -9,6 +9,8 @@
   }
 
   let { editor, isSaving, onSave }: Props = $props();
+
+  let anyTeacherLessonsCount = $derived(editor.lessons.filter((l) => l.teacherId === "__ANY__").length);
 </script>
 
 <div class="flex flex-col gap-6">
@@ -141,6 +143,15 @@
         <div class="flex items-center gap-2 text-emerald-800">
           <span>✓</span>
           <span>{editor.rooms.length} sal lekcyjnych zdefiniowanych w bazie</span>
+        </div>
+      {/if}
+
+      {#if anyTeacherLessonsCount > 0}
+        <div class="flex items-center gap-2 text-indigo-900 bg-indigo-50/80 p-2.5 rounded-xl border border-indigo-200">
+          <span class="text-base">🎲</span>
+          <span>
+            <strong>{anyTeacherLessonsCount} lekcji</strong> z opcją <strong>"Dowolny nauczyciel"</strong> — solver dobierze pedagogów z uprawnieniami podczas optymalizacji.
+          </span>
         </div>
       {/if}
     </div>

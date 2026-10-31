@@ -116,6 +116,16 @@ export function buildBaseStructure(options: {
     let remainingCount = l.weeklyCount;
     let counter = 1;
 
+    const getTeacherResource = (workload: number) => {
+      if (l.teacherId === "__ANY__") {
+        return [{ role: "Teacher", resource_ref: null, resource_type_ref: "Teacher", workload }];
+      }
+      if (l.teacherId) {
+        return [{ role: "Teacher", resource_ref: l.teacherId, resource_type_ref: "Teacher", workload }];
+      }
+      return [];
+    };
+
     // Jeśli zaznaczono blok i lekcja ma min 2h
     const allowBlock = ruleContinuousBlocks && l.duration === 2 && remainingCount >= 2;
     if (allowBlock) {
@@ -128,7 +138,7 @@ export function buildBaseStructure(options: {
         workload: 2,
         group_refs: [egId],
         resources: [
-          ...(l.teacherId ? [{ role: "Teacher", resource_ref: l.teacherId, resource_type_ref: "Teacher", workload: 2 }] : []),
+          ...getTeacherResource(2),
           { role: "Class", resource_ref: l.classId, resource_type_ref: "Class", workload: 2 },
           ...(l.roomId ? [{ role: "Room", resource_ref: l.roomId, resource_type_ref: "Room", workload: 2 }] : []),
         ],
@@ -147,7 +157,7 @@ export function buildBaseStructure(options: {
         workload: 1,
         group_refs: [egId],
         resources: [
-          ...(l.teacherId ? [{ role: "Teacher", resource_ref: l.teacherId, resource_type_ref: "Teacher", workload: 1 }] : []),
+          ...getTeacherResource(1),
           { role: "Class", resource_ref: l.classId, resource_type_ref: "Class", workload: 1 },
           ...(l.roomId ? [{ role: "Room", resource_ref: l.roomId, resource_type_ref: "Room", workload: 1 }] : []),
         ],
