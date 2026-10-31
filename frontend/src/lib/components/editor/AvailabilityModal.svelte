@@ -177,7 +177,7 @@
 
 <!-- Backdrop -->
 <div
-  class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto"
+  class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5"
   role="dialog"
   aria-modal="true"
   aria-labelledby="availability-title"
@@ -205,7 +205,7 @@
             </span>
           </div>
           <p class="text-xs text-slate-500 mt-0.5">
-            Kliknij na pojedyncze komórki, całe godziny lekcyjne (po lewej) lub całe dni (u góry), aby zablokować godziny (AvoidUnavailableTimesConstraint).
+            Kliknij na poszczególne kratki, całe godziny lekcyjne (po lewej) lub całe dni (u góry), aby zaznaczyć niedostępność.
           </p>
         </div>
       </div>
@@ -230,10 +230,10 @@
       onInvertSelection={invertSelection}
     />
 
-    <!-- Main Content Layout (Left: Grid & Constraints, Right: Context Drawer) -->
+    <!-- Main Content Layout (Left: Grid & Settings, Right: Context Drawer) -->
     <div class="flex-1 overflow-hidden flex flex-col md:flex-row">
       <!-- Left Column: Matrix & Sliders -->
-      <div class="p-6 overflow-y-auto flex-1 flex flex-col gap-6">
+      <div class="p-4 sm:p-5 overflow-y-auto flex-1 flex flex-col gap-4">
         <AvailabilityGrid
           {days}
           {periodsPerDay}
@@ -270,11 +270,11 @@
     </div>
 
     <!-- Footer Controls -->
-    <div class="px-6 py-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between shrink-0">
+    <div class="px-6 py-3.5 bg-slate-50 border-t border-slate-200 flex items-center justify-between shrink-0">
       <div class="text-xs text-slate-500">
         {#if blockedCount > 0}
           <span class="text-rose-700 font-semibold">
-            Wybrano {blockedCount} {blockedCount === 1 ? "zablokowaną godzinę" : "zablokowanych godzin"} ({isSoft ? "SOFT" : "HARD"})
+            Wybrano {blockedCount} {blockedCount === 1 ? "niedostępną godzinę" : "niedostępnych godzin"} • {isSoft ? "Preferencja osobista" : "Wymóg bezwzględny"}
           </span>
         {:else}
           <span class="text-emerald-700 font-semibold">

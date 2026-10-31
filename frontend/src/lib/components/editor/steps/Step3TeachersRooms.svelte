@@ -108,7 +108,7 @@
                   ? "bg-rose-50 text-rose-700 border-rose-200 font-semibold"
                   : "bg-white text-slate-500 border-slate-200 hover:border-slate-300"
               }`}
-              title="Ustal dostępność sali w tygodniu (AvoidUnavailableTimesConstraint)"
+              title="Ustal dostępność sali w tygodniu"
             >
               <span>🗓️</span>
               <span>{room.unavailableTimes?.length ? `${room.unavailableTimes.length} wykl.` : "Dostępność"}</span>

@@ -43,6 +43,11 @@
       if (tab === "lessons" || tab === "byClass" || tab === "byTeacher") {
         editor.step4ActiveTab = tab;
       }
+      const avail = params.get("avail");
+      if (avail && editor.teachers.length > 0) {
+        const t = editor.teachers[0];
+        editor.openAvailabilityModal(t.id, t.name, "teacher");
+      }
     }
   });
 

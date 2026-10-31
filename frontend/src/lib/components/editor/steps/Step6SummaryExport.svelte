@@ -106,7 +106,7 @@
         <div class="flex items-center gap-2 text-emerald-800">
           <span>✓</span>
           <span>
-            Uwzględniono {editor.totalUnavailabilitiesCount} godzin wykluczeń czasowych dla {editor.resourcesWithUnavailability.length} zasobów (AvoidUnavailableTimesConstraint)
+            Uwzględniono {editor.totalUnavailabilitiesCount} godzin wykluczeń czasowych (dyspozycyjność dla {editor.resourcesWithUnavailability.length} osób/sal)
           </span>
         </div>
       {/if}
@@ -114,7 +114,7 @@
         <div class="flex items-center gap-2 text-emerald-800">
           <span>✓</span>
           <span>
-            Zdefiniowano kompaktowy tydzień pracy (ClusterBusyTimes) dla {editor.teachersWithCustomDays.length} pedagogów
+            Zdefiniowano kompaktowy tydzień pracy dla {editor.teachersWithCustomDays.length} pedagogów (niepełny etat / dojazdy)
           </span>
         </div>
       {/if}
@@ -122,7 +122,7 @@
         <div class="flex items-center gap-2 text-emerald-800">
           <span>✓</span>
           <span>
-            Skonfigurowano indywidualne limity obciążenia dziennego (LimitBusyTimes)
+            Skonfigurowano indywidualne limity obciążenia dziennego klas i kadry
           </span>
         </div>
       {/if}
@@ -130,7 +130,7 @@
         <div class="flex items-center gap-2 text-purple-800">
           <span>✓</span>
           <span>
-            Skonfigurowano {editor.linkedGroups.length} grup lekcji równoległych / jednoczesnych (LinkEventsConstraint)
+            Skonfigurowano {editor.linkedGroups.length} grup lekcji równoległych i jednoczesnych
           </span>
         </div>
       {/if}
@@ -138,7 +138,7 @@
         <div class="flex items-center gap-2 text-blue-800">
           <span>✓</span>
           <span>
-            Wymuszono reguły kolejności dla {editor.orderRules.length} par zajęć (OrderEventsConstraint)
+            Wymuszono reguły chronologicznej kolejności dla {editor.orderRules.length} par zajęć
           </span>
         </div>
       {/if}
@@ -146,7 +146,7 @@
         <div class="flex items-center gap-2 text-amber-800">
           <span>✓</span>
           <span>
-            Włączono dydaktyczne preferencje pory dnia dla przedmiotów (PreferTimesConstraint)
+            Włączono preferencje pory dnia (np. przedmioty ścisłe rano, WF po południu)
           </span>
         </div>
       {/if}

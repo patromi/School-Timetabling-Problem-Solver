@@ -15,20 +15,20 @@
         Określ, czy solver musi bezwzględnie umieścić lekcję w tych godzinach, czy może naruszyć regułę w zamian za karę.
       </p>
     </div>
-    <div class="flex items-center bg-white p-0.5 rounded-lg border border-indigo-200 text-xs">
+    <div class="flex items-center bg-white p-0.5 rounded-xl border border-indigo-200 text-xs">
       <button
         type="button"
         onclick={() => (isSoft = true)}
-        class="px-3 py-1 rounded-md font-semibold transition-all cursor-pointer {isSoft ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'}"
+        class="px-3 py-1 rounded-lg font-semibold transition-all cursor-pointer {isSoft ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'}"
       >
-        SOFT (Preferencja)
+        Preferencja (zalecane)
       </button>
       <button
         type="button"
         onclick={() => (isSoft = false)}
-        class="px-3 py-1 rounded-md font-semibold transition-all cursor-pointer {!isSoft ? 'bg-rose-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'}"
+        class="px-3 py-1 rounded-lg font-semibold transition-all cursor-pointer {!isSoft ? 'bg-rose-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'}"
       >
-        HARD (Wymóg)
+        Wymóg bezwzględny
       </button>
     </div>
   </div>

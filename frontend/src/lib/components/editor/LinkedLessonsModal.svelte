@@ -63,7 +63,7 @@
         </span>
         <div>
           <h3 id="linked-lessons-title" class="text-base font-bold leading-tight">
-            Lekcje równoległe i jednoczesne (LinkEventsConstraint)
+            Lekcje równoległe i grupy jednoczesne
           </h3>
           <p class="text-xs text-purple-200 mt-0.5">
             Synchronizacja godzinowa lekcji między klasami (grupy językowe, łączony WF, wspólne wykłady).

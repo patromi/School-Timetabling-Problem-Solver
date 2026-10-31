@@ -9,7 +9,7 @@
 
 <div>
   <span class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">
-    Wybierz preferowaną porę zajęć (PreferTimesConstraint)
+    Wybierz preferowaną porę zajęć
   </span>
   <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
     <!-- Any -->
