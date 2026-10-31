@@ -39,7 +39,9 @@ export function loadInstanceIntoEditor(state: EditorState, inst: InstanceDetail)
   state.afternoonFlexSubjectsWeight = cd.afternoonFlexSubjectsWeight;
   state.ruleOrderLessons = cd.ruleOrderLessons;
 
-  if (state.classes.length > 0 && state.teachers.length > 0) {
+  if (loaded.lessons && loaded.lessons.length > 0) {
+    state.lessons = loaded.lessons;
+  } else if (state.classes.length > 0 && state.teachers.length > 0) {
     state.generateDefaultCurriculum();
   }
 }

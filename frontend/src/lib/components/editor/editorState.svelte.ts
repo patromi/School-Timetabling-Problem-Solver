@@ -639,6 +639,17 @@ export class EditorState {
   removeOrderRule(ruleId: string) { executeRemoveOrderRule(this, ruleId); }
 
   // PRESETY I ŁADOWANIE
+  resetToNewSchool(customName?: string) {
+    this.schoolId = `szkola_${Date.now().toString().slice(-6)}`;
+    this.schoolName = customName || "Nowa Placówka Oświatowa";
+    this.selectedDays = ["Poniedziałek", "Wtorek", "Środa", "Czwartek", "Piątek"];
+    this.periodsPerDay = 8;
+    this.classes = createDefaultClasses();
+    this.teachers = createDefaultTeachers();
+    this.rooms = createDefaultRooms();
+    this.generateDefaultCurriculum();
+    this.studioSection = "teachers";
+  }
   loadHighSchoolPreset() {
     const p = getHighSchoolPresetBasics();
     this.schoolName = p.schoolName;

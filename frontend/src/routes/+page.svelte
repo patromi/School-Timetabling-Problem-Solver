@@ -1,14 +1,8 @@
+<!-- frontend/src/routes/+page.svelte -->
 <script lang="ts">
   import { onMount } from "svelte";
   import type { InstanceDetail, InstanceListItem } from "#lib";
   import { fetchInstanceDetails, fetchInstances } from "#lib";
-  import InstanceSidebar from "../lib/components/InstanceSidebar.svelte";
-  import InstanceHeader from "../lib/components/InstanceHeader.svelte";
-  import OverviewTab from "../lib/components/OverviewTab.svelte";
-  import ResourcesTab from "../lib/components/ResourcesTab.svelte";
-  import EventsTab from "../lib/components/EventsTab.svelte";
-  import ConstraintsTab from "../lib/components/ConstraintsTab.svelte";
-  import TechnicalTab from "../lib/components/TechnicalTab.svelte";
   import InstanceStudio from "../lib/components/editor/studio/InstanceStudio.svelte";
   import SolverView from "../lib/components/SolverView.svelte";
   import TimetableView from "../lib/components/TimetableView.svelte";
@@ -19,12 +13,9 @@
   let loadingList = $state(true);
   let loadingDetail = $state(false);
   let errorMessage = $state<string | null>(null);
-  let activeTab = $state<string>("overview");
-  let selectedResourceFilter = $state<string>("");
 
-  // Main View: "explorer" | "editor" | "solver" | "timetable"
-  let mainView = $state<"explorer" | "editor" | "solver" | "timetable">("explorer");
-  let editorInitialInstance = $state<InstanceDetail | null>(null);
+  // 3-Step Main Pipeline: "studio" | "solver" | "timetable"
+  let mainView = $state<"studio" | "solver" | "timetable">("studio");
 
   async function loadInstancesList() {
     loadingList = true;
@@ -51,7 +42,6 @@
     selectedInstanceId = id;
     loadingDetail = true;
     errorMessage = null;
-    selectedResourceFilter = "";
     try {
       const detail = await fetchInstanceDetails(id);
       instanceDetail = detail;
@@ -71,34 +61,23 @@
     });
   }
 
-  function handleResourceSelectedForEvents(resourceId: string) {
-    selectedResourceFilter = resourceId;
-    activeTab = "events";
-  }
-
   function handleNewSchool() {
-    editorInitialInstance = null;
-    mainView = "editor";
+    selectedInstanceId = null;
+    instanceDetail = null;
+    mainView = "studio";
   }
 
-  function handleEditCurrentSchool() {
-    editorInitialInstance = instanceDetail;
-    mainView = "editor";
-  }
-
-  function handleSolveCurrentSchool() {
+  function handleSolveCurrentSchool(schoolId?: string) {
+    if (schoolId) {
+      selectedInstanceId = schoolId;
+    }
     mainView = "solver";
   }
 
   function handleSchoolSaved(savedId: string) {
     loadInstancesList().then(() => {
       selectInstance(savedId);
-      mainView = "explorer";
     });
-  }
-
-  function handleCancelEditor() {
-    mainView = "explorer";
   }
 
   onMount(() => {
@@ -106,8 +85,10 @@
     if (typeof window !== "undefined") {
       const urlParams = new URLSearchParams(window.location.search);
       const v = urlParams.get("view");
-      if (v === "editor" || v === "solver" || v === "timetable" || v === "explorer") {
+      if (v === "solver" || v === "timetable" || v === "studio") {
         mainView = v as any;
+      } else if (v === "editor" || v === "explorer") {
+        mainView = "studio";
       }
     }
   });
@@ -115,20 +96,18 @@
 
 <svelte:head>
   <title>
-    {mainView === "editor"
-      ? "Kreator Szkoły — Plan Lekcji"
+    {mainView === "studio"
+      ? instanceDetail?.name
+        ? `${instanceDetail.name} — Pulpit Szkoły`
+        : "Pulpit Szkoły — Studio Zasobów"
       : mainView === "solver"
       ? "Generator Planu (Solver) — Plan Lekcji"
-      : mainView === "timetable"
-      ? "Gotowy Plan Lekcji — Plan Lekcji"
-      : instanceDetail
-      ? `${instanceDetail.name || instanceDetail.id} — Plan Lekcji`
-      : "Eksplorator Planów Lekcji"}
+      : "Gotowy Plan Lekcji — Plan Lekcji"}
   </title>
 </svelte:head>
 
 <div class="h-screen w-screen overflow-hidden flex flex-col bg-slate-50 font-sans text-slate-800 antialiased">
-  <!-- Top Navigation Bar -->
+  <!-- Top Application Bar (Workflow Steps) -->
   <header class="h-14 border-b border-slate-200/90 bg-white px-6 flex items-center justify-between shrink-0 select-none shadow-2xs">
     <div class="flex items-center gap-4">
       <div class="flex items-center gap-3">
@@ -137,40 +116,28 @@
         </div>
         <div>
           <h1 class="text-sm font-bold text-slate-900 leading-none">
-            Eksplorator Planów Lekcji
+            Harmonogram Szkolny
           </h1>
           <p class="text-[11px] text-slate-400 mt-0.5">
-            System analizy i optymalizacji tygodniowych planów zajęć szkolnych
+            System optymalizacji i układania planów lekcji (XHSTT Solver)
           </p>
         </div>
       </div>
 
       <span class="text-slate-300">/</span>
 
-      <!-- View Switcher (4 Clean Views) -->
+      <!-- 3 Clear Workflow Steps -->
       <div class="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg text-xs font-semibold text-slate-600">
         <button
           type="button"
-          onclick={() => (mainView = "explorer")}
+          onclick={() => (mainView = "studio")}
           class={`px-3 py-1.5 rounded-md transition-all cursor-pointer flex items-center gap-1.5 ${
-            mainView === "explorer"
-              ? "bg-white text-slate-900 shadow-xs font-bold"
+            mainView === "studio"
+              ? "bg-white text-blue-700 shadow-xs font-bold"
               : "hover:text-slate-900"
           }`}
         >
-          <span>🔍 Przeglądarka szkół</span>
-        </button>
-
-        <button
-          type="button"
-          onclick={handleNewSchool}
-          class={`px-3 py-1.5 rounded-md transition-all cursor-pointer flex items-center gap-1.5 ${
-            mainView === "editor"
-              ? "bg-white text-blue-600 shadow-xs font-bold"
-              : "hover:text-slate-900"
-          }`}
-        >
-          <span>✏️ Kreator / Edytor</span>
+          <span>🏫 1. Szkoła i Dane</span>
         </button>
 
         <button
@@ -178,11 +145,11 @@
           onclick={() => (mainView = "solver")}
           class={`px-3 py-1.5 rounded-md transition-all cursor-pointer flex items-center gap-1.5 ${
             mainView === "solver"
-              ? "bg-white text-blue-600 shadow-xs font-bold"
+              ? "bg-white text-blue-700 shadow-xs font-bold"
               : "hover:text-slate-900"
           }`}
         >
-          <span>⚡ Generuj plan (Solver)</span>
+          <span>⚡ 2. Generator Solver</span>
         </button>
 
         <button
@@ -194,7 +161,7 @@
               : "hover:text-slate-900"
           }`}
         >
-          <span>📅 Gotowy plan lekcji</span>
+          <span>📅 3. Gotowy Plan Lekcji</span>
         </button>
       </div>
     </div>
@@ -206,14 +173,27 @@
     </div>
   </header>
 
-  <!-- Main Content Layout -->
-  {#if mainView === "editor"}
+  <!-- Main Pipeline Content -->
+  {#if mainView === "studio"}
     <div class="flex-1 overflow-hidden">
-      <InstanceStudio
-        initialInstance={editorInitialInstance}
-        onSaved={handleSchoolSaved}
-        onCancel={handleCancelEditor}
-      />
+      {#if loadingDetail && !instanceDetail}
+        <div class="h-full flex flex-col items-center justify-center gap-3 text-slate-400 text-sm">
+          <div class="w-7 h-7 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+          <span>Wczytywanie arkusza organizacyjnego szkoły...</span>
+        </div>
+      {:else}
+        <InstanceStudio
+          initialInstance={instanceDetail}
+          {instances}
+          {selectedInstanceId}
+          {loadingList}
+          onSelectInstance={selectInstance}
+          onUploaded={handleUploaded}
+          onNewSchool={handleNewSchool}
+          onSaved={handleSchoolSaved}
+          onSolve={handleSolveCurrentSchool}
+        />
+      {/if}
     </div>
   {:else if mainView === "solver"}
     <div class="flex-1 overflow-y-auto">
@@ -227,79 +207,6 @@
       <TimetableView
         onGoToSolver={() => (mainView = "solver")}
       />
-    </div>
-  {:else}
-    <div class="flex-1 flex overflow-hidden">
-      <!-- Left Sidebar: Instance Selection & Upload -->
-      <InstanceSidebar
-        {instances}
-        selectedId={selectedInstanceId}
-        loading={loadingList}
-        onSelect={selectInstance}
-        onUploaded={handleUploaded}
-        onNewInstance={handleNewSchool}
-      />
-
-      <!-- Right Workspace -->
-      <main class="flex-1 flex flex-col overflow-hidden bg-slate-50">
-        {#if loadingDetail}
-          <div class="flex-1 flex flex-col items-center justify-center gap-3 text-slate-400 text-sm">
-            <div class="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-            <span>Wczytywanie arkusza organizacyjnego...</span>
-          </div>
-        {:else if errorMessage}
-          <div class="flex-1 flex flex-col items-center justify-center p-8 text-center">
-            <div class="bg-rose-50 border border-rose-200 p-6 rounded-2xl max-w-md flex flex-col gap-3 text-xs shadow-xs">
-              <span class="text-rose-700 font-bold text-sm">Wystąpił problem z wczytaniem danych</span>
-              <p class="text-slate-600">{errorMessage}</p>
-              <button
-                type="button"
-                onclick={() => selectedInstanceId && selectInstance(selectedInstanceId)}
-                class="mt-2 px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white font-semibold rounded-lg transition-all cursor-pointer"
-              >
-                Spróbuj ponownie
-              </button>
-            </div>
-          </div>
-        {:else if instanceDetail}
-          <!-- Instance Header with KPIs & Clean Tabs -->
-          <InstanceHeader
-            instance={instanceDetail}
-            {activeTab}
-            onTabChange={(tab) => (activeTab = tab)}
-            onEdit={handleEditCurrentSchool}
-            onSolve={handleSolveCurrentSchool}
-          />
-
-          <!-- Tab Content Body (Scrollable) -->
-          <div class="flex-1 overflow-y-auto">
-            {#if activeTab === "overview"}
-              <OverviewTab
-                instance={instanceDetail}
-                onGoToTab={(tab) => (activeTab = tab)}
-              />
-            {:else if activeTab === "resources"}
-              <ResourcesTab
-                instance={instanceDetail}
-                onSelectResourceForEvents={handleResourceSelectedForEvents}
-              />
-            {:else if activeTab === "events"}
-              <EventsTab
-                instance={instanceDetail}
-                {selectedResourceFilter}
-              />
-            {:else if activeTab === "constraints"}
-              <ConstraintsTab instance={instanceDetail} />
-            {:else if activeTab === "technical"}
-              <TechnicalTab instance={instanceDetail} />
-            {/if}
-          </div>
-        {:else}
-          <div class="flex-1 flex items-center justify-center text-slate-400 text-sm">
-            Wybierz szkołę z listy po lewej stronie, aby wyświetlić jej arkusz organizacyjny.
-          </div>
-        {/if}
-      </main>
     </div>
   {/if}
 </div>

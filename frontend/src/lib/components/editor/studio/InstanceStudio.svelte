@@ -1,7 +1,7 @@
 <!-- frontend/src/lib/components/editor/studio/InstanceStudio.svelte -->
 <script lang="ts">
   import { onMount } from "svelte";
-  import type { InstanceDetail } from "../../../types";
+  import type { InstanceDetail, InstanceListItem } from "../../../types";
   import { saveInstance } from "../../../api";
   import { EditorState } from "../editorState.svelte";
   import EditorModalsHost from "../EditorModalsHost.svelte";
@@ -11,17 +11,37 @@
   import SchoolStructureView from "./SchoolStructureView.svelte";
   import GlobalRulesStudioView from "./GlobalRulesStudioView.svelte";
   import SummaryStudioView from "./SummaryStudioView.svelte";
+  import SchoolDrawer from "./SchoolDrawer.svelte";
+  import TechnicalInspectorModal from "./TechnicalInspectorModal.svelte";
 
   interface Props {
     initialInstance?: InstanceDetail | null;
+    instances?: InstanceListItem[];
+    selectedInstanceId?: string | null;
+    loadingList?: boolean;
+    onSelectInstance?: (id: string) => void;
+    onUploaded?: (ids: string[]) => void;
+    onNewSchool?: () => void;
     onSaved: (savedId: string) => void;
-    onCancel?: () => void;
+    onSolve?: (instanceId: string) => void;
   }
 
-  let { initialInstance = null, onSaved, onCancel }: Props = $props();
+  let {
+    initialInstance = null,
+    instances = [],
+    selectedInstanceId = null,
+    loadingList = false,
+    onSelectInstance,
+    onUploaded,
+    onNewSchool,
+    onSaved,
+    onSolve,
+  }: Props = $props();
 
   const editor = new EditorState();
 
+  let schoolDrawerOpen = $state(false);
+  let technicalModalOpen = $state(false);
   let isSaving = $state(false);
   let saveError = $state<string | null>(null);
   let saveSuccess = $state<string | null>(null);
@@ -42,6 +62,13 @@
       if (cId) editor.selectedStudioClassId = cId;
       const rId = params.get("room");
       if (rId) editor.selectedStudioRoomId = rId;
+
+      if (params.get("drawer") === "1" || params.get("drawer") === "true") {
+        schoolDrawerOpen = true;
+      }
+      if (params.get("technical") === "1" || params.get("technical") === "true") {
+        technicalModalOpen = true;
+      }
     }
   });
 
@@ -135,9 +162,32 @@
       saveSuccess = `Szkoła ${payload.name} została pomyślnie zapisana!`;
       setTimeout(() => {
         onSaved(payload.id);
+        saveSuccess = null;
       }, 700);
     } catch (err: any) {
       saveError = err.message || "Błąd podczas zapisywania szkoły w bazie.";
+    } finally {
+      isSaving = false;
+    }
+  }
+
+  async function handleSolveSchool() {
+    if (!editor.isSchoolValid) {
+      editor.studioSection = "summary";
+      return;
+    }
+
+    isSaving = true;
+    saveError = null;
+    try {
+      const payload = editor.buildXhsttPayload();
+      await saveInstance(payload);
+      onSaved(payload.id);
+      if (onSolve) {
+        onSolve(payload.id);
+      }
+    } catch (err: any) {
+      saveError = err.message || "Błąd zapisu przed przejściem do generatora.";
     } finally {
       isSaving = false;
     }
@@ -147,36 +197,33 @@
 <div class="h-full flex flex-col bg-slate-100/70 font-sans text-slate-800 antialiased overflow-hidden select-none">
   <!-- Top Application Bar (Clean, Flat, Professional) -->
   <header class="h-16 border-b border-slate-200 bg-white px-6 flex items-center justify-between shrink-0 shadow-2xs z-20">
-    <div class="flex items-center gap-4">
-      {#if onCancel}
-        <button
-          type="button"
-          onclick={onCancel}
-          class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl transition-all cursor-pointer flex items-center gap-1.5"
-        >
-          <span>←</span>
-          <span>Wróć do przeglądarki</span>
-        </button>
-      {/if}
-
-      <div class="border-l border-slate-200 pl-4 flex items-center gap-3">
-        <div>
-          <h2 class="text-sm font-bold text-slate-900 leading-tight flex items-center gap-2">
-            <span>{editor.schoolName || "Nowa szkoła"}</span>
-            <span class="text-[10px] font-normal px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 font-mono">
-              Studio Zasobów
-            </span>
-          </h2>
-          <p class="text-[11px] text-slate-500">
-            Swobodne zarządzanie kadrą, oddziałami, salami i planem zajęć
-          </p>
+    <div class="flex items-center gap-3">
+      <!-- School Selector / Drawer Trigger -->
+      <button
+        type="button"
+        onclick={() => (schoolDrawerOpen = true)}
+        class="px-3.5 py-2 bg-slate-50 hover:bg-slate-100 text-slate-800 text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center gap-2.5 border border-slate-200/90 shadow-2xs hover:border-slate-300 active:scale-[0.99]"
+        title="Otwórz listę szkół lub wgraj plik XML"
+      >
+        <span class="text-base">🏫</span>
+        <div class="flex flex-col text-left">
+          <span class="text-[9px] text-slate-400 font-semibold uppercase tracking-wider leading-none">Placówka</span>
+          <span class="truncate max-w-[180px] sm:max-w-[240px] text-slate-900 font-bold leading-tight mt-0.5">
+            {editor.schoolName || editor.schoolId || "Wybierz szkołę"}
+          </span>
         </div>
+        <span class="text-xs text-slate-400">▾</span>
+      </button>
+
+      <div class="hidden xl:flex flex-col border-l border-slate-200 pl-3">
+        <span class="text-[10px] font-mono text-slate-400">ID: {editor.schoolId}</span>
+        <span class="text-[11px] text-slate-500 font-medium">Zintegrowany Pulpit Szkoły</span>
       </div>
     </div>
 
     <!-- Center/Right Stats & Actions -->
-    <div class="flex items-center gap-4">
-      <div class="hidden md:flex items-center gap-3 text-xs text-slate-500 border-r border-slate-200 pr-4">
+    <div class="flex items-center gap-3">
+      <div class="hidden md:flex items-center gap-3 text-xs text-slate-500 border-r border-slate-200 pr-3">
         <span>Godzin: <strong class="text-blue-700 font-bold">{editor.totalHoursAssigned}</strong></span>
         <span>•</span>
         <span>Kadra: <strong class="text-slate-800">{editor.teachers.length}</strong></span>
@@ -198,13 +245,25 @@
         </button>
       {/if}
 
+      <!-- Technical XML / JSON Modal Trigger -->
+      <button
+        type="button"
+        onclick={() => (technicalModalOpen = true)}
+        class="hidden sm:flex items-center gap-1.5 px-3 py-2 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-semibold rounded-xl border border-slate-200 transition-all cursor-pointer shadow-2xs"
+        title="Podgląd specyfikacji XHSTT XML oraz modelu JSON API"
+      >
+        <span>📄</span>
+        <span>XHSTT XML/JSON</span>
+      </button>
+
+      <!-- Save Button -->
       <button
         type="button"
         onclick={handleSaveSchool}
         disabled={isSaving || !editor.isSchoolValid}
-        class={`px-4 py-2 text-xs font-bold rounded-xl transition-all shadow-xs flex items-center gap-1.5 cursor-pointer ${
+        class={`px-3.5 py-2 text-xs font-bold rounded-xl transition-all shadow-xs flex items-center gap-1.5 cursor-pointer ${
           editor.isSchoolValid
-            ? "bg-blue-600 hover:bg-blue-700 text-white active:scale-[0.99] shadow-blue-500/20"
+            ? "bg-slate-900 hover:bg-slate-800 text-white active:scale-[0.99]"
             : "bg-slate-200 text-slate-400 cursor-not-allowed"
         }`}
       >
@@ -216,6 +275,24 @@
           <span>Zapisz szkołę</span>
         {/if}
       </button>
+
+      <!-- Generate Solver Button -->
+      {#if onSolve}
+        <button
+          type="button"
+          onclick={handleSolveSchool}
+          disabled={isSaving || !editor.isSchoolValid}
+          class={`px-4 py-2 text-xs font-bold rounded-xl transition-all shadow-xs flex items-center gap-1.5 cursor-pointer ${
+            editor.isSchoolValid
+              ? "bg-blue-600 hover:bg-blue-700 text-white active:scale-[0.99] shadow-blue-500/20"
+              : "bg-slate-200 text-slate-400 cursor-not-allowed"
+          }`}
+          title="Zapisz zmiany i przejdź do generowania planu (Solver)"
+        >
+          <span>⚡</span>
+          <span>Generuj plan</span>
+        </button>
+      {/if}
     </div>
   </header>
 
@@ -537,6 +614,32 @@
       </section>
     {/if}
   </main>
+
+  <!-- School Selection Drawer (Slide-over from left) -->
+  <SchoolDrawer
+    open={schoolDrawerOpen}
+    {instances}
+    selectedId={selectedInstanceId || editor.schoolId}
+    loading={loadingList}
+    onClose={() => (schoolDrawerOpen = false)}
+    onSelect={(id) => {
+      if (onSelectInstance) onSelectInstance(id);
+    }}
+    onUploaded={(ids) => {
+      if (onUploaded) onUploaded(ids);
+    }}
+    onNewSchool={() => {
+      if (onNewSchool) onNewSchool();
+      else editor.resetToNewSchool();
+    }}
+  />
+
+  <!-- Technical Inspector Modal (XHSTT XML / JSON) -->
+  <TechnicalInspectorModal
+    open={technicalModalOpen}
+    instance={editor.buildXhsttPayload()}
+    onClose={() => (technicalModalOpen = false)}
+  />
 
   <!-- Auxiliary Modals Host -->
   <EditorModalsHost {editor} />

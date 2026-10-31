@@ -1,6 +1,6 @@
 // frontend/src/lib/components/editor/xhsttLoader.ts
 import type { InstanceDetail } from "../../types";
-import type { SimpleClass, SimpleTeacher, SimpleRoom } from "./types";
+import type { SimpleClass, SimpleTeacher, SimpleRoom, SimpleLesson } from "./types";
 
 export interface LoadedInstanceData {
   schoolId: string;
@@ -10,6 +10,7 @@ export interface LoadedInstanceData {
   classes: SimpleClass[];
   teachers: SimpleTeacher[];
   rooms: SimpleRoom[];
+  lessons: SimpleLesson[];
   constraintsData: {
     ruleTeacherClusterDays: boolean;
     teacherClusterWeight: number;
@@ -38,8 +39,8 @@ export interface LoadedInstanceData {
 }
 
 export function parseInstanceDetail(inst: InstanceDetail): LoadedInstanceData {
-  const schoolId = `${inst.id}_kopia`;
-  const schoolName = `${inst.name} (edycja)`;
+  const schoolId = inst.id;
+  const schoolName = inst.name || inst.id;
 
   // Dni
   const days = inst.time_groups.filter((g) => g.kind.toLowerCase() === "day");
@@ -206,6 +207,118 @@ export function parseInstanceDetail(inst: InstanceDetail): LoadedInstanceData {
       };
     });
 
+  // 4. Rekonstrukcja lekcji (SimpleLesson[]) z inst.events
+  const lessons: SimpleLesson[] = [];
+  const teacherSubjectsMap = new Map<string, Set<string>>();
+
+  if (Array.isArray(inst.events) && inst.events.length > 0) {
+    const classIdSet = new Set(classes.map((c) => c.id));
+    const teacherIdSet = new Set(teachers.map((t) => t.id));
+    const roomIdSet = new Set(rooms.map((r) => r.id));
+
+    const groups = new Map<
+      string,
+      {
+        classId: string;
+        subject: string;
+        teacherId: string;
+        roomId: string;
+        duration: number;
+        totalCount: number;
+      }
+    >();
+
+    inst.events.forEach((ev) => {
+      let classId = "";
+      let teacherId = "";
+      let roomId = "";
+
+      (ev.resources || []).forEach((r) => {
+        const role = (r.role || "").toLowerCase();
+        const typeRef = (r.resource_type_ref || "").toLowerCase();
+        const ref = r.resource_ref;
+
+        if (role.includes("teach") || typeRef.includes("teach")) {
+          if (ref) {
+            teacherId = ref;
+          } else {
+            teacherId = "__ANY__";
+          }
+        } else if (role.includes("class") || typeRef.includes("class")) {
+          if (ref) classId = ref;
+        } else if (role.includes("room") || typeRef.includes("room")) {
+          if (ref) roomId = ref;
+        } else if (ref) {
+          if (!classId && classIdSet.has(ref)) classId = ref;
+          else if (!teacherId && teacherIdSet.has(ref)) teacherId = ref;
+          else if (!roomId && roomIdSet.has(ref)) roomId = ref;
+        }
+      });
+
+      if (!classId && classes.length > 0) {
+        classId = classes[0].id;
+      }
+
+      let rawName = ev.name || ev.id;
+      let cleanSubject = rawName
+        .replace(/\s*\([^)]*\)/g, "")
+        .replace(/\s*#\d+$/g, "")
+        .replace(/_#\d+$/g, "")
+        .trim();
+
+      if (!cleanSubject) {
+        cleanSubject = ev.course_ref || "Zajęcia edukacyjne";
+      }
+
+      const dur = ev.duration || 1;
+      const key = `${classId}:::${cleanSubject}:::${teacherId}:::${roomId}`;
+
+      if (!groups.has(key)) {
+        groups.set(key, {
+          classId,
+          subject: cleanSubject,
+          teacherId,
+          roomId,
+          duration: dur,
+          totalCount: dur,
+        });
+      } else {
+        const existing = groups.get(key)!;
+        existing.totalCount += dur;
+        if (dur === 2) existing.duration = 2;
+      }
+
+      if (teacherId && teacherId !== "__ANY__") {
+        if (!teacherSubjectsMap.has(teacherId)) {
+          teacherSubjectsMap.set(teacherId, new Set());
+        }
+        teacherSubjectsMap.get(teacherId)!.add(cleanSubject);
+      }
+    });
+
+    let lessonIdx = 1;
+    groups.forEach((g) => {
+      lessons.push({
+        id: `L_${g.classId}_${g.subject.replace(/[^a-zA-Z0-9_]/g, "_")}_${lessonIdx++}`,
+        classId: g.classId,
+        subject: g.subject,
+        teacherId: g.teacherId,
+        roomId: g.roomId,
+        duration: g.duration >= 2 ? 2 : 1,
+        weeklyCount: g.totalCount,
+        timePreference: "any",
+      });
+    });
+
+    teachers.forEach((t) => {
+      const subs = teacherSubjectsMap.get(t.id);
+      if (subs && subs.size > 0) {
+        t.subjects = Array.from(subs);
+        t.subject = t.subjects[0];
+      }
+    });
+  }
+
   return {
     schoolId,
     schoolName,
@@ -214,6 +327,7 @@ export function parseInstanceDetail(inst: InstanceDetail): LoadedInstanceData {
     classes,
     teachers,
     rooms,
+    lessons,
     constraintsData,
   };
 }
