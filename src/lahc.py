@@ -4,13 +4,20 @@ from collections.abc import Callable
 
 from src.acceptance import AcceptanceCriterion, SimulatedAnnealingAcceptance
 from src.cost import evaluate_cost
-from src.evaluator_ref import INFEASIBILITY_WEIGHT
+from src.evaluator_ref import INFEASIBILITY_WEIGHT, evaluate_constraint_costs
 from src.heuristics import MANUAL_HEURISTICS, Heuristic
 from src.incremental import (
     IncrementalEvaluator,
     StructuralChangeError,
     Transaction,
 )
+from src.llm.pool import (
+    DEFAULT_N_CANDIDATES,
+    LLM_COOLDOWN_ITERATIONS,
+    GenerationStats,
+    maybe_generate,
+)
+from src.llm.prompt import VARIANT_A
 from src.model import Instance, Solution
 from src.selectors import HeuristicSelector, SolverState, UCBSelector
 from src.solve_log import SolveLogger
@@ -20,6 +27,9 @@ INCREMENTAL = "incremental"
 VERIFY = "verify"
 
 _BEST_BONUS = 0.1
+
+# LLM fires after this many idle_limit multiples without a new best.
+_LLM_TRIGGER_MULTIPLIER = 3
 
 
 def _score_candidate(
@@ -52,6 +62,94 @@ def _score_candidate(
     return cost, transaction
 
 
+def _run_perturbation(
+    instance: Instance,
+    best: Solution,
+    best_cost: int,
+    pool: list[Heuristic],
+    evaluator: IncrementalEvaluator | None,
+    criterion: AcceptanceCriterion,
+    rng: random.Random,
+    perturbation_tier: int,
+    step: int,
+    logger: SolveLogger | None,
+) -> tuple[Solution, int, int, bool]:
+    """Apply small or large perturbation from best solution.
+
+    Returns (new_current, new_current_cost, new_perturbation_tier, fired).
+    `fired` is False when no perturbation heuristic is in the pool or it
+    raises ValueError — caller should not `continue` the loop in that case.
+    """
+    p_name = "small_perturbation" if perturbation_tier == 0 else "large_perturbation"
+    p_heuristic = next((h for h in pool if h.id == p_name), None)
+    if p_heuristic is None:
+        return best, best_cost, perturbation_tier, False
+    try:
+        current = p_heuristic.apply(best, instance, rng)
+    except ValueError:
+        return best, best_cost, perturbation_tier, False
+
+    if evaluator is not None:
+        evaluator.rebuild(current)
+        current_cost = evaluator.cost.as_scalar()
+    else:
+        current_cost = evaluate_cost(instance, current).as_scalar()
+    criterion.reset(current_cost)
+    new_tier = 1 if perturbation_tier == 0 else 0
+    if logger is not None:
+        logger.log_perturbation(
+            step=step,
+            tier=0 if p_name == "small_perturbation" else 1,
+            heuristic_id=p_heuristic.id,
+            cost_before=best_cost,
+            cost_after=current_cost,
+        )
+    return current, current_cost, new_tier, True
+
+
+def _run_llm_trigger(
+    instance: Instance,
+    current: Solution,
+    current_cost: int,
+    pool: list[Heuristic],
+    selector: HeuristicSelector,
+    evaluator: IncrementalEvaluator | None,
+    rng: random.Random,
+    step: int,
+    llm_last_step: int,
+    llm_stagnant: int,
+    llm_prompt_variant: str,
+    llm_n_candidates: int,
+    llm_stats: GenerationStats,
+) -> tuple[list[Heuristic], int]:
+    """Fire the LLM generator and return (new_heuristics, updated_last_step)."""
+    c_costs = (
+        evaluator.constraint_costs()
+        if evaluator is not None
+        else evaluate_constraint_costs(instance, current)
+    )
+    infeas = current_cost // INFEASIBILITY_WEIGHT
+    obj = current_cost % INFEASIBILITY_WEIGHT
+    ucb_sel = selector if isinstance(selector, UCBSelector) else None
+
+    return maybe_generate(
+        instance=instance,
+        solution=current,
+        pool=pool,
+        selector=ucb_sel,
+        constraint_costs=c_costs,
+        infeasibility=infeas,
+        objective=obj,
+        stagnant_iterations=llm_stagnant,
+        rng=rng,
+        stats=llm_stats,
+        last_llm_step=llm_last_step,
+        current_step=step,
+        prompt_variant=llm_prompt_variant,
+        n_candidates=llm_n_candidates,
+    )
+
+
 def _finish(
     evaluator: IncrementalEvaluator | None,
     transaction: Transaction | None,
@@ -71,7 +169,7 @@ def _finish(
         evaluator.rebuild(current)
 
 
-def run_lahc(
+def run_lahc(  # noqa: C901 — solver loop; complexity is inherent to the algorithm
     instance: Instance,
     initial: Solution,
     rng: random.Random,
@@ -89,6 +187,11 @@ def run_lahc(
     acceptance: AcceptanceCriterion | None = None,
     idle_limit: int | None = None,
     min_relative_improvement: float = 0.0,
+    llm_enabled: bool = False,
+    llm_trigger_multiplier: int = _LLM_TRIGGER_MULTIPLIER,
+    llm_prompt_variant: str = VARIANT_A,
+    llm_n_candidates: int = DEFAULT_N_CANDIDATES,
+    llm_stats: GenerationStats | None = None,
 ) -> tuple[Solution, int]:
     """Local search loop with a pluggable acceptance criterion.
 
@@ -123,10 +226,25 @@ def run_lahc(
     improvement). With the default 0 every new best is progress; a positive
     value makes a trickle of tiny improvements count as stagnation, so the
     solver also perturbs when its progress has merely slowed down.
+
+    LLM integration (Etap 7):
+    When `llm_enabled=True` the solver calls `llm.pool.maybe_generate` at a
+    separate stagnation counter that resets only on a new best solution
+    (not on perturbation).  The trigger fires after `llm_trigger_multiplier *
+    idle_limit` iterations without improvement.  Newly validated heuristics
+    are appended to the pool and registered with the UCB selector.
+    `llm_stats` is updated in-place so the caller can inspect acceptance
+    rates after the run.  LLM wall time is included in elapsed time but
+    the iteration counter is unaffected (pauzy nie psuja kryterium akceptacji).
     """
     if evaluation not in (FULL, INCREMENTAL, VERIFY):
         raise ValueError(f"unknown evaluation mode: {evaluation!r}")
-    pool = heuristics if heuristics is not None else MANUAL_HEURISTICS
+
+    # Copy so LLM-generated heuristics can be appended without mutating
+    # MANUAL_HEURISTICS or the caller's list.
+    pool: list[Heuristic] = list(
+        heuristics if heuristics is not None else MANUAL_HEURISTICS
+    )
 
     if selector is None:
         selector = UCBSelector()
@@ -146,52 +264,66 @@ def run_lahc(
     t_start = time.monotonic()
 
     stagnant_iterations = 0
-    # best cost when stagnant_iterations was last reset
     progress_reference = best_cost
     perturbation_tier = 0
     if idle_limit is None:
         idle_limit = max(500, max_iterations // 20)
-    # Stagnation thresholds for the contextual UCB state:
-    # bucket 0 = low  [0, idle_limit/3)
-    # bucket 1 = medium  [idle_limit/3, 2*idle_limit/3)
-    # bucket 2 = high  [2*idle_limit/3, ∞)
     _stag_low = idle_limit // 3
     _stag_med = (2 * idle_limit) // 3
+
+    # LLM state — independent of perturbation resets
+    _llm_stats: GenerationStats = (
+        llm_stats if llm_stats is not None else GenerationStats()
+    )
+    _llm_stagnant = 0
+    _llm_trigger = llm_trigger_multiplier * idle_limit
+    # initialise far enough back that the first trigger is not blocked by cooldown
+    _llm_last_step = -LLM_COOLDOWN_ITERATIONS
 
     for step in range(max_iterations):
         if max_seconds is not None and time.monotonic() - t_start >= max_seconds:
             break
+
+        # --- perturbation (resets stagnant_iterations, NOT _llm_stagnant) ---
         if stagnant_iterations > idle_limit:
-            p_name = (
-                "small_perturbation" if perturbation_tier == 0 else "large_perturbation"
+            current, current_cost, perturbation_tier, fired = _run_perturbation(
+                instance=instance,
+                best=best,
+                best_cost=best_cost,
+                pool=pool,
+                evaluator=evaluator,
+                criterion=criterion,
+                rng=rng,
+                perturbation_tier=perturbation_tier,
+                step=step,
+                logger=logger,
             )
-            p_heuristic = next((h for h in pool if h.id == p_name), None)
+            if fired:
+                stagnant_iterations = 0
+                progress_reference = best_cost
+                continue
 
-            if p_heuristic is not None:
-                try:
-                    current = p_heuristic.apply(best, instance, rng)
-                    if evaluator is not None:
-                        evaluator.rebuild(current)
-                        current_cost = evaluator.cost.as_scalar()
-                    else:
-                        current_cost = evaluate_cost(instance, current).as_scalar()
-                    criterion.reset(current_cost)
+        # --- LLM trigger (fires independently of perturbation) ---
+        if llm_enabled and _llm_stagnant >= _llm_trigger:
+            new_heuristics, _llm_last_step = _run_llm_trigger(
+                instance=instance,
+                current=current,
+                current_cost=current_cost,
+                pool=pool,
+                selector=selector,
+                evaluator=evaluator,
+                rng=rng,
+                step=step,
+                llm_last_step=_llm_last_step,
+                llm_stagnant=_llm_stagnant,
+                llm_prompt_variant=llm_prompt_variant,
+                llm_n_candidates=llm_n_candidates,
+                llm_stats=_llm_stats,
+            )
+            pool.extend(new_heuristics)
+            _llm_stagnant = 0
 
-                    stagnant_iterations = 0
-                    progress_reference = best_cost
-                    perturbation_tier = 1 if perturbation_tier == 0 else 0
-                    if logger is not None:
-                        logger.log_perturbation(
-                            step=step,
-                            tier=0 if p_name == "small_perturbation" else 1,
-                            heuristic_id=p_heuristic.id,
-                            cost_before=best_cost,
-                            cost_after=current_cost,
-                        )
-                    continue
-                except ValueError:
-                    pass
-
+        # --- main step ---
         hard_bucket = 1 if current_cost < INFEASIBILITY_WEIGHT else 0
         stagnation_bucket = (
             0
@@ -209,6 +341,7 @@ def run_lahc(
         except ValueError:
             selector.update(heuristic, 0.0, state=solver_state)
             stagnant_iterations += 1
+            _llm_stagnant += 1
             move_failed = True
 
         if not move_failed:
@@ -225,10 +358,12 @@ def run_lahc(
                 1 - min_relative_improvement
             ):
                 stagnant_iterations = 0
+                _llm_stagnant = 0
                 progress_reference = candidate_cost
                 perturbation_tier = 0
             else:
                 stagnant_iterations += 1
+                _llm_stagnant += 1
 
             if candidate_cost < best_cost:
                 if logger is not None:
@@ -247,12 +382,6 @@ def run_lahc(
             accepted = criterion.accepts(current_cost, candidate_cost, rng, step)
             cost_change = candidate_cost - current_cost
 
-            # Reward: 1 if the candidate improves on the current solution
-            # (regardless of acceptance), plus a bonus when it also beats the
-            # global best. Binary rather than relative to the flattened cost:
-            # with INFEASIBILITY_WEIGHT in the denominator a soft improvement
-            # is worth ~1e-6 while any hard violation remains, which left
-            # every selector Q at ~0 and UCB choosing round-robin.
             improved = 1.0 if candidate_cost < current_cost else 0.0
             best_bonus = _BEST_BONUS if candidate_cost < best_cost else 0.0
             reward = improved + best_bonus
@@ -265,6 +394,10 @@ def run_lahc(
             criterion.after_step(current_cost, step)
             _finish(evaluator, transaction, accepted, current)
             selector.update(heuristic, reward, state=solver_state)
+            if isinstance(selector, UCBSelector):
+                to_remove = selector.try_remove_weakest(pool)
+                if to_remove is not None:
+                    pool.remove(to_remove)
             if logger is not None:
                 logger.record_step(
                     step=step,

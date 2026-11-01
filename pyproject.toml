@@ -9,6 +9,8 @@ dependencies = [
     "matplotlib>=3.9",
     "numpy>=2.0",
     "lxml>=5.2",
+    "scipy>=1.18.1",
+    "httpx>=0.27",
 ]
 
 [dependency-groups]
