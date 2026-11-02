@@ -14,7 +14,7 @@ import random
 import sys
 import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
-from dataclasses import dataclass, fields
+from dataclasses import asdict, dataclass, fields
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -59,6 +59,12 @@ class RunResult:
     # "sa_auto(t0_factor=0.01,t_end=1.0,budget=120s)": the short name "sa"
     # meant T0 = 1e-3 before 18.10.2026 and 1e-2 after, this does not drift
     acceptance_detail: str = ""
+    first_feasible_step: int | None = None
+    first_feasible_elapsed_s: float | None = None
+    last_improvement_step: int | None = None
+    small_perturbations: int = 0
+    large_perturbations: int = 0
+    escapes: int = 0
 
 
 def _apply_preset(args: argparse.Namespace) -> None:
@@ -71,8 +77,9 @@ def _apply_preset(args: argparse.Namespace) -> None:
     args.selectors = ["ucb-a=0.08" if s == "ucb" else s for s in args.selectors]
     args.construct = "naive"
     args.select_perturbations = True
-    if "repair_clash" not in args.exclude_heuristic:
-        args.exclude_heuristic.append("repair_clash")
+    for h_id in ("repair_clash", "event_block_swap", "reassign_resource_times"):
+        if h_id not in args.exclude_heuristic:
+            args.exclude_heuristic.append(h_id)
 
 
 def _make_selector(selector_name: str) -> "HeuristicSelector":
@@ -95,11 +102,19 @@ def _make_selector(selector_name: str) -> "HeuristicSelector":
     return RandomSelector()
 
 
-def _make_acceptance(acceptance_name: str, time_limit: float) -> "AcceptanceCriterion":
+def _make_acceptance(
+    acceptance_name: str,
+    time_limit: float,
+    *,
+    iteration_limit: int | None = None,
+    reheat: str = "full",
+) -> "AcceptanceCriterion":
     from src.acceptance import AutoSAAcceptance, LAHCAcceptance
 
     if acceptance_name == "sa":
-        return AutoSAAcceptance(time_budget=time_limit)
+        return AutoSAAcceptance(
+            time_budget=time_limit, iteration_budget=iteration_limit, reheat=reheat
+        )
     if acceptance_name.startswith("sa-t0="):
         # e.g. "sa-t0=1e-4" -- the starting temperature as a fraction of the
         # initial cost, used to tune SA (the default "sa" is 1e-2; it was
@@ -107,6 +122,8 @@ def _make_acceptance(acceptance_name: str, time_limit: float) -> "AcceptanceCrit
         return AutoSAAcceptance(
             t0_factor=float(acceptance_name.removeprefix("sa-t0=")),
             time_budget=time_limit,
+            iteration_budget=iteration_limit,
+            reheat=reheat,
         )
     return LAHCAcceptance(HISTORY_LENGTH)
 
@@ -123,19 +140,35 @@ def _run_one(
     time_aware_reward: bool = False,
     exclude_heuristics: tuple[str, ...] = (),
     perturbations: bool = True,
+    escape_every: int | None = 25,
+    *,
+    iteration_limit: int | None = None,
+    idle_limit: int | None = STAGNATION_LIMIT,
+    reheat: str = "full",
+    solution_path: Path | None = None,
+    verify_every: int | None = None,
 ) -> RunResult:
     """Run one solver configuration. Imports inside so ProcessPoolExecutor
     can spawn cleanly without pickling the module-level state."""
     from pathlib import Path as _Path
 
     from src.construct import build_greedy, build_initial
-    from src.cost import cost_by_constraint_type
+    from src.cost import cost_by_constraint_type, evaluate_cost
     from src.evaluator_ref import evaluate_cost_components
     from src.heuristics import default_pool
-    from src.lahc import run_lahc
+    from src.lahc import RunStats, run_lahc
+    from src.model import SolutionGroup
     from src.parser import parse_archive
     from src.solve_log import SolveLogger
+    from src.xml_writer import (
+        extract_instance_archive,
+        render_archive_with_solution_groups,
+    )
 
+    if iteration_limit is not None and iteration_limit <= 0:
+        raise ValueError("iteration_limit must be positive")
+    if verify_every is not None and verify_every <= 0:
+        raise ValueError("verify_every must be positive")
     archive_text = DEFAULT_ARCHIVE.read_text(encoding="utf-8-sig")
     instances = parse_archive(archive_text)
     instance = next(i for i in instances if i.id == instance_id)
@@ -146,12 +179,13 @@ def _run_one(
     inf0, obj0 = evaluate_cost_components(instance, initial)
 
     selector = _make_selector(selector_name)
-    acceptance = _make_acceptance(acceptance_name, time_limit)
-
-    iters_done = [0]
-
-    def _on_progress(it: int, _cost: int) -> None:
-        iters_done[0] = it
+    acceptance = _make_acceptance(
+        acceptance_name,
+        time_limit,
+        iteration_limit=iteration_limit,
+        reheat=reheat,
+    )
+    stats = RunStats()
 
     log_file = None
     logger = None
@@ -161,19 +195,23 @@ def _run_one(
 
     t0 = time.monotonic()
     try:
-        best, _ = run_lahc(
+        best, best_scalar = run_lahc(
             instance,
             initial,
             rng,
-            max_iterations=10_000_000,
-            max_seconds=time_limit,
+            max_iterations=iteration_limit or 10_000_000,
+            max_seconds=None if iteration_limit is not None else time_limit,
             selector=selector,
             acceptance=acceptance,
-            evaluation="incremental",
-            on_progress=_on_progress,
+            evaluation="verify" if verify_every is not None else "incremental",
+            verify_every=verify_every or 1,
             progress_every=LOG_WINDOW_SIZE,
             logger=logger,
-            idle_limit=STAGNATION_LIMIT,
+            idle_limit=(
+                idle_limit
+                if idle_limit is not None
+                else max(STAGNATION_LIMIT, 50 * len(instance.events))
+            ),
             min_relative_improvement=MIN_RELATIVE_IMPROVEMENT,
             select_perturbations=select_perturbations,
             time_aware_reward=time_aware_reward,
@@ -181,6 +219,8 @@ def _run_one(
                 h for h in default_pool(instance) if h.id not in exclude_heuristics
             ],
             perturbations=perturbations,
+            escape_every=escape_every,
+            stats=stats,
         )
     finally:
         if logger is not None:
@@ -190,6 +230,19 @@ def _run_one(
 
     elapsed = time.monotonic() - t0
     inf1, obj1 = evaluate_cost_components(instance, best)
+    if evaluate_cost(instance, best).as_scalar() != best_scalar:
+        raise AssertionError("Final incremental cost differs from full evaluation")
+    if inf0 == 0:
+        stats.first_feasible_step = 0
+        stats.first_feasible_elapsed_s = 0.0
+    if solution_path is not None:
+        solution_path.write_text(
+            render_archive_with_solution_groups(
+                extract_instance_archive(archive_text, instance_id),
+                [SolutionGroup(id=f"Experiment_{seed}", solutions=[best])],
+            ),
+            encoding="utf-8",
+        )
 
     if logger is not None and log_path is not None:
         with _Path(log_path).open("a", encoding="utf-8") as f:
@@ -207,6 +260,7 @@ def _run_one(
                         "construct": construct,
                         "select_perturbations": select_perturbations,
                         "perturbations": perturbations,
+                        "escape_every": escape_every,
                         "time_aware_reward": time_aware_reward,
                         "exclude_heuristics": list(exclude_heuristics),
                         "infeasibility_before": inf0,
@@ -217,7 +271,9 @@ def _run_one(
                         # start and for the best solution found
                         "by_type_before": cost_by_constraint_type(instance, initial),
                         "by_type_after": cost_by_constraint_type(instance, best),
-                        "iterations_done": iters_done[0],
+                        "iterations_done": stats.steps_done,
+                        "iteration_limit": iteration_limit,
+                        "stats": asdict(stats),
                         "elapsed_s": round(elapsed, 1),
                     },
                     separators=(",", ":"),
@@ -235,8 +291,14 @@ def _run_one(
         infeasibility_after=inf1,
         objective_after=obj1,
         elapsed_s=round(elapsed, 1),
-        iterations_done=iters_done[0],
+        iterations_done=stats.steps_done,
         acceptance_detail=acceptance.name,
+        first_feasible_step=stats.first_feasible_step,
+        first_feasible_elapsed_s=stats.first_feasible_elapsed_s,
+        last_improvement_step=stats.last_improvement_step,
+        small_perturbations=stats.small_perturbations,
+        large_perturbations=stats.large_perturbations,
+        escapes=stats.escapes,
     )
 
 
@@ -334,6 +396,13 @@ def main() -> None:
         help="Never perturb on stagnation (plain SA + selector)",
     )
     parser.add_argument(
+        "--escape-every",
+        type=int,
+        default=25,
+        help="Fire the escape operators (RRT) every N steps while stagnating; "
+        "0 offers them to the selector as ordinary arms (default: 25)",
+    )
+    parser.add_argument(
         "--time-aware-reward",
         action="store_true",
         help="Scale the selector reward by mean move time / move time",
@@ -410,6 +479,7 @@ def main() -> None:
                 args.time_aware_reward,
                 tuple(args.exclude_heuristic),
                 not args.no_perturbations,
+                args.escape_every or None,
             ): (inst, sel, acc, seed)
             for inst, sel, acc, seed in jobs
         }

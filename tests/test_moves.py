@@ -1,10 +1,12 @@
 import random
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 from src.construct import build_initial
-from src.model import Solution, SolutionEvent
+from src.model import Event, Group, Instance, Solution, SolutionEvent, Time
 from src.moves import (
+    event_block_swap_move,
     kempe_chain_move,
     large_perturbation_move,
     resource_reassign_move,
@@ -14,6 +16,84 @@ from src.moves import (
 from src.parser import parse_archive
 
 FIXTURES = Path(__file__).parent / "fixtures"
+
+
+@pytest.mark.parametrize("durations", [(1, 3), (3, 1), (2, 2)])
+@pytest.mark.parametrize("reverse", [False, True])
+def test_event_block_swap_preserves_combined_span(
+    durations: tuple[int, int], reverse: bool
+) -> None:
+    first, second = durations
+    instance = Instance(
+        id="Blocks",
+        name="Blocks",
+        times=[Time(id=f"T{i}", name=f"T{i}") for i in range(first + second)],
+        events=[
+            Event(id="A", name="A", duration=first),
+            Event(id="B", name="B", duration=second),
+        ],
+    )
+    events = [
+        SolutionEvent(event_ref="A", duration=first, time_ref="T0"),
+        SolutionEvent(event_ref="B", duration=second, time_ref=f"T{first}"),
+    ]
+    solution = Solution(
+        instance_ref=instance.id, events=events[::-1] if reverse else events
+    )
+    before = list(solution.events)
+    candidate = event_block_swap_move(instance, solution, random.Random(0))
+    by_ref = {e.event_ref: e for e in candidate.events}
+    assert by_ref["A"].time_ref == f"T{second}"
+    assert by_ref["B"].time_ref == "T0"
+    assert by_ref["A"].duration == first
+    assert by_ref["B"].duration == second
+    assert solution.events == before
+    assert candidate is not solution
+
+
+def test_event_block_swap_does_not_pack_blocks_across_days() -> None:
+    instance = Instance(
+        id="Days",
+        name="Days",
+        time_groups=[
+            Group(id="Mon", name="Mon", kind="Day"),
+            Group(id="Tue", name="Tue", kind="Day"),
+        ],
+        times=[
+            Time(id="M", name="M", group_refs=["Mon"]),
+            Time(id="T1", name="T1", group_refs=["Tue"]),
+            Time(id="T2", name="T2", group_refs=["Tue"]),
+        ],
+    )
+    solution = Solution(
+        instance_ref=instance.id,
+        events=[
+            SolutionEvent(event_ref="A", duration=1, time_ref="M"),
+            SolutionEvent(event_ref="B", duration=2, time_ref="T1"),
+        ],
+    )
+    with pytest.raises(ValueError, match="no valid event block swap"):
+        event_block_swap_move(instance, solution, random.Random(0))
+
+
+def test_event_block_swap_handles_nonadjacent_events_as_time_swap() -> None:
+    instance = Instance(
+        id="Nonadjacent",
+        name="Nonadjacent",
+        times=[Time(id=f"T{i}", name=f"T{i}") for i in range(6)],
+    )
+    solution = Solution(
+        instance_ref=instance.id,
+        events=[
+            SolutionEvent(event_ref="A", duration=2, time_ref="T0"),
+            SolutionEvent(event_ref="B", duration=1, time_ref="T3"),
+        ],
+    )
+    candidate = event_block_swap_move(instance, solution, random.Random(0))
+    assert candidate.events == [
+        replace(solution.events[0], time_ref="T3"),
+        replace(solution.events[1], time_ref="T0"),
+    ]
 
 
 def _load(name: str) -> str:

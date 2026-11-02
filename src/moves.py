@@ -112,6 +112,48 @@ def time_swap_move(
     raise ValueError("no valid time swap found within the attempt budget")
 
 
+def event_block_swap_move(
+    instance: Instance, solution: Solution, rng: random.Random
+) -> Solution:
+    """GOAL Event Block Swap (section 4.2.3).
+
+    Like a time swap, except adjacent blocks of different lengths exchange
+    order within their combined span, without overlap or a newly created gap.
+    Durations, resources and the event decomposition remain unchanged.
+    """
+    movable = [
+        i
+        for i, event in enumerate(solution.events)
+        if event.time_ref is not None and event.duration is not None
+    ]
+    if len(movable) < 2:
+        raise ValueError("event_block_swap_move needs at least 2 timed events")
+    times = [time.id for time in instance.times]
+    positions = {time: i for i, time in enumerate(times)}
+    for _ in range(min(_MAX_SWAP_ATTEMPTS, len(movable) * (len(movable) - 1) // 2)):
+        i, j = rng.sample(movable, 2)
+        a, b = solution.events[i], solution.events[j]
+        assert a.time_ref is not None and a.duration is not None
+        assert b.time_ref is not None and b.duration is not None
+        a_start, b_start = positions[a.time_ref], positions[b.time_ref]
+        if a_start == b_start:
+            continue
+        new_a, new_b = b.time_ref, a.time_ref
+        if a_start + a.duration == b_start:
+            new_a, new_b = times[a_start + b.duration], a.time_ref
+        elif b_start + b.duration == a_start:
+            new_a, new_b = b.time_ref, times[b_start + a.duration]
+        if new_a not in valid_start_time_ids(instance, a.duration):
+            continue
+        if new_b not in valid_start_time_ids(instance, b.duration):
+            continue
+        events = list(solution.events)
+        events[i] = replace(a, time_ref=new_a)
+        events[j] = replace(b, time_ref=new_b)
+        return replace(solution, events=events)
+    raise ValueError("no valid event block swap found within the attempt budget")
+
+
 def resource_reassign_move(
     instance: Instance, solution: Solution, rng: random.Random
 ) -> Solution:

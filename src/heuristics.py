@@ -1,7 +1,9 @@
+import itertools
 import random
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, replace
 
+from src.cost import Cost
 from src.evaluator_ref import (
     _assigned_resource_ids,
     _events_in_applies_to,
@@ -14,6 +16,7 @@ from src.evaluator_ref import (
 from src.incremental import IncrementalEvaluator
 from src.model import Instance, Solution, SolutionEvent
 from src.moves import (
+    event_block_swap_move,
     kempe_chain_move,
     large_perturbation_move,
     resource_reassign_move,
@@ -79,7 +82,7 @@ def _best_time_for_event(
 ) -> Solution:
     """Returns the solution obtained by moving solution.events[index] to
     whichever valid start time (INCLUDING its current one) yields the
-    lowest cost (numerically identical to evaluator_ref.total_cost).
+    lowest lexicographic Cost (infeasibility first, then objective).
     Including the current time means the result is never worse than the
     input -- move_best and repair_hard_violation both depend on this to
     guarantee they never regress the solution.
@@ -91,7 +94,8 @@ def _best_time_for_event(
     seed; it must be positioned on `solution`.
 
     When `max_probe` is set and `rng` is provided, only a random sample of
-    `max_probe` candidates is evaluated. This trades exhaustive search for
+    `max_probe` candidates is evaluated, plus the current time (so the
+    never-worse guarantee still holds). This trades exhaustive search for
     speed on large instances with many valid times per event."""
     event = solution.events[index]
     # construct.build_initial only ever leaves duration=None paired with
@@ -109,17 +113,19 @@ def _best_time_for_event(
 
     if max_probe is not None and rng is not None and len(candidates) > max_probe:
         candidates = rng.sample(candidates, max_probe)
+        if event.time_ref is not None and event.time_ref not in candidates:
+            candidates.append(event.time_ref)
 
     scorer = (
         evaluator if evaluator is not None else IncrementalEvaluator(instance, solution)
     )
     best_solution: Solution | None = None
-    best_cost: int | None = None
+    best_cost: Cost | None = None
     for time_ref in candidates:
         new_events = list(solution.events)
         new_events[index] = replace(event, time_ref=time_ref)
         candidate_solution = replace(solution, events=new_events)
-        cost = scorer.probe(candidate_solution).as_scalar()
+        cost = scorer.probe(candidate_solution)
         if best_cost is None or cost < best_cost:
             best_cost = cost
             best_solution = candidate_solution
@@ -135,7 +141,7 @@ def move_best(
     evaluator: IncrementalEvaluator | None = None,
 ) -> Solution:
     """Picks one solution event with a time to reassign at random, then
-    moves it to the valid start time that minimizes total_cost (see
+    moves it to the valid start time that minimizes lexicographic Cost (see
     _best_time_for_event). Raises ValueError if no solution event has a
     time_ref to reassign (e.g. every event is a resources-only entry --
     see construct.build_initial), or if the chosen event turns out to have
@@ -176,6 +182,14 @@ def resource_swap(
     """Thin wrapper around moves.resource_swap_move, adapted to the pool's
     apply(solution, instance, rng) argument order."""
     return resource_swap_move(instance, solution, rng)
+
+
+def event_block_swap(
+    solution: Solution, instance: Instance, rng: random.Random
+) -> Solution:
+    """Exchange two time blocks using GOAL's contiguity-preserving rule
+    (Fonseca et al., Event Block Swap; see moves.event_block_swap_move)."""
+    return event_block_swap_move(instance, solution, rng)
 
 
 def kempe_chain(solution: Solution, instance: Instance, rng: random.Random) -> Solution:
@@ -409,18 +423,18 @@ def _cheapest_time(
     evaluator: IncrementalEvaluator | None = None,
 ) -> Solution:
     """The solution with solution.events[index] moved to whichever of
-    `times` gives the lowest total cost."""
+    `times` gives the lowest lexicographic Cost."""
     event = solution.events[index]
     scorer = (
         evaluator if evaluator is not None else IncrementalEvaluator(instance, solution)
     )
     best_solution: Solution | None = None
-    best_cost: int | None = None
+    best_cost: Cost | None = None
     for time_ref in times:
         new_events = list(solution.events)
         new_events[index] = replace(event, time_ref=time_ref)
         candidate = replace(solution, events=new_events)
-        cost = scorer.probe(candidate).as_scalar()
+        cost = scorer.probe(candidate)
         if best_cost is None or cost < best_cost:
             best_cost, best_solution = cost, candidate
     assert best_solution is not None
@@ -522,6 +536,115 @@ def repair_resource_clash(
     return min(candidates, key=lambda c: scorer.probe(c).as_scalar())
 
 
+# GOAL's RRT permutes up to 7 events; 5 bounds the work to 5! - 1 = 119 probes.
+_RRT_MAX_EVENTS = 5
+_RRT_VIOLATION_BIAS = 0.75
+
+
+def _movable_events_by_resource(
+    instance: Instance, solution: Solution
+) -> dict[str, list[int]]:
+    events_by_id = {event.id: event for event in instance.events}
+    result: dict[str, list[int]] = {}
+    for i, event in enumerate(solution.events):
+        if event.time_ref is None or event.duration is None:
+            continue
+        occurrence = resolve_occurrence(events_by_id[event.event_ref], event)
+        for resource in sorted(
+            {ref for ref in _assigned_resource_ids(occurrence) if ref is not None}
+        ):
+            result.setdefault(resource, []).append(i)
+    return result
+
+
+def _resource_time_permutations(
+    instance: Instance, solution: Solution, indices: list[int]
+) -> Iterator[Solution]:
+    original = tuple(solution.events[i].time_ref for i in indices)
+    # dict.fromkeys dedupes while keeping a stable order; iterating a set of
+    # permutations would depend on PYTHONHASHSEED and break reproducibility.
+    for permutation in dict.fromkeys(itertools.permutations(original)):
+        if permutation == original:
+            continue
+        events = list(solution.events)
+        for i, time in zip(indices, permutation, strict=True):
+            event = events[i]
+            assert event.duration is not None
+            if time not in valid_start_time_ids(instance, event.duration):
+                break
+            events[i] = replace(event, time_ref=time)
+        else:
+            yield replace(solution, events=events)
+
+
+def _sample_resource_events(
+    indices: list[int], violating: set[int], rng: random.Random
+) -> list[int]:
+    k = min(len(indices), _RRT_MAX_EVENTS)
+    affected = [i for i in indices if i in violating]
+    if affected and k < len(indices):
+        first = rng.choice(affected)
+        chosen = [first, *rng.sample([i for i in indices if i != first], k - 1)]
+        rng.shuffle(chosen)
+        return chosen
+    return rng.sample(indices, k)
+
+
+def reassign_resource_times(
+    solution: Solution,
+    instance: Instance,
+    rng: random.Random,
+    evaluator: IncrementalEvaluator | None = None,
+) -> Solution:
+    """Bounded adaptation of GOAL's Resource-Reassign-Times neighbourhood
+    (RRT; Fonseca et al., section 4.2.7).
+
+    Picks a resource (with a 75% bias towards one involved in a violated hard
+    constraint), takes at most five of its timed events and tries every
+    distinct permutation of their start times, in a stable order. Returns the
+    best alternative even if it is worse than the input: acceptance belongs
+    to the solver. Resource assignments are never changed, despite the name.
+
+    Raises ValueError if no resource has two movable events or no alternative
+    permutation is valid."""
+    events_by_resource = _movable_events_by_resource(instance, solution)
+    candidate_resources = sorted(
+        r for r, idxs in events_by_resource.items() if len(idxs) >= 2
+    )
+    if not candidate_resources:
+        raise ValueError("cannot apply RRT: no resource has >= 2 movable events")
+
+    scorer = (
+        evaluator if evaluator is not None else IncrementalEvaluator(instance, solution)
+    )
+    violating_indices = set(_movable_violating_indices(instance, solution, scorer))
+    violating_resources = [
+        r
+        for r in candidate_resources
+        if any(idx in violating_indices for idx in events_by_resource[r])
+    ]
+    if violating_resources and rng.random() < _RRT_VIOLATION_BIAS:
+        chosen_resource = rng.choice(violating_resources)
+    else:
+        chosen_resource = rng.choice(candidate_resources)
+
+    chosen_indices = _sample_resource_events(
+        events_by_resource[chosen_resource], violating_indices, rng
+    )
+    best_solution: Solution | None = None
+    best_cost: Cost | None = None
+    for candidate in _resource_time_permutations(instance, solution, chosen_indices):
+        cost = scorer.probe(candidate)
+        if best_cost is None or cost < best_cost:
+            best_cost, best_solution = cost, candidate
+
+    if best_solution is None:
+        raise ValueError(
+            "no valid alternative permutation found for chosen resource times"
+        )
+    return best_solution
+
+
 # Probe cap used for the "fast" variants of exhaustive-search heuristics.
 # Reducing the number of candidate times probed per call trades some per-call
 # quality for more iterations within a fixed time budget -- particularly useful
@@ -587,6 +710,13 @@ MANUAL_HEURISTICS: list[Heuristic] = [
         incremental_safe=True,
     ),
     Heuristic(
+        id="event_block_swap",
+        name="Contiguity-preserving event block swap (GOAL EBS)",
+        protected=True,
+        apply=event_block_swap,
+        incremental_safe=True,
+    ),
+    Heuristic(
         id="kempe_chain",
         name="Kempe chain interchange between two times",
         protected=True,
@@ -601,6 +731,16 @@ MANUAL_HEURISTICS: list[Heuristic] = [
             sol, inst, rng, max_probe=_FAST_MAX_PROBE
         ),
         incremental_safe=True,
+    ),
+    Heuristic(
+        id="reassign_resource_times",
+        name=f"Permute one resource's times (GOAL RRT, <= {_RRT_MAX_EVENTS} events)",
+        protected=True,
+        apply=reassign_resource_times,
+        incremental_safe=True,
+        apply_with_evaluator=lambda sol, inst, rng, ev: reassign_resource_times(
+            sol, inst, rng, evaluator=ev
+        ),
     ),
     Heuristic(
         id="large_perturbation",

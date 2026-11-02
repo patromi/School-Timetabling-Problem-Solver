@@ -22,7 +22,7 @@ from src.acceptance import AcceptanceCriterion, AutoSAAcceptance, LAHCAcceptance
 from src.construct import build_greedy, build_initial
 from src.evaluator_ref import evaluate_constraint_costs, resolve_occurrences
 from src.html_report import render_timetable_page
-from src.lahc import RunStats, run_lahc
+from src.lahc import DEFAULT_ESCAPE_EVERY, RunStats, run_lahc
 from src.selectors import EpsilonGreedySelector, RandomSelector, UCBSelector
 from src.solve_log import SolveLogger
 from src.model import Instance, Solution, SolutionGroup
@@ -168,6 +168,7 @@ def solve(
     construct: str = "greedy",
     idle_limit: int | None = DEFAULT_IDLE_LIMIT,
     perturbations: bool = True,
+    escape_every: int | None = DEFAULT_ESCAPE_EVERY,
 ) -> SolveResult:
     """Buduje rozwiazanie poczatkowe i uruchamia solver; zwraca spakowany wynik."""
     build = build_greedy if construct == "greedy" else build_initial
@@ -200,6 +201,7 @@ def solve(
         idle_limit=idle_limit,
         stats=stats,
         perturbations=perturbations,
+        escape_every=escape_every,
     )
     elapsed = time.time() - t_start
     by_type_1 = cost_by_type(instance, best)
@@ -288,6 +290,10 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--no-perturbations", action="store_true",
                         help="Wylacz perturbacje przy stagnacji (sam SA z selektorem; "
                         "na duzych instancjach dalo to najlepsze wyniki 18.10.2026)")
+    parser.add_argument("--escape-every", type=int, default=DEFAULT_ESCAPE_EVERY,
+                        help="Co ile krokow w stagnacji (od 1/3 idle-limit) solver "
+                        "sam uruchamia ciezki operator RRT; 0 = RRT jako zwykle "
+                        f"ramie selektora (domyslnie {DEFAULT_ESCAPE_EVERY})")
     parser.add_argument(
         "--output",
         type=Path,
@@ -393,6 +399,7 @@ def main(argv: list[str] | None = None) -> None:
             construct=args.construct,
             idle_limit=resolve_idle_limit(args.idle_limit, instance),
             perturbations=not args.no_perturbations,
+            escape_every=args.escape_every or None,
         )
         rate = (
             result.stats.steps_done / result.elapsed_seconds

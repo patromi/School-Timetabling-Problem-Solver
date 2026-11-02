@@ -29,6 +29,13 @@ _BEST_BONUS = 0.1
 # arms they only take calls from the useful operators.
 PERTURBATION_IDS = frozenset({"small_perturbation", "large_perturbation"})
 
+# Expensive operators the solver itself fires every `escape_every` steps
+# while the search stagnates (see run_lahc). As selector arms they win on
+# improvements per call while costing ~50x a cheap move, so UCB spent most
+# of the time budget on them (ablation 19.10.2026).
+ESCAPE_IDS = frozenset({"reassign_resource_times"})
+DEFAULT_ESCAPE_EVERY = 25
+
 
 @dataclass
 class RunStats:
@@ -47,6 +54,7 @@ class RunStats:
     last_improvement_elapsed_s: float | None = None
     small_perturbations: int = 0
     large_perturbations: int = 0
+    escapes: int = 0
 
 
 @dataclass
@@ -136,6 +144,7 @@ def run_lahc(
     snapshot_every: int = 5000,
     stats: RunStats | None = None,
     perturbations: bool = True,
+    escape_every: int | None = DEFAULT_ESCAPE_EVERY,
 ) -> tuple[Solution, int]:
     """Local search loop with a pluggable acceptance criterion.
 
@@ -179,6 +188,13 @@ def run_lahc(
     unless `select_perturbations` is True (the behaviour before
     18.10.2026, kept for reproducing older runs).
 
+    The escape operators (ESCAPE_IDS) are not offered to the selector
+    either: while the stagnation counter is past the low bucket
+    (idle_limit/3), the solver applies one to the current solution every
+    `escape_every` steps instead of asking the selector. Its candidate goes
+    through the acceptance criterion like any other move, but the selector
+    is not updated. With `escape_every=None` they are ordinary selector arms.
+
     With `time_aware_reward` the selector's reward is scaled by
     min(1, mean move time / this move's time): a move slower than the
     average move earns proportionally less, so an expensive heuristic has to
@@ -204,11 +220,17 @@ def run_lahc(
 
     if selector is None:
         selector = UCBSelector()
-    selectable = (
-        pool
-        if select_perturbations
-        else [h for h in pool if h.id not in PERTURBATION_IDS]
+    escape_heuristics = (
+        [h for h in pool if h.id in ESCAPE_IDS] if escape_every is not None else []
     )
+    if escape_every is not None and escape_every < 1:
+        raise ValueError(f"escape_every must be >= 1, got {escape_every}")
+    selectable = [
+        h
+        for h in pool
+        if (select_perturbations or h.id not in PERTURBATION_IDS)
+        and h not in escape_heuristics
+    ]
 
     criterion: AcceptanceCriterion = (
         acceptance if acceptance is not None else SimulatedAnnealingAcceptance()
@@ -298,6 +320,8 @@ def run_lahc(
             fired_on_stagnation=sorted(h.id for h in pool if h.id in PERTURBATION_IDS)
             if perturbations
             else [],
+            fired_as_escape=[h.id for h in escape_heuristics],
+            escape_every=escape_every,
             idle_limit=idle_limit,
             stagnation_thresholds=[_stag_low, _stag_med],
             min_relative_improvement=min_relative_improvement,
@@ -361,7 +385,20 @@ def run_lahc(
 
         solver_state = solver_state_now()
 
-        heuristic = selector.select(selectable, rng, state=solver_state)
+        escaping = (
+            escape_every is not None
+            and bool(escape_heuristics)
+            and stagnant_iterations >= _stag_low
+            and stagnant_iterations % escape_every == 0
+        )
+        if escaping:
+            assert escape_every is not None
+            heuristic = escape_heuristics[
+                (stagnant_iterations // escape_every) % len(escape_heuristics)
+            ]
+            run_stats.escapes += 1
+        else:
+            heuristic = selector.select(selectable, rng, state=solver_state)
         move_failed = False
         move_start = time.perf_counter()
         try:
@@ -373,7 +410,8 @@ def run_lahc(
             else:
                 candidate = heuristic.apply(current, instance, rng)
         except ValueError:
-            selector.update(heuristic, 0.0, state=solver_state)
+            if not escaping:
+                selector.update(heuristic, 0.0, state=solver_state)
             stagnant_iterations += 1
             move_failed = True
 
@@ -461,7 +499,8 @@ def run_lahc(
 
             criterion.after_step(current_cost, step)
             _finish(evaluator, transaction, accepted, current)
-            selector.update(heuristic, reward, state=solver_state)
+            if not escaping:
+                selector.update(heuristic, reward, state=solver_state)
             if logger is not None:
                 logger.record_step(
                     step=step,

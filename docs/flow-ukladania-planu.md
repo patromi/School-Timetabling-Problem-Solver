@@ -115,7 +115,7 @@ implementuje Late Acceptance Hill Climbing (Burke & Bykov):
    wypełniony `current_cost`.
 2. W każdej iteracji:
    - losowo wybierany jest jeden operator z puli `MANUAL_HEURISTICS`
-     (`src/heuristics.py`, 8 operatorów, każdy o kontrakcie
+     (`src/heuristics.py`, 13 operatorów, każdy o kontrakcie
      `apply(solution, instance, rng) -> Solution`):
      - `move_random` — losowe przesunięcie jednego zdarzenia na inny poprawny
        czas startu,
@@ -127,6 +127,14 @@ implementuje Late Acceptance Hill Climbing (Burke & Bykov):
        w naruszeniu ograniczenia `Required` na jego najlepszy czas,
      - `resource_reassign` — podmiana zasobu zdarzenia na inny tego samego
        typu,
+     - `event_block_swap` — zamiana czasów dwóch zdarzeń; sąsiadujące bloki
+       różnej długości zamieniają się kolejnością w obrębie wspólnego zakresu
+       (Event Block Swap z solvera GOAL),
+     - `reassign_resource_times` — najlepsza permutacja czasów ≤ 5 zdarzeń
+       jednego zasobu, z preferencją zasobów w naruszeniach twardych
+       (RRT z solvera GOAL); nie wybiera go selektor -- solver uruchamia
+       go sam co `escape_every` kroków, gdy licznik stagnacji przekroczy
+       1/3 `idle_limit`, a kandydat przechodzi zwykłą akceptację,
      - `kempe_chain` — Kempe chain interchange między dwoma slotami czasowymi,
      - `ruin_and_recreate` — zniszczenie małej losowej porcji rozwiązania i
        zachłanna odbudowa zdarzenie po zdarzeniu,
@@ -187,7 +195,7 @@ Po zakończeniu LAHC (`run_solver.py`):
 **Zaimplementowane, ale jeszcze nie w pełni podłączone:**
 
 - Kontrakt heurystyk `apply(solution, instance, rng)` **już istnieje**
-  (`src/heuristics.py`, `MANUAL_HEURISTICS`, 8 operatorów) i jest podłączony
+  (`src/heuristics.py`, `MANUAL_HEURISTICS`, 13 operatorów) i jest podłączony
   do `lahc.py` — opis w sekcji "Bieżący stan implementacji" `CLAUDE.md`
   jest w tej kwestii nieaktualny.
 - Ewaluacja przyrostowa (`src/delta.py:delta_cost`) **już istnieje**,

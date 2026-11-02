@@ -125,7 +125,7 @@ Obecnie zaimplementowany pipeline to construct + Late Acceptance Hill Climbing (
 przejściowy sprzed powyższej specyfikacji** — nie ma jeszcze selektora RL (Etap 6) ani generatora LLM
 (Etap 7); akceptacja kandydatów działa wg reguły LAHC (Burke & Bykov), nie symulowanego wyżarzania z
 Etapu 5 powyżej. Kontrakt heurystyk `apply(solution, instance, rng)` z Etapu 4 **jest już
-zaimplementowany** (`src/heuristics.py`, `MANUAL_HEURISTICS`, 8 operatorów) i podłączony do pętli LAHC.
+zaimplementowany** (`src/heuristics.py`, `MANUAL_HEURISTICS`, 13 operatorów, w tym `event_block_swap` i `reassign_resource_times` z solvera GOAL; `small_perturbation`/`large_perturbation` odpala solver przy stagnacji, a `reassign_resource_times` -- jako operator ucieczki, `ESCAPE_IDS` w `lahc.py` -- co `escape_every` kroków w średniej/wysokiej stagnacji, poza selektorem) i podłączony do pętli LAHC.
 Delta evaluation (Etap 3) zastała w pełni zaimplementowana w module `src/incremental.py` (jako 
 stanowy silnik transakcyjny `IncrementalEvaluator`) i **jest podłączona jako domyślny tryb pracy**
 solvera w pętli `lahc.py`.

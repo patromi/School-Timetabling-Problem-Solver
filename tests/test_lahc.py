@@ -337,7 +337,12 @@ def _perturbation_count(min_relative_improvement: float) -> int:
         # pinned to the configuration the reference count (55) was taken with
         acceptance=LAHCAcceptance(30),
         selector=RandomSelector(),
-        heuristics=[h for h in MANUAL_HEURISTICS if h.id != "repair_clash"],
+        heuristics=[
+            h
+            for h in MANUAL_HEURISTICS
+            if h.id
+            not in {"repair_clash", "event_block_swap", "reassign_resource_times"}
+        ],
         select_perturbations=True,
     )
     events = [json.loads(line)["event"] for line in out.getvalue().splitlines()]
@@ -432,3 +437,59 @@ def test_no_perturbations_means_no_restarts_however_long_the_stagnation():
     )
     assert stats.steps_done == 3000
     assert stats.small_perturbations == stats.large_perturbations == 0
+
+
+def test_the_solver_fires_rrt_itself_while_stagnating_without_crediting_the_selector():
+    # RRT costs ~50x a cheap move; as a UCB arm it took ~45% of the calls on
+    # the large instances (19.10.2026), so the solver fires it only every
+    # escape_every steps of stagnation and keeps it out of the selector.
+    from src.lahc import ESCAPE_IDS, RunStats
+
+    instance = parse_archive(_load("ArtificialSudoku4x4.xml"))[0]
+    initial = build_initial(instance, random.Random(0))
+    selector, stats = _RecordingSelector(), RunStats()
+
+    run_lahc(
+        instance,
+        initial,
+        random.Random(1),
+        max_iterations=600,
+        selector=selector,
+        idle_limit=30,
+        perturbations=False,
+        escape_every=5,
+        stats=stats,
+    )
+
+    assert stats.escapes > 0
+    assert stats.escapes <= stats.steps_done // 5
+    assert {h_id for _, h_id, _ in selector.calls}.isdisjoint(ESCAPE_IDS)
+
+
+def test_escape_every_none_offers_rrt_to_the_selector():
+    from src.lahc import ESCAPE_IDS, RunStats
+
+    instance = parse_archive(_load("ArtificialSudoku4x4.xml"))[0]
+    initial = build_initial(instance, random.Random(0))
+    selector, stats = _OfferedSelector(), RunStats()
+
+    run_lahc(
+        instance,
+        initial,
+        random.Random(1),
+        max_iterations=200,
+        selector=selector,
+        idle_limit=30,
+        escape_every=None,
+        stats=stats,
+    )
+
+    assert ESCAPE_IDS <= selector.offered
+    assert stats.escapes == 0
+
+
+def test_escape_every_must_be_positive():
+    instance = parse_archive(_load("ArtificialSudoku4x4.xml"))[0]
+    initial = build_initial(instance, random.Random(0))
+    with pytest.raises(ValueError, match="escape_every"):
+        run_lahc(instance, initial, random.Random(1), max_iterations=1, escape_every=0)

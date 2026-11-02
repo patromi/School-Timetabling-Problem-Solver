@@ -1,8 +1,14 @@
+import itertools
+import os
 import random
+import subprocess
+import sys
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 from src.construct import build_initial
+from src.cost import Cost, evaluate_cost
 from src.evaluator_ref import (
     evaluate_constraint,
     resolve_occurrences,
@@ -13,10 +19,23 @@ from src.heuristics import (
     RESOURCE_HEURISTICS,
     Heuristic,
     move_best,
+    reassign_resource_times,
     repair_hard_violation,
     ruin_and_recreate,
 )
-from src.model import Instance, Solution, SolutionEvent
+from src.incremental import IncrementalEvaluator, StructuralChangeError
+from src.model import (
+    AppliesTo,
+    Constraint,
+    Event,
+    EventResource,
+    Group,
+    Instance,
+    Resource,
+    Solution,
+    SolutionEvent,
+    Time,
+)
 from src.parser import parse_archive
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -419,8 +438,6 @@ def test_ruin_and_recreate_touches_at_most_the_ruin_budget() -> None:
         )
 
 
-from src.cost import evaluate_cost
-from src.incremental import IncrementalEvaluator, StructuralChangeError
 
 
 @pytest.mark.parametrize(
@@ -614,3 +631,205 @@ def test_evaluator_path_matches_apply_and_leaves_the_evaluator_unchanged(
         assert evaluator.cost == cost_before, f"seed={seed}: evaluator moved"
         checked += 1
     assert checked > 0
+
+
+def _rrt_instance() -> tuple[Instance, Solution]:
+    instance = Instance(
+        id="RRT",
+        name="RRT",
+        time_groups=[Group(id="D", name="Day", kind="Day")],
+        times=[Time(id=f"T{i}", name=f"T{i}", group_refs=["D"]) for i in range(6)],
+        resources=[Resource(id="R", name="Teacher", resource_type_ref="Teacher")],
+        events=[
+            Event(
+                id=f"E{i}",
+                name=f"E{i}",
+                duration=1,
+                resources=[EventResource(role="Teacher", resource_ref="R")],
+            )
+            for i in range(3)
+        ],
+    )
+    solution = Solution(
+        instance_ref=instance.id,
+        events=[
+            SolutionEvent(event_ref=f"E{i}", duration=1, time_ref=f"T{2 * i}")
+            for i in range(3)
+        ],
+    )
+    return instance, solution
+
+
+def test_goal_neighbourhoods_are_in_the_selector_pool() -> None:
+    ids = {h.id for h in MANUAL_HEURISTICS}
+    assert {"event_block_swap", "reassign_resource_times"} <= ids
+    assert len(ids) == len(MANUAL_HEURISTICS)
+
+
+def test_rrt_returns_best_alternative_even_when_all_are_worse() -> None:
+    instance, solution = _rrt_instance()
+    instance.constraints = [
+        Constraint(
+            id=f"C{i}",
+            name="Prefer original time",
+            type="PreferTimesConstraint",
+            required=False,
+            weight=i + 1,
+            cost_function="Linear",
+            applies_to=AppliesTo(events=[f"E{i}"]),
+            params={"Times": [{"reference": f"T{2 * i}"}]},
+        )
+        for i in range(3)
+    ]
+    before = _snapshot(solution)
+    alternatives = [
+        replace(
+            solution,
+            events=[
+                replace(event, time_ref=time)
+                for event, time in zip(solution.events, permutation, strict=True)
+            ],
+        )
+        for permutation in itertools.permutations(["T0", "T2", "T4"])
+        if permutation != ("T0", "T2", "T4")
+    ]
+    expected = min(evaluate_cost(instance, candidate) for candidate in alternatives)
+    assert expected > evaluate_cost(instance, solution)
+    for seed in range(5):
+        candidate = reassign_resource_times(solution, instance, random.Random(seed))
+        assert evaluate_cost(instance, candidate) == expected
+        assert _snapshot(solution) == before
+        assert sorted(e.time_ref for e in candidate.events) == ["T0", "T2", "T4"]
+
+
+def test_rrt_rejects_permutations_that_overflow_event_spans() -> None:
+    instance, solution = _rrt_instance()
+    solution.events[0] = replace(solution.events[0], duration=3)
+    solution.events[2] = replace(solution.events[2], time_ref="T5")
+    for seed in range(10):
+        candidate = reassign_resource_times(solution, instance, random.Random(seed))
+        assert candidate.events[0].time_ref != "T5"
+        evaluator = IncrementalEvaluator(instance, solution)
+        assert evaluator.probe(candidate) == evaluate_cost(instance, candidate)
+
+
+def test_rrt_raises_if_no_alternative_permutation_exists() -> None:
+    instance, solution = _rrt_instance()
+    solution.events = [replace(e, time_ref="T0") for e in solution.events]
+    with pytest.raises(ValueError, match="no valid alternative permutation"):
+        reassign_resource_times(solution, instance, random.Random(0))
+
+
+def test_rrt_is_reproducible_across_python_hash_seeds() -> None:
+    code = """
+import random
+from pathlib import Path
+from src.construct import build_initial
+from src.heuristics import reassign_resource_times
+from src.parser import parse_archive
+instance = parse_archive(
+    Path("tests/fixtures/ArtificialSudoku4x4.xml").read_text()
+)[0]
+solution = build_initial(instance, random.Random(0))
+for seed in range(4):
+    candidate = reassign_resource_times(solution, instance, random.Random(seed))
+    print([event.time_ref for event in candidate.events])
+"""
+    results = [
+        subprocess.run(
+            [sys.executable, "-c", code],
+            cwd=Path(__file__).resolve().parents[1],
+            env={**os.environ, "PYTHONHASHSEED": str(hash_seed)},
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout
+        for hash_seed in (1, 2, 3)
+    ]
+    assert len(set(results)) == 1
+
+
+def test_rrt_limits_work_to_five_events_and_119_alternative_probes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    instance, solution = _rrt_instance()
+    instance.times = [
+        Time(id=f"T{i}", name=f"T{i}", group_refs=["D"]) for i in range(7)
+    ]
+    instance.events = [replace(instance.events[0], id=f"E{i}") for i in range(7)]
+    solution.events = [
+        SolutionEvent(event_ref=f"E{i}", duration=1, time_ref=f"T{i}") for i in range(7)
+    ]
+    probes = 0
+    original_probe = IncrementalEvaluator.probe
+
+    def count_probe(self: IncrementalEvaluator, candidate: Solution) -> Cost:
+        nonlocal probes
+        probes += 1
+        return original_probe(self, candidate)
+
+    monkeypatch.setattr(IncrementalEvaluator, "probe", count_probe)
+    candidate = reassign_resource_times(solution, instance, random.Random(0))
+    assert probes == 119
+    assert (
+        sum(
+            old.time_ref != new.time_ref
+            for old, new in zip(solution.events, candidate.events, strict=True)
+        )
+        <= 5
+    )
+    assert sorted(e.time_ref for e in candidate.events) == [f"T{i}" for i in range(7)]
+
+
+def test_move_best_preserves_lexicographic_cost_even_with_large_soft_penalty() -> None:
+    instance, solution = _rrt_instance()
+    instance.events = instance.events[:1]
+    solution.events = solution.events[:1]
+    instance.constraints = [
+        Constraint(
+            id="hard",
+            name="Hard",
+            type="PreferTimesConstraint",
+            required=True,
+            weight=1,
+            cost_function="Linear",
+            applies_to=AppliesTo(events=["E0"]),
+            params={"Times": [{"reference": "T0"}]},
+        ),
+        Constraint(
+            id="soft",
+            name="Soft",
+            type="PreferTimesConstraint",
+            required=False,
+            weight=2_000_000,
+            cost_function="Linear",
+            applies_to=AppliesTo(events=["E0"]),
+            params={"Times": [{"reference": "T2"}]},
+        ),
+    ]
+    candidate = move_best(solution, instance, random.Random(0))
+    assert candidate.events[0].time_ref == "T0"
+    assert evaluate_cost(instance, candidate).infeasibility == 0
+
+
+def test_move_best_with_probe_sample_never_worsens_the_solution() -> None:
+    instance, solution = _rrt_instance()
+    instance.events = instance.events[:1]
+    solution.events = solution.events[:1]
+    instance.constraints = [
+        Constraint(
+            id="prefer",
+            name="Prefer T0",
+            type="PreferTimesConstraint",
+            required=True,
+            weight=1,
+            cost_function="Linear",
+            applies_to=AppliesTo(events=["E0"]),
+            params={"Times": [{"reference": "T0"}]},
+        )
+    ]
+    before = evaluate_cost(instance, solution)
+    assert before.infeasibility == 0
+    for seed in range(20):
+        candidate = move_best(solution, instance, random.Random(seed), max_probe=1)
+        assert evaluate_cost(instance, candidate) <= before, f"seed={seed}"

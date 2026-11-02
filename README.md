@@ -20,7 +20,7 @@ parser → rozwiązanie startowe → pętla lokalnego przeszukiwania → eksport
 
 - **Koszt** to para (naruszenia twarde, koszt miękki) porównywana leksykograficznie; wagi i funkcje kosztu pochodzą z XML-a instancji.
 - **Selektor UCB** prowadzi osobne statystyki (Q, n) dla każdej heurystyki w każdym z 6 stanów: (plan wykonalny?, stagnacja niska/średnia/wysoka). Wybiera `argmax Q + c·sqrt(ln N / n)`, `c = 0.02`, Q aktualizowane średnią wykładniczą z `alpha = 0.02`.
-- **Pula heurystyk** (`src/heuristics.py`): `move_random`, `move_best`, `swap`, `kempe_chain`, `repair_hard_violation`, `repair_clash`, `ruin_and_recreate`, `resource_reassign`, `split_resize`. Perturbacje (`small_perturbation`, `large_perturbation`) uruchamia sam solver po 3000 iteracjach bez poprawy.
+- **Pula heurystyk** (`src/heuristics.py`): `move_random`, `move_best`, `swap`, `kempe_chain`, `repair_hard_violation`, `repair_clash`, `ruin_and_recreate`, `resource_reassign`, `split_resize` oraz dwa sąsiedztwa zaadaptowane z solvera GOAL (Fonseca i in.): `event_block_swap` (zamiana bloków z zachowaniem ciągłości) i `reassign_resource_times` (RRT: najlepsza permutacja czasów ≤ 5 zdarzeń jednego zasobu, deterministyczna). RRT nie jest ramieniem selektora: jest ok. 50× droższy od tanich ruchów i jako ramię UCB zabierał większość budżetu czasu, więc solver sam uruchamia go co `--escape-every` (domyślnie 25) kroków, gdy stagnacja przekroczy 1/3 progu `idle-limit` (`--escape-every 0` przywraca go do selektora). Perturbacje (`small_perturbation`, `large_perturbation`) uruchamia sam solver po 3000 iteracjach bez poprawy.
 - **Rozwiązanie startowe** domyślnie zachłanne (`build_greedy`): zajęcia od najtrudniejszych, na godziny z najmniejszą liczbą kolizji.
 - **Symulowane wyżarzanie** startuje od temperatury 1% kosztu startowego. Z limitem czasu stygnie według zegara, bez niego według numeru iteracji — wtedy przebieg jest w pełni powtarzalny z seeda.
 
@@ -105,6 +105,18 @@ Do zarządzania zależnościami i środowiskiem w Pythonie używamy narzędzia `
   per stan i heurystyka), nowe najlepsze rozwiązania, rozbicie kosztu na typy ograniczeń oraz w CSV
   pełny opis kryterium akceptacji (`acceptance_detail`). Skrót `sa` w kolumnie `acceptance` oznaczał
   przed 18.10.2026 temperaturę startową 1e-3, a od tej daty 1e-2.
+* **Wielogodzinna, odtwarzalna kampania badawcza** (Linux/macOS/WSL):
+  ```bash
+  # 12 ablacji × 5 instancji × 10 seedów × 2 budżety iteracji
+  uv run python research_experiments.py --output data/results/kampania_01 --dry-run
+  uv run python research_experiments.py --output data/results/kampania_01 --workers 4
+  ```
+  SA jest sterowane iteracjami, wyniki każdego przebiegu zapisywane osobno,
+  a ta sama komenda wznawia pracę po przerwaniu. Runner zapisuje XML, logi,
+  manifest kodu/danych i raport CSV + PNG; błędy nie są traktowane jako sukces.
+  Najpierw wykonaj mały pilot, aby dobrać budżet do maszyny.
+  Opis hipotez, wariantów, pilota, potwierdzenia na nowych seedach i ograniczeń
+  interpretacji: [kampania badawcza](docs/kampania_badawcza.md).
 * **Uruchomienie przepływu (workflow) za pomocą Snakemake**:
   Potok automatycznie wykrywa wszystkie pliki instancji `.xml` w katalogu `data/raw/` (z wyłączeniem pustych plików i szablonu `instance.xml`), uruchamia dla nich solver równolegle, a na koniec generuje zbiorcze raporty podsumowujące koszty rozwiązań (`summary.csv` oraz `summary.md` w `data/results/`).
 
