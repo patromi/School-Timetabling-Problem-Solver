@@ -107,7 +107,8 @@ Do zarządzania zależnościami i środowiskiem w Pythonie używamy narzędzia `
   przed 18.10.2026 temperaturę startową 1e-3, a od tej daty 1e-2.
 * **Wielogodzinna, odtwarzalna kampania badawcza** (Linux/macOS/WSL):
   ```bash
-  # 12 ablacji × 5 instancji × 10 seedów × 2 budżety iteracji
+  # ablacje UCB: ścieżka `time` (5 instancji, 2 budżety) i `resource` (5 instancji z
+  # przypisywaniem zasobów); --group time|resource wybiera jedną z nich
   uv run python research_experiments.py --output data/results/kampania_01 --dry-run
   uv run python research_experiments.py --output data/results/kampania_01 --workers 4
   ```

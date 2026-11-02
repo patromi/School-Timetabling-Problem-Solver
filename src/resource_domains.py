@@ -8,8 +8,9 @@ ignores Required PreferResourcesConstraints and starts e.g. AU-BG-98 at
 ~1.4 million hard cost.
 """
 
-from dataclasses import dataclass, replace
+from dataclasses import replace
 from functools import cache
+from typing import NamedTuple
 
 from src.evaluator_ref import (
     _INSTANCE_REGISTRY,
@@ -147,11 +148,12 @@ def is_split_together(instance: Instance, event_ref: str, role: str) -> bool:
     return event_ref in _assignment_groups_cached(_register_instance(instance), role)
 
 
-@dataclass(frozen=True)
-class ResourceUnit:
+class ResourceUnit(NamedTuple):
     """Solution resource entries that change resource as one: every piece of
     every event in one assignment group, or a single piece otherwise.
-    `entries` are (index into solution.events, index into its resources)."""
+    `entries` are (index into solution.events, index into its resources).
+    A NamedTuple, not a dataclass: a solution has thousands of units and
+    this is built on every call of the resource moves."""
 
     role: str
     entries: tuple[tuple[int, int], ...]
@@ -159,35 +161,63 @@ class ResourceUnit:
     resource: str
 
 
-def resource_units(instance: Instance, solution: Solution) -> list[ResourceUnit]:
-    """The units of the solution's assignable resources, in solution order."""
-    # key: (role, assignment group) for grouped entries, (role, i, k) otherwise
-    entries: dict[tuple[object, ...], list[tuple[int, int]]] = {}
-    events_of: dict[tuple[object, ...], frozenset[str]] = {}
-    for i, se in enumerate(solution.events):
-        for k, sr in enumerate(se.resources):
-            if is_split_together(instance, se.event_ref, sr.role):
-                group = assignment_group(instance, se.event_ref, sr.role)
-                key: tuple[object, ...] = (sr.role, group)
-                events_of[key] = group
-            else:
-                key = (sr.role, i, k)
-                events_of[key] = frozenset({se.event_ref})
-            entries.setdefault(key, []).append((i, k))
-
-    units = []
-    for key, unit_entries in entries.items():
-        first_i, first_k = unit_entries[0]
-        role = solution.events[first_i].resources[first_k].role
-        units.append(
-            ResourceUnit(
-                role=role,
-                entries=tuple(unit_entries),
-                domain=shared_domain(instance, events_of[key], role),
-                resource=solution.events[first_i].resources[first_k].resource_ref,
+@cache
+def _assignable_slots_cached(
+    instance_key: int,
+) -> dict[str, dict[str, tuple[frozenset[str] | None, tuple[str, ...]]]]:
+    """event_ref -> role -> (assignment group or None, shared domain), for
+    every (event, role) with a non-empty domain. Depends on the instance
+    only, so resource_units does not recompute it per call."""
+    instance = _INSTANCE_REGISTRY[instance_key]
+    slots: dict[str, dict[str, tuple[frozenset[str] | None, tuple[str, ...]]]] = {}
+    for event in instance.events:
+        for role in {er.role for er in event.resources}:
+            group = (
+                assignment_group(instance, event.id, role)
+                if is_split_together(instance, event.id, role)
+                else None
             )
-        )
-    return units
+            domain = shared_domain(instance, group or frozenset({event.id}), role)
+            if domain:
+                slots.setdefault(event.id, {})[role] = (group, domain)
+    return slots
+
+
+def resource_units(instance: Instance, solution: Solution) -> list[ResourceUnit]:
+    """The units of the solution's assignable resources (those with a
+    non-empty domain), in solution order."""
+    slots = _assignable_slots_cached(_register_instance(instance))
+    units: list[ResourceUnit | None] = []
+    # (role, group) -> (position in units, domain, entries); the unit is built
+    # once all its entries are known and takes the position of its first entry.
+    grouped: dict[
+        tuple[str, frozenset[str]],
+        tuple[int, tuple[str, ...], list[tuple[int, int]]],
+    ] = {}
+    for i, se in enumerate(solution.events):
+        by_role = slots.get(se.event_ref)
+        if by_role is None:
+            continue
+        for k, sr in enumerate(se.resources):
+            slot = by_role.get(sr.role)
+            if slot is None:
+                continue
+            group, domain = slot
+            if group is None:
+                units.append(ResourceUnit(sr.role, ((i, k),), domain, sr.resource_ref))
+                continue
+            key = (sr.role, group)
+            if key in grouped:
+                grouped[key][2].append((i, k))
+            else:
+                grouped[key] = (len(units), domain, [(i, k)])
+                units.append(None)
+
+    for (role, _), (position, domain, entries) in grouped.items():
+        first_i, first_k = entries[0]
+        resource = solution.events[first_i].resources[first_k].resource_ref
+        units[position] = ResourceUnit(role, tuple(entries), domain, resource)
+    return [u for u in units if u is not None]
 
 
 def with_unit_resource(

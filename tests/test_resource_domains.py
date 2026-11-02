@@ -114,6 +114,24 @@ def test_resource_units_group_pieces_tied_by_avoid_split_assignments() -> None:
     assert all(len(u.entries) == 1 for u in units if u.role == "Room")
 
 
+def test_resource_units_cover_exactly_the_assignable_entries() -> None:
+    instance = _instance()
+    solution = build_initial(instance, random.Random(0))
+
+    units = resource_units(instance, solution)
+
+    covered = [entry for u in units for entry in u.entries]
+    expected = [
+        (i, k)
+        for i, se in enumerate(solution.events)
+        for k, sr in enumerate(se.resources)
+        if resource_domain(instance, se.event_ref, sr.role)
+    ]
+    assert sorted(covered) == expected  # no preassigned slot, no repeats
+    assert all(u.domain for u in units)
+    assert units == resource_units(instance, solution)
+
+
 def test_with_unit_resource_leaves_input_untouched() -> None:
     instance = _instance()
     solution = build_initial(instance, random.Random(0))
