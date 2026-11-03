@@ -33,6 +33,8 @@ _CONSTRAINT_TO_KB: list[tuple[str, str]] = [
     ("SpreadEventsConstraint", "spread_events.md"),
     ("LinkEventsConstraint", "link_events.md"),
     ("OrderEventsConstraint", "order_events.md"),
+    ("PreferTimesConstraint", "soft_improvement.md"),
+    ("PreferResourcesConstraint", "soft_improvement.md"),
 ]
 
 

@@ -395,3 +395,21 @@ MANUAL_HEURISTICS: list[Heuristic] = [
         incremental_safe=False,
     ),
 ]
+
+
+def _noop_apply(
+    solution: Solution, instance: Instance, rng: random.Random
+) -> Solution:
+    raise ValueError("noop heuristic — llm-only mode has no manual operators")
+
+
+# Placeholder heuristic used in --llm-only mode so the pool is never empty
+# (UCBSelector requires at least one entry). Always raises ValueError so the
+# solver stagnates immediately and the LLM operator trigger fires.
+NOOP_HEURISTIC: Heuristic = Heuristic(
+    id="noop",
+    name="No-op placeholder (llm-only mode)",
+    protected=True,
+    apply=_noop_apply,
+    incremental_safe=True,
+)
