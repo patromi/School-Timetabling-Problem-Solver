@@ -150,6 +150,37 @@ def _run_llm_trigger(
     )
 
 
+def _run_llm_operators(
+    operators: list[Heuristic],
+    instance: Instance,
+    current: Solution,
+    current_cost: int,
+    best: Solution,
+    best_cost: int,
+    evaluator: IncrementalEvaluator | None,
+    rng: random.Random,
+) -> tuple[Solution, int, Solution, int]:
+    """Try each LLM operator in turn; keep any improvement.
+
+    Operators are applied sequentially — each sees the result of the
+    previous one if it improved the solution.  Returns
+    (current, current_cost, best, best_cost).
+    """
+    for op in operators:
+        try:
+            candidate = op.apply(current, instance, rng)
+        except ValueError:
+            continue
+        c_cost = evaluate_cost(instance, candidate).as_scalar()
+        if c_cost < current_cost:
+            current, current_cost = candidate, c_cost
+            if evaluator is not None:
+                evaluator.rebuild(current)
+            if c_cost < best_cost:
+                best, best_cost = current, c_cost
+    return current, current_cost, best, best_cost
+
+
 def _finish(
     evaluator: IncrementalEvaluator | None,
     transaction: Transaction | None,
@@ -192,6 +223,7 @@ def run_lahc(  # noqa: C901 — solver loop; complexity is inherent to the algor
     llm_prompt_variant: str = VARIANT_A,
     llm_n_candidates: int = DEFAULT_N_CANDIDATES,
     llm_stats: GenerationStats | None = None,
+    llm_operators: list[Heuristic] | None = None,
 ) -> tuple[Solution, int]:
     """Local search loop with a pluggable acceptance criterion.
 
@@ -321,6 +353,16 @@ def run_lahc(  # noqa: C901 — solver loop; complexity is inherent to the algor
                 llm_stats=_llm_stats,
             )
             pool.extend(new_heuristics)
+
+            if llm_operators:
+                prev_best = best_cost
+                current, current_cost, best, best_cost = _run_llm_operators(
+                    llm_operators, instance, current, current_cost,
+                    best, best_cost, evaluator, rng,
+                )
+                if best_cost < prev_best:
+                    stagnant_iterations = 0
+
             _llm_stagnant = 0
 
         # --- main step ---

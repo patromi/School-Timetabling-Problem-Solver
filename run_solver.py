@@ -18,8 +18,12 @@ from pathlib import Path
 from src.acceptance import AcceptanceCriterion, LAHCAcceptance, SimulatedAnnealingAcceptance
 from src.construct import build_initial
 from src.evaluator_ref import evaluate_cost_components, resolve_occurrences
+from src.heuristics import Heuristic, NOOP_HEURISTIC
 from src.html_report import render_timetable_page
 from src.lahc import run_lahc
+from src.llm.operator import LLM_OPERATOR_HEURISTICS
+from src.llm.pool import DEFAULT_N_CANDIDATES, GenerationStats
+from src.llm.prompt import VARIANT_A, VARIANT_B, VARIANT_RAG
 from src.selectors import EpsilonGreedySelector, RandomSelector, UCBSelector
 from src.solve_log import SolveLogger
 from src.model import Instance, Solution, SolutionGroup
@@ -94,7 +98,14 @@ def solve(
     logger: SolveLogger | None = None,
     time_limit: float | None = None,
     acceptance: AcceptanceCriterion | None = None,
-) -> SolveResult:
+    llm_enabled: bool = False,
+    llm_prompt_variant: str = VARIANT_A,
+    llm_n_candidates: int = DEFAULT_N_CANDIDATES,
+    llm_trigger_multiplier: int = 3,
+    llm_operators: list[Heuristic] | None = None,
+    llm_only: bool = False,
+    idle_limit: int | None = None,
+) -> tuple[SolveResult, GenerationStats | None]:
     """Buduje rozwiazanie poczatkowe i uruchamia solver; zwraca spakowany wynik."""
     initial = build_initial(instance, rng)
     infeasibility_0, objective_0 = evaluate_cost_components(instance, initial)
@@ -103,11 +114,20 @@ def solve(
     t_start = time.time()
     on_progress = functools.partial(_report_progress, total=iterations, t_start=t_start)
 
+    llm_stats = GenerationStats() if llm_enabled else None
+
+    if llm_only:
+        heuristics: list[Heuristic] = [NOOP_HEURISTIC]
+    else:
+        from src.heuristics import MANUAL_HEURISTICS
+        heuristics = list(MANUAL_HEURISTICS)
+
     best, _ = run_lahc(
         instance,
         initial,
         rng,
         history_length=history_length,
+        heuristics=heuristics,
         selector=selector,
         max_iterations=iterations,
         max_seconds=time_limit,
@@ -117,6 +137,13 @@ def solve(
         evaluation=evaluation,
         logger=logger,
         acceptance=acceptance,
+        llm_enabled=llm_enabled,
+        llm_prompt_variant=llm_prompt_variant,
+        llm_n_candidates=llm_n_candidates,
+        llm_trigger_multiplier=llm_trigger_multiplier,
+        llm_stats=llm_stats,
+        llm_operators=llm_operators,
+        idle_limit=idle_limit,
     )
     elapsed = time.time() - t_start
     infeasibility_1, objective_1 = evaluate_cost_components(instance, best)
@@ -129,7 +156,7 @@ def solve(
         objective_after=objective_1,
         elapsed_seconds=elapsed,
         iterations=iterations,
-    )
+    ), llm_stats
 
 
 def write_outputs(
@@ -203,6 +230,59 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
             "pelna ewaluacja, albo obie z porownaniem (diagnostyka)."
         ),
     )
+    parser.add_argument(
+        "--llm",
+        action="store_true",
+        default=False,
+        help="Wlacz generowanie heurystyk przez LLM (wymaga uruchomionego Ollama).",
+    )
+    parser.add_argument(
+        "--llm-variant",
+        choices=["a", "b", "rag"],
+        default="a",
+        help="Wariant promptu LLM: a=agregaty, b=agregaty+przyklady, rag=agregaty+baza wiedzy (domyslnie a).",
+    )
+    parser.add_argument(
+        "--llm-candidates",
+        type=int,
+        default=DEFAULT_N_CANDIDATES,
+        help=f"Liczba kandydatow generowanych per wywolanie LLM (domyslnie {DEFAULT_N_CANDIDATES}).",
+    )
+    parser.add_argument(
+        "--llm-trigger",
+        type=int,
+        default=3,
+        help="Mnoznik idle_limit dla wyzwalacza LLM (domyslnie 3x idle_limit).",
+    )
+    parser.add_argument(
+        "--llm-operator",
+        choices=["1", "2", "3", "all"],
+        default=None,
+        help=(
+            "Uruchom LLM jako bezposredni operator ruchu przy stagnacji: "
+            "1=json_moves, 2=filter+best_slot, 3=chain_of_thought, all=wszystkie trzy."
+        ),
+    )
+    parser.add_argument(
+        "--llm-only",
+        action="store_true",
+        default=False,
+        help=(
+            "Tryb LLM-only: wylacz reczne heurystyki, solver stagnuje natychmiast "
+            "i uzywa wylacznie LLM operatora przy kazdej stagnacji. "
+            "Wymaga --llm-operator i --llm."
+        ),
+    )
+    parser.add_argument(
+        "--idle-limit",
+        type=int,
+        default=None,
+        help=(
+            "Liczba iteracji bez poprawy przed perturbacja/triggerem LLM "
+            "(domyslnie: max_iterations // 20, min 500). "
+            "Dla --llm-only zalecana mala wartosc np. 50."
+        ),
+    )
     return parser.parse_args(argv)
 
 
@@ -241,9 +321,31 @@ def main(argv: list[str] | None = None) -> None:
     else:
         acceptance_obj = LAHCAcceptance(history_length=args.history)
 
+    llm_operators: list[Heuristic] = []
+    if args.llm_operator is not None:
+        op_map = {
+            "1": [LLM_OPERATOR_HEURISTICS[0]],
+            "2": [LLM_OPERATOR_HEURISTICS[1]],
+            "3": [LLM_OPERATOR_HEURISTICS[2]],
+            "all": list(LLM_OPERATOR_HEURISTICS),
+        }
+        llm_operators = op_map[args.llm_operator]
+        op_names = ", ".join(h.id for h in llm_operators)
+        print(f"LLM operatory (stagnacja): {op_names}")
+
+    if args.llm_only:
+        if not args.llm_operator:
+            raise SystemExit("--llm-only wymaga --llm-operator (np. --llm-operator all)")
+        if not args.llm:
+            raise SystemExit("--llm-only wymaga --llm")
+        print("Tryb LLM-only: reczne heurystyki wylaczone.")
+
+    llm_info = f", LLM={args.llm_variant}" if args.llm else ""
+    op_info = f", LLM-op={args.llm_operator}" if args.llm_operator else ""
+    only_info = " [LLM-ONLY]" if args.llm_only else ""
     print(
         f"Solver: {args.iterations} iteracji, seed={args.seed}, "
-        f"akceptacja={acceptance_obj.name}, ewaluacja={args.evaluation}"
+        f"akceptacja={acceptance_obj.name}, ewaluacja={args.evaluation}{llm_info}{op_info}{only_info}"
     )
     selector_obj: RandomSelector | EpsilonGreedySelector | UCBSelector
     if args.selector == "epsilon-greedy":
@@ -260,7 +362,7 @@ def main(argv: list[str] | None = None) -> None:
     with open(log_path, "w", encoding="utf-8") as log_file:
         logger = SolveLogger(log_file)
 
-        result = solve(
+        result, llm_stats = solve(
             instance,
             rng=random.Random(args.seed),
             iterations=args.iterations,
@@ -270,6 +372,13 @@ def main(argv: list[str] | None = None) -> None:
             logger=logger,
             time_limit=args.time_limit,
             acceptance=acceptance_obj,
+            llm_enabled=args.llm,
+            llm_prompt_variant=args.llm_variant,
+            llm_n_candidates=args.llm_candidates,
+            llm_trigger_multiplier=args.llm_trigger,
+            llm_operators=llm_operators or None,
+            llm_only=args.llm_only,
+            idle_limit=args.idle_limit,
         )
 
         logger.log_run_summary(
@@ -295,6 +404,19 @@ def main(argv: list[str] | None = None) -> None:
         f"  Zmiana: infeasibility={result.infeasibility_after - result.infeasibility_before:+d}  "
         f"objective={result.objective_after - result.objective_before:+d}"
     )
+
+    if llm_stats is not None:
+        rates = llm_stats.acceptance_rates()
+        print(f"\nLLM: {llm_stats.total_calls} wywolan, "
+              f"{llm_stats.candidates_generated} kandydatow, "
+              f"{llm_stats.accepted} zaakceptowanych")
+        if rates:
+            print(f"  Acceptance rate: "
+                  f"krok1={rates.get('step_1_pass_rate', 0):.0%}  "
+                  f"krok2={rates.get('step_2_pass_rate', 0):.0%}  "
+                  f"krok3={rates.get('step_3_pass_rate', 0):.0%}  "
+                  f"krok4={rates.get('step_4_pass_rate', 0):.0%}  "
+                  f"ogolny={rates.get('overall_acceptance_rate', 0):.0%}")
 
     xml_path, html_path = write_outputs(instance, archive_text, result, output_path, args.seed)
     print(f"\nRozwiazanie zapisane do: {xml_path}")
