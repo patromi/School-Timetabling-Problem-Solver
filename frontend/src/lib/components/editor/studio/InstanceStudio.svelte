@@ -159,6 +159,7 @@
     try {
       const payload = editor.buildXhsttPayload();
       await saveInstance(payload);
+      editor.externalConstraintsNotice = [];
       saveSuccess = `Szkoła ${payload.name} została pomyślnie zapisana!`;
       setTimeout(() => {
         onSaved(payload.id);
@@ -413,6 +414,31 @@
   {#if saveSuccess}
     <div class="mx-6 mt-3 p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-800 flex items-center justify-between">
       <span>{saveSuccess}</span>
+    </div>
+  {/if}
+  {#if editor.externalConstraintsNotice.length > 0}
+    <div class="mx-6 mt-3 p-3.5 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      <div class="flex items-start gap-2.5">
+        <span class="text-base leading-none mt-0.5">⚠️</span>
+        <div>
+          <span class="font-bold block">
+            Plik XML zawiera zaawansowane reguły spoza uproszczonego edytora Studio:
+          </span>
+          <span class="text-[11px] text-amber-800 block mt-0.5">
+            {editor.externalConstraintsNotice.join(" • ")}.
+            Zapisanie zmian w Studio zastąpi te reguły uproszczonym zestawem ze Studio. Aby ułożyć plan z pełnym oryginałem XML, uruchom solver bez zapisywania.
+          </span>
+        </div>
+      </div>
+      {#if onSolve && selectedInstanceId}
+        <button
+          type="button"
+          onclick={() => onSolve(selectedInstanceId)}
+          class="px-3 py-1.5 bg-amber-700 hover:bg-amber-800 text-white font-bold rounded-lg text-[11px] shrink-0 cursor-pointer shadow-2xs transition-colors"
+        >
+          ▶ Układaj z oryginału XML
+        </button>
+      {/if}
     </div>
   {/if}
 

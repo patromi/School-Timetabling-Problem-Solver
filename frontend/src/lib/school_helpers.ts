@@ -1,4 +1,4 @@
-import type { ConstraintItem, EventItem, InstanceDetail, ResourceItem } from "./types";
+import type { ConstraintItem, ConstraintScore, EventItem, InstanceDetail, ResourceItem } from "./types";
 
 /**
  * Rozpoznaje kategorię zasobu (nauczyciel, oddział/klasa, sala, inny)
@@ -87,10 +87,22 @@ export const CONSTRAINT_FRIENDLY_MAP: Record<string, ConstraintFriendlyInfo> = {
     description: "Żaden nauczyciel, klasa ani sala nie mogą mieć dwóch różnych lekcji w tym samym czasie.",
     isHardByDefault: true,
   },
-  AvoidSplitWeeksConstraint: {
-    title: "Ciągłość bloków lekcyjnych",
+  AvoidSplitAssignmentsConstraint: {
+    title: "Stały nauczyciel / sala dla przedmiotu",
     category: "organizacja",
-    description: "Zajęcia wielogodzinne (np. laboratorium, blok 2h) powinny odbywać się jako jedna całość.",
+    description: "Wszystkie godziny tego samego przedmiotu w klasie powinien prowadzić ten sam nauczyciel (lub odbywać się w jednej sali).",
+    isHardByDefault: true,
+  },
+  SplitEventsConstraint: {
+    title: "Podział zajęć na bloki i godziny",
+    category: "organizacja",
+    description: "Określa dozwoloną liczbę i długość bloków, na jakie dzielony jest przedmiot w tygodniu.",
+    isHardByDefault: true,
+  },
+  DistributeSplitEventsConstraint: {
+    title: "Rozkład długości bloków lekcyjnych",
+    category: "organizacja",
+    description: "Wymaga odpowiedniej liczby pojedynczych godzin lub bloków 2-godzinnych w ramach przedmiotu.",
     isHardByDefault: false,
   },
   SpreadEventsConstraint: {
@@ -98,6 +110,12 @@ export const CONSTRAINT_FRIENDLY_MAP: Record<string, ConstraintFriendlyInfo> = {
     category: "organizacja",
     description: "Lekcje z jednego przedmiotu powinny być równomiernie podzielone na różne dni tygodnia.",
     isHardByDefault: false,
+  },
+  LinkEventsConstraint: {
+    title: "Zajęcia jednoczesne (grupy łączone)",
+    category: "organizacja",
+    description: "Powiązane zajęcia (np. grupy językowe lub międzyoddziałowe) muszą odbywać się dokładnie w tym samym czasie.",
+    isHardByDefault: true,
   },
   LimitIdleTimesConstraint: {
     title: "Ograniczenie okienek w planie (puste godziny)",
@@ -108,7 +126,13 @@ export const CONSTRAINT_FRIENDLY_MAP: Record<string, ConstraintFriendlyInfo> = {
   LimitBusyTimesConstraint: {
     title: "Limit liczby lekcji dziennie (higiena nauki)",
     category: "uczniowie",
-    description: "Zapewnienie zrównoważonego obciążenia i nieprzekraczanie maksymalnej liczby lekcji na dzień.",
+    description: "Zapewnienie zrównoważonego obciążenia i nieprzekraczanie dziennych ram lekcyjnych.",
+    isHardByDefault: false,
+  },
+  LimitWorkloadConstraint: {
+    title: "Limit łącznego obciążenia (pensum)",
+    category: "nauczyciele",
+    description: "Pilnuje, aby łączna tygodniowa liczba godzin pracy mieściła się w ustalonym przedziale.",
     isHardByDefault: false,
   },
   AvoidUnavailableTimesConstraint: {
@@ -120,25 +144,25 @@ export const CONSTRAINT_FRIENDLY_MAP: Record<string, ConstraintFriendlyInfo> = {
   PreferTimesConstraint: {
     title: "Preferowane pory zajęć",
     category: "organizacja",
-    description: "Umieszczanie trudniejszych przedmiotów w godzinach porannych, a luźniejszych na koniec dnia.",
+    description: "Umieszczanie wskazanych przedmiotów w preferowanych godzinach (np. ścisłe rano, WF po południu).",
     isHardByDefault: false,
   },
   PreferResourcesConstraint: {
-    title: "Preferowany przydział sal/pracowni",
+    title: "Preferowany przydział nauczycieli lub sal",
     category: "sale",
-    description: "Lekcje przedmiotowe powinny w miarę możliwości odbywać się w dedykowanych pracowniach.",
+    description: "Zajęcia powinny być przydzielone wyłącznie wskazanym nauczycielom lub odpowiednim pracowniom.",
     isHardByDefault: false,
   },
   ClusterBusyTimesConstraint: {
-    title: "Grupowanie godzin pracy",
+    title: "Kompaktowy tydzień pracy (limit dni)",
     category: "nauczyciele",
-    description: "Zajęcia danego dnia powinny tworzyć zwarty, ciągły blok bez niepotrzebnych przerw.",
+    description: "Zajęcia powinny skupiać się w ustalonej liczbie dni roboczych w tygodniu.",
     isHardByDefault: false,
   },
   OrderEventsConstraint: {
-    title: "Kolejność lekcji (np. wykład przed ćwiczeniami)",
+    title: "Kolejność lekcji (chronologia)",
     category: "organizacja",
-    description: "Zachowanie wymaganej kolejności pomiędzy powiązanymi zajęciami.",
+    description: "Zachowanie wymaganej kolejności pomiędzy powiązanymi zajęciami (np. wykład przed ćwiczeniami).",
     isHardByDefault: false,
   },
 };
@@ -150,7 +174,29 @@ export function getConstraintFriendlyInfo(constraint: ConstraintItem): Constrain
   return {
     title: constraint.name || constraint.type,
     category: "organizacja",
-    description: `Specjalna reguła organizacyjna instancji (${constraint.type}).`,
+    description: `Reguła organizacyjna instancji (${constraint.type}).`,
     isHardByDefault: constraint.required,
+  };
+}
+
+export function getConstraintScoreFriendlyInfo(score: ConstraintScore): ConstraintFriendlyInfo {
+  const found =
+    (score.type ? CONSTRAINT_FRIENDLY_MAP[score.type] : undefined) ||
+    CONSTRAINT_FRIENDLY_MAP[score.id];
+
+  if (found) {
+    return {
+      ...found,
+      title: score.name || found.title,
+    };
+  }
+
+  return {
+    title: score.name || score.id,
+    category: "organizacja",
+    description: score.type
+      ? `Reguła organizacyjna (${score.type}).`
+      : "Zasada organizacji planu.",
+    isHardByDefault: score.required,
   };
 }

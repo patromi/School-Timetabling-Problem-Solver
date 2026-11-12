@@ -186,6 +186,7 @@ export class EditorState {
   newOrderSeparation = $state(0);
   newOrderIsSoft = $state(false);
   newOrderWeight = $state(8);
+  externalConstraintsNotice = $state<string[]>([]);
 
   // Modale pomocnicze
   activeAvailabilityTarget = $state<ActiveAvailabilityTarget | null>(null);
@@ -647,6 +648,10 @@ export class EditorState {
     this.classes = createDefaultClasses();
     this.teachers = createDefaultTeachers();
     this.rooms = createDefaultRooms();
+    this.linkedGroups = [];
+    this.orderRules = [];
+    this.ruleOrderLessons = false;
+    this.externalConstraintsNotice = [];
     this.generateDefaultCurriculum();
     this.studioSection = "teachers";
   }
@@ -656,6 +661,10 @@ export class EditorState {
     this.schoolId = p.schoolId;
     this.selectedDays = p.selectedDays;
     this.periodsPerDay = p.periodsPerDay;
+    this.linkedGroups = [];
+    this.orderRules = [];
+    this.ruleOrderLessons = false;
+    this.externalConstraintsNotice = [];
     this.generateDefaultCurriculum();
   }
   generateDefaultCurriculum() {

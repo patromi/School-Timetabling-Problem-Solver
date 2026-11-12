@@ -177,6 +177,7 @@ def build_timetable_payload(instance: Instance, solution: Solution) -> dict[str,
         {
             "id": s.id,
             "name": s.name,
+            "type": s.type,
             "required": s.required,
             "weight": s.weight,
             "cost": s.cost,

@@ -15,12 +15,18 @@ export function loadInstanceIntoEditor(state: EditorState, inst: InstanceDetail)
   if (loaded.rooms.length > 0) state.rooms = loaded.rooms;
 
   const cd = loaded.constraintsData;
+  state.ruleContinuousBlocks = cd.ruleContinuousBlocks;
+  state.ruleAssignAllTimes = cd.ruleAssignAllTimes;
+  state.ruleAvoidClashes = cd.ruleAvoidClashes;
   state.ruleTeacherClusterDays = cd.ruleTeacherClusterDays;
   state.teacherClusterWeight = cd.teacherClusterWeight;
   state.ruleMaxLessonsDaily = cd.ruleMaxLessonsDaily;
   state.studentMinDailyLimit = cd.studentMinDailyLimit;
   state.studentMaxDailyLimit = cd.studentMaxDailyLimit;
   state.studentDailyWeight = cd.studentDailyWeight;
+  state.ruleTeacherMaxDaily = cd.ruleTeacherMaxDaily;
+  state.teacherMaxDailyLimit = cd.teacherMaxDailyLimit;
+  state.teacherDailyWeight = cd.teacherDailyWeight;
   state.ruleTeacherMaxGaps = cd.ruleTeacherMaxGaps;
   state.teacherMaxGapsLimit = cd.teacherMaxGapsLimit;
   state.teacherGapsWeight = cd.teacherGapsWeight;
@@ -38,6 +44,12 @@ export function loadInstanceIntoEditor(state: EditorState, inst: InstanceDetail)
   state.afternoonFlexSubjectsSoft = cd.afternoonFlexSubjectsSoft;
   state.afternoonFlexSubjectsWeight = cd.afternoonFlexSubjectsWeight;
   state.ruleOrderLessons = cd.ruleOrderLessons;
+  state.newOrderIsSoft = cd.orderLessonsIsSoft;
+  state.newOrderWeight = cd.orderLessonsWeight;
+
+  state.linkedGroups = loaded.linkedGroups;
+  state.orderRules = loaded.orderRules;
+  state.externalConstraintsNotice = loaded.externalConstraintsNotice;
 
   if (loaded.lessons && loaded.lessons.length > 0) {
     state.lessons = loaded.lessons;

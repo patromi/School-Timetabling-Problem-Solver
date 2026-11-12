@@ -34,3 +34,23 @@ def test_solver_status_lifecycle():
     assert status_res.status_code == 200
     status_data = status_res.json()
     assert status_data["status"] in ("idle", "running", "completed", "stopped")
+
+
+def test_build_timetable_payload_includes_constraint_type():
+    from src.api import build_timetable_payload
+    from src.model import Solution, SolutionEvent
+    from tests.test_html_report import _instance_with_constraints
+
+    instance = _instance_with_constraints()
+    solution = Solution(
+        instance_ref=instance.id,
+        events=[
+            SolutionEvent(event_ref="E1", time_ref="Mon_1"),
+            SolutionEvent(event_ref="E3", time_ref="Tue_2"),
+        ],
+    )
+    payload = build_timetable_payload(instance, solution)
+    scores_by_id = {s["id"]: s for s in payload["scores"]}
+    assert scores_by_id["AT1"]["type"] == "AssignTimeConstraint"
+    assert scores_by_id["PT1"]["type"] == "PreferTimesConstraint"
+    assert "E1" in payload["violation_map"]["PT1"]

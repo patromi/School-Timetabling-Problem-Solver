@@ -188,17 +188,45 @@ export function buildStandardConstraints(options: StandardConstraintsOptions): C
   }
 
   // 5. Limit lekcji dziennie dla klas (LimitBusyTimesConstraint)
-  if (ruleMaxLessonsDaily && classes.length > 0) {
-    const defaultDailyClasses = classes.filter(
-      (c) =>
-        (c.minDailyLessons === null || c.minDailyLessons === undefined) &&
-        (c.maxDailyLessons === null || c.maxDailyLessons === undefined)
-    );
-    if (defaultDailyClasses.length > 0) {
+  const defaultDailyClasses = classes.filter(
+    (c) =>
+      (c.minDailyLessons === null || c.minDailyLessons === undefined) &&
+      (c.maxDailyLessons === null || c.maxDailyLessons === undefined)
+  );
+  if (ruleMaxLessonsDaily && defaultDailyClasses.length > 0) {
+    constraints.push({
+      type: "LimitBusyTimesConstraint",
+      id: "Regula_HigienaNauki",
+      name: "Maksymalna dopuszczalna liczba lekcji dziennie dla klas",
+      required: false,
+      weight: studentDailyWeight,
+      cost_function: "Linear",
+      applies_to: {
+        event_groups: [],
+        events: [],
+        resource_groups: [],
+        resources: defaultDailyClasses.map((c) => c.id),
+        time_groups: [],
+        times: [],
+        event_pairs: [],
+      },
+      params: {
+        TimeGroups: dayGroupRefs.map((d) => ({ reference: d })),
+        Minimum: studentMinDailyLimit,
+        Maximum: studentMaxDailyLimit,
+      },
+    });
+  }
+
+  classes.forEach((c) => {
+    if (
+      (c.minDailyLessons !== null && c.minDailyLessons !== undefined) ||
+      (c.maxDailyLessons !== null && c.maxDailyLessons !== undefined)
+    ) {
       constraints.push({
         type: "LimitBusyTimesConstraint",
-        id: "Regula_HigienaNauki",
-        name: "Maksymalna dopuszczalna liczba lekcji dziennie dla klas",
+        id: `LimitLekcji_${c.id}`,
+        name: `Dzienne ramy lekcyjne dla oddziału ${c.name}`,
         required: false,
         weight: studentDailyWeight,
         cost_function: "Linear",
@@ -206,60 +234,55 @@ export function buildStandardConstraints(options: StandardConstraintsOptions): C
           event_groups: [],
           events: [],
           resource_groups: [],
-          resources: defaultDailyClasses.map((c) => c.id),
+          resources: [c.id],
           time_groups: [],
           times: [],
           event_pairs: [],
         },
         params: {
           TimeGroups: dayGroupRefs.map((d) => ({ reference: d })),
-          Minimum: studentMinDailyLimit,
-          Maximum: studentMaxDailyLimit,
+          Minimum: c.minDailyLessons ?? studentMinDailyLimit,
+          Maximum: c.maxDailyLessons ?? studentMaxDailyLimit,
         },
       });
     }
+  });
 
-    classes.forEach((c) => {
-      if (
-        (c.minDailyLessons !== null && c.minDailyLessons !== undefined) ||
-        (c.maxDailyLessons !== null && c.maxDailyLessons !== undefined)
-      ) {
-        constraints.push({
-          type: "LimitBusyTimesConstraint",
-          id: `LimitLekcji_${c.id}`,
-          name: `Dzienne ramy lekcyjne dla oddziału ${c.name}`,
-          required: false,
-          weight: studentDailyWeight,
-          cost_function: "Linear",
-          applies_to: {
-            event_groups: [],
-            events: [],
-            resource_groups: [],
-            resources: [c.id],
-            time_groups: [],
-            times: [],
-            event_pairs: [],
-          },
-          params: {
-            TimeGroups: dayGroupRefs.map((d) => ({ reference: d })),
-            Minimum: c.minDailyLessons ?? studentMinDailyLimit,
-            Maximum: c.maxDailyLessons ?? studentMaxDailyLimit,
-          },
-        });
-      }
+  // 6. Maksymalne obciążenie dzienne nauczycieli (LimitBusyTimesConstraint)
+  const defaultDailyTeachers = teachers.filter(
+    (t) => t.maxDailyLessons === null || t.maxDailyLessons === undefined
+  );
+  if (ruleTeacherMaxDaily && defaultDailyTeachers.length > 0) {
+    constraints.push({
+      type: "LimitBusyTimesConstraint",
+      id: "Regula_MaxLekcjiNauczycieli",
+      name: "Maksymalna liczba lekcji dziennie dla kadry",
+      required: false,
+      weight: teacherDailyWeight,
+      cost_function: "Linear",
+      applies_to: {
+        event_groups: [],
+        events: [],
+        resource_groups: [],
+        resources: defaultDailyTeachers.map((t) => t.id),
+        time_groups: [],
+        times: [],
+        event_pairs: [],
+      },
+      params: {
+        TimeGroups: dayGroupRefs.map((d) => ({ reference: d })),
+        Minimum: 0,
+        Maximum: teacherMaxDailyLimit,
+      },
     });
   }
 
-  // 6. Maksymalne obciążenie dzienne nauczycieli (LimitBusyTimesConstraint)
-  if (ruleTeacherMaxDaily && teachers.length > 0) {
-    const defaultDailyTeachers = teachers.filter(
-      (t) => t.maxDailyLessons === null || t.maxDailyLessons === undefined
-    );
-    if (defaultDailyTeachers.length > 0) {
+  teachers.forEach((t) => {
+    if (t.maxDailyLessons !== null && t.maxDailyLessons !== undefined) {
       constraints.push({
         type: "LimitBusyTimesConstraint",
-        id: "Regula_MaxLekcjiNauczycieli",
-        name: "Maksymalna liczba lekcji dziennie dla kadry",
+        id: `MaxLekcji_${t.id}`,
+        name: `Maks. liczba lekcji dziennie dla ${t.name}: ${t.maxDailyLessons}`,
         required: false,
         weight: teacherDailyWeight,
         cost_function: "Linear",
@@ -267,7 +290,7 @@ export function buildStandardConstraints(options: StandardConstraintsOptions): C
           event_groups: [],
           events: [],
           resource_groups: [],
-          resources: defaultDailyTeachers.map((t) => t.id),
+          resources: [t.id],
           time_groups: [],
           times: [],
           event_pairs: [],
@@ -275,38 +298,11 @@ export function buildStandardConstraints(options: StandardConstraintsOptions): C
         params: {
           TimeGroups: dayGroupRefs.map((d) => ({ reference: d })),
           Minimum: 0,
-          Maximum: teacherMaxDailyLimit,
+          Maximum: t.maxDailyLessons,
         },
       });
     }
-
-    teachers.forEach((t) => {
-      if (t.maxDailyLessons !== null && t.maxDailyLessons !== undefined) {
-        constraints.push({
-          type: "LimitBusyTimesConstraint",
-          id: `MaxLekcji_${t.id}`,
-          name: `Maks. liczba lekcji dziennie dla ${t.name}: ${t.maxDailyLessons}`,
-          required: false,
-          weight: teacherDailyWeight,
-          cost_function: "Linear",
-          applies_to: {
-            event_groups: [],
-            events: [],
-            resource_groups: [],
-            resources: [t.id],
-            time_groups: [],
-            times: [],
-            event_pairs: [],
-          },
-          params: {
-            TimeGroups: dayGroupRefs.map((d) => ({ reference: d })),
-            Minimum: 0,
-            Maximum: t.maxDailyLessons,
-          },
-        });
-      }
-    });
-  }
+  });
 
   // 7. Kompaktowy tydzień pracy kadry (ClusterBusyTimesConstraint)
   if (ruleTeacherClusterDays) {

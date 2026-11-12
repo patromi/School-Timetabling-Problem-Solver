@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { ConstraintScore } from "../../types";
-  import { CONSTRAINT_FRIENDLY_MAP } from "../../school_helpers";
+  import { getConstraintScoreFriendlyInfo } from "../../school_helpers";
 
   interface Props {
     scores: ConstraintScore[];
@@ -40,7 +40,7 @@
 
   <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
     {#each scores as s}
-      {@const friendly = CONSTRAINT_FRIENDLY_MAP[s.id] || { title: s.name || s.id, description: "Zasada organizacji planu." }}
+      {@const friendly = getConstraintScoreFriendlyInfo(s)}
       {@const hasViolations = s.cost > 0}
       <button
         type="button"
@@ -53,8 +53,12 @@
         class={`p-3.5 rounded-xl border text-left transition-all ${
           hasViolations
             ? selectedViolationConstraint === s.id
-              ? 'bg-amber-50 border-amber-400 ring-2 ring-amber-400/40 cursor-pointer'
-              : 'bg-slate-50/90 border-slate-200 hover:border-amber-300 cursor-pointer'
+              ? s.required
+                ? 'bg-rose-50 border-rose-400 ring-2 ring-rose-400/40 cursor-pointer'
+                : 'bg-amber-50 border-amber-400 ring-2 ring-amber-400/40 cursor-pointer'
+              : s.required
+                ? 'bg-rose-50/40 border-rose-200 hover:border-rose-300 cursor-pointer'
+                : 'bg-slate-50/90 border-slate-200 hover:border-amber-300 cursor-pointer'
             : 'bg-slate-50/50 border-slate-100 cursor-default opacity-80'
         }`}
       >
@@ -62,16 +66,32 @@
           <span class="text-xs font-bold text-slate-900 leading-snug">
             {friendly.title}
           </span>
-          <span class="text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0
-            {hasViolations ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'}">
+          <span class={`text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${
+            hasViolations
+              ? s.required
+                ? 'bg-rose-100 text-rose-800'
+                : 'bg-amber-100 text-amber-800'
+              : 'bg-emerald-100 text-emerald-800'
+          }`}>
             {hasViolations ? `Kara: ${s.cost} pkt` : '✓ 100%'}
           </span>
         </div>
-        <p class="text-[11px] text-slate-500 mt-1 leading-snug">
+        <div class="mt-1 flex items-center gap-1.5">
+          <span class={`text-[10px] font-semibold px-1.5 py-0.5 rounded border ${
+            s.required
+              ? 'bg-rose-50 text-rose-700 border-rose-200'
+              : 'bg-slate-100 text-slate-600 border-slate-200'
+          }`}>
+            {s.required ? 'Wymóg bezwzględny' : `Preferencja (waga ${s.weight})`}
+          </span>
+        </div>
+        <p class="text-[11px] text-slate-500 mt-1.5 leading-snug">
           {friendly.description}
         </p>
         {#if hasViolations}
-          <div class="mt-2 text-[10px] font-semibold text-amber-800 flex items-center gap-1">
+          <div class={`mt-2 text-[10px] font-semibold flex items-center gap-1 ${
+            s.required ? 'text-rose-800' : 'text-amber-800'
+          }`}>
             <span>🔍 Kliknij, aby podświetlić w siatce</span>
           </div>
         {/if}

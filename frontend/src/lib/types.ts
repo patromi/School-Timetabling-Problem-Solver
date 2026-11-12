@@ -151,6 +151,7 @@ export interface TimetableCellEntry {
 export interface ConstraintScore {
   id: string;
   name: string;
+  type?: string;
   required: boolean;
   weight: number;
   cost: number;
