@@ -19,6 +19,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from src.acceptance import AcceptanceCriterion, AutoSAAcceptance, LAHCAcceptance
+from src.lfs_sync import pull_generated as _lfs_pull
 from src.construct import build_greedy, build_initial
 from src.evaluator_ref import evaluate_constraint_costs, resolve_occurrences
 from src.heuristics import Heuristic, NOOP_HEURISTIC
@@ -383,6 +384,11 @@ def main(argv: list[str] | None = None) -> None:
     if isinstance(sys.stdout, io.TextIOWrapper):
         sys.stdout.reconfigure(line_buffering=True)
     args = _parse_args(argv)
+
+    # Synchronize LFS-tracked heuristics from the remote if any pointer files
+    # exist locally.  Silently skipped when git-lfs is unavailable or offline.
+    if args.llm:
+        _lfs_pull(verbose=True)
 
     if not args.archive.exists():
         raise SystemExit(f"Nie znaleziono archiwum: {args.archive}")

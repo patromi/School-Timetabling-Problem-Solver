@@ -32,6 +32,8 @@ if TYPE_CHECKING:
     from src.acceptance import AcceptanceCriterion
     from src.selectors import HeuristicSelector
 
+from src.lfs_sync import pull_generated as _lfs_pull
+
 DEFAULT_ARCHIVE = Path(__file__).parent / "data" / "xhstt2014" / "XHSTT-2014.xml"
 DEFAULT_INSTANCES = ["BR-SA-00", "ZA-WD-09", "AU-SA-96"]
 DEFAULT_SELECTORS = ["random", "epsilon-greedy", "ucb"]
@@ -440,6 +442,9 @@ def main() -> None:
 
     llm_variants: list[str] = args.llm_variants
     has_llm = any(v != "none" for v in llm_variants)
+
+    if has_llm:
+        _lfs_pull(verbose=True)
     if has_llm and args.workers > 1:
         print(
             "UWAGA: --llm-variants zawiera warianty LLM i --workers > 1. "

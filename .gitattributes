@@ -1,1 +1,4 @@
 data/** filter=lfs diff=lfs merge=lfs -text
+generated/**/*.py filter=lfs diff=lfs merge=lfs -text
+generated/replay/*.jsonl filter=lfs diff=lfs merge=lfs -text
+generated/*.py filter=lfs diff=lfs merge=lfs -text
