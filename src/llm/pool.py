@@ -21,6 +21,7 @@ from pathlib import Path
 
 from src.heuristics import Heuristic
 from src.llm import client as llm_client
+from src.llm import replay as llm_replay
 from src.llm import validator as llm_validator
 from src.llm.prompt import VARIANT_A, Diagnostic, build
 from src.model import Instance, Solution
@@ -116,6 +117,7 @@ def _save_generated(
         "stagnant_iterations": diagnostic.stagnant_iterations,
         "infeasibility": diagnostic.infeasibility,
         "objective": diagnostic.objective,
+        "source": "llm_fresh",
     }
     meta_path.write_text(json.dumps(meta, indent=2), encoding="utf-8")
     return code_path
@@ -139,18 +141,61 @@ def maybe_generate(
     model: str = llm_client.OLLAMA_MODEL,
     temperature: float = 0.8,
     use_cache: bool = True,
-) -> tuple[list[Heuristic], int]:
+    seed: int | None = None,
+    trigger_idx: int = 0,
+) -> tuple[list[Heuristic], int, int]:
     """Try to generate and validate new heuristics via LLM.
 
+    When `seed` is provided, the function checks for a replay file at
+    generated/replay/seed_{seed}_{instance.id}.jsonl.  If entries exist for
+    the current `trigger_idx`, the saved code is re-validated (steps 1-3 only,
+    skipping the effectiveness gate) and injected into the pool without calling
+    the LLM.  The resulting Heuristic objects have source="llm_replay".
+
+    On a cache miss the LLM is called normally (source="llm_fresh") and each
+    accepted heuristic is appended to the replay file for future runs.
+
     Returns:
-        (new_heuristics, updated_last_llm_step)
+        (new_heuristics, updated_last_llm_step, updated_trigger_idx)
 
     The caller (lahc.py) appends new_heuristics to its pool and calls
-    selector.add_heuristic() for each one.
+    selector.add_heuristic() for each one.  trigger_idx is incremented only
+    when the function actually fires (past the cooldown gate).
     """
     if current_step - last_llm_step < LLM_COOLDOWN_ITERATIONS:
-        return [], last_llm_step
+        return [], last_llm_step, trigger_idx
 
+    # --- replay path ---
+    if seed is not None:
+        replay_entries = llm_replay.load(seed, instance.id)
+        trigger_entries = [
+            e for e in replay_entries if e["trigger_idx"] == trigger_idx
+        ]
+        if trigger_entries:
+            new_heuristics: list[Heuristic] = []
+            replay_results: list[llm_validator.ValidationResult] = []
+            for entry in trigger_entries:
+                code = str(entry["code"])
+                h_id = str(entry["h_id"])
+                result, heuristic = llm_validator.validate(
+                    code=code,
+                    h_id=h_id,
+                    instance=instance,
+                    solution=solution,
+                    pool=pool,
+                    seed=rng.randint(0, 2**31),
+                    skip_effectiveness=True,
+                    source="llm_replay",
+                )
+                replay_results.append(result)
+                if heuristic is not None:
+                    new_heuristics.append(heuristic)
+                    if selector is not None:
+                        selector.add_heuristic(heuristic)
+            stats.record(replay_results)
+            return new_heuristics, current_step, trigger_idx + 1
+
+    # --- fresh LLM path ---
     diagnostic = Diagnostic(
         instance=instance,
         solution=solution,
@@ -164,7 +209,8 @@ def maybe_generate(
     messages = build(diagnostic, variant=prompt_variant)
 
     results: list[llm_validator.ValidationResult] = []
-    new_heuristics: list[Heuristic] = []
+    fresh_heuristics: list[Heuristic] = []
+    candidate_idx = 0
 
     for i in range(n_candidates):
         h_id = f"llm_{int(time.time())}_{i}"
@@ -194,6 +240,7 @@ def maybe_generate(
             solution=solution,
             pool=pool,
             seed=rng.randint(0, 2**31),
+            source="llm_fresh",
         )
         results.append(result)
 
@@ -208,9 +255,19 @@ def maybe_generate(
         )
 
         if heuristic is not None:
-            new_heuristics.append(heuristic)
+            fresh_heuristics.append(heuristic)
             if selector is not None:
                 selector.add_heuristic(heuristic)
+            if seed is not None:
+                llm_replay.save_entry(
+                    seed=seed,
+                    instance_id=instance.id,
+                    trigger_idx=trigger_idx,
+                    candidate_idx=candidate_idx,
+                    h_id=h_id,
+                    code=code,
+                )
+            candidate_idx += 1
 
     stats.record(results)
-    return new_heuristics, current_step
+    return fresh_heuristics, current_step, trigger_idx + 1
