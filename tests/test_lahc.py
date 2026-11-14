@@ -7,7 +7,7 @@ from src.construct import build_initial
 from src.evaluator_ref import total_cost
 from src.heuristics import MANUAL_HEURISTICS
 from src.acceptance import LAHCAcceptance
-from src.lahc import run_lahc
+from src.lahc import RunStats, run_lahc
 from src.selectors import RandomSelector
 from src.parser import parse_archive
 
@@ -94,11 +94,22 @@ def test_lahc_reaches_full_feasibility_on_sudoku4x4_within_a_modest_budget():
     instance = parse_archive(_load("ArtificialSudoku4x4.xml"))[0]
     initial = build_initial(instance, random.Random(0))
 
+    stats = RunStats()
     best, best_cost = run_lahc(
-        instance, initial, random.Random(2), history_length=30, max_iterations=40000
+        instance,
+        initial,
+        random.Random(2),
+        history_length=30,
+        max_iterations=40000,
+        stats=stats,
     )
 
     assert best_cost == 0
+    # the run statistics follow what happened
+    assert stats.steps_done == 40000
+    assert stats.first_feasible_step is not None
+    assert stats.last_improvement_step is not None
+    assert 0 < stats.first_feasible_step <= stats.last_improvement_step < 40000
 
 
 def test_lahc_accepts_an_explicit_heuristic_pool_override():
@@ -326,6 +337,8 @@ def _perturbation_count(min_relative_improvement: float) -> int:
         # pinned to the configuration the reference count (52) was taken with
         acceptance=LAHCAcceptance(30),
         selector=RandomSelector(),
+        heuristics=[h for h in MANUAL_HEURISTICS if h.id != "repair_clash"],
+        select_perturbations=True,
     )
     events = [json.loads(line)["event"] for line in out.getvalue().splitlines()]
     return events.count("perturbation")
@@ -343,3 +356,77 @@ def test_a_zero_minimum_improvement_keeps_the_original_stagnation_rule():
     # min_relative_improvement existed (every strictly better new best reset
     # the counter); the default 0 must reproduce that trajectory exactly.
     assert _perturbation_count(0.0) == 52
+
+
+class _OfferedSelector(_RecordingSelector):
+    """Records which heuristic ids the solver offers the selector."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.offered: set[str] = set()
+
+    def select(self, heuristics, rng, state=None):  # type: ignore[no-untyped-def]
+        self.offered |= {h.id for h in heuristics}
+        return super().select(heuristics, rng, state=state)
+
+
+def test_the_selector_is_not_offered_the_perturbation_operators_by_default():
+    # The solver fires small/large_perturbation itself on stagnation; as
+    # ordinary arms they only take calls from the useful operators.
+    from src.lahc import PERTURBATION_IDS
+
+    instance = parse_archive(_load("ArtificialSudoku4x4.xml"))[0]
+    initial = build_initial(instance, random.Random(0))
+    default, opted_in = _OfferedSelector(), _OfferedSelector()
+
+    run_lahc(instance, initial, random.Random(1), max_iterations=50, selector=default)
+    run_lahc(
+        instance,
+        initial,
+        random.Random(1),
+        max_iterations=50,
+        selector=opted_in,
+        select_perturbations=True,
+    )
+
+    assert default.offered.isdisjoint(PERTURBATION_IDS)
+    assert PERTURBATION_IDS <= opted_in.offered
+
+
+def test_a_time_aware_reward_stays_within_the_binary_reward_range():
+    # Scaling by min(1, mean move time / move time) can only shrink the
+    # binary reward (0, 1 or 1 + bonus), never raise it.
+    from src.lahc import _BEST_BONUS
+
+    instance = parse_archive(_load("ArtificialSudoku4x4.xml"))[0]
+    initial = build_initial(instance, random.Random(0))
+    selector = _RecordingSelector()
+
+    run_lahc(
+        instance,
+        initial,
+        random.Random(3),
+        max_iterations=300,
+        selector=selector,
+        time_aware_reward=True,
+    )
+
+    assert all(0.0 <= r <= 1.0 + _BEST_BONUS for r in selector.rewards)
+    assert any(r > 0 for r in selector.rewards)
+
+
+def test_no_perturbations_means_no_restarts_however_long_the_stagnation():
+    instance = parse_archive(_load("ArtificialSudoku4x4.xml"))[0]
+    initial = build_initial(instance, random.Random(0))
+    stats = RunStats()
+    run_lahc(
+        instance,
+        initial,
+        random.Random(6),
+        max_iterations=3000,
+        idle_limit=50,
+        stats=stats,
+        perturbations=False,
+    )
+    assert stats.steps_done == 3000
+    assert stats.small_perturbations == stats.large_perturbations == 0

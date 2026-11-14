@@ -66,3 +66,53 @@ def test_solver_logs_accepted_candidates_split_by_cost_change():
     assert totals["accepted"] > 0
     assert totals["better"] + totals["equal"] + totals["worse"] == totals["accepted"]
     assert totals["better"] > 0
+
+
+def _events(out: io.StringIO, name: str) -> list[dict[str, object]]:
+    records = [json.loads(line) for line in out.getvalue().splitlines()]
+    return [r for r in records if r["event"] == name]
+
+
+def test_ucb_snapshot_holds_q_and_n_per_state_and_heuristic():
+    from src.heuristics import MANUAL_HEURISTICS
+    from src.selectors import UCBSelector
+
+    selector = UCBSelector(c=0.05, alpha=0.1)
+    h = MANUAL_HEURISTICS[0]
+    selector.select([h], random.Random(0), state=(0, 0))
+    selector.update(h, 1.0, state=(0, 0))
+
+    snap = selector.snapshot()
+    assert snap["type"] == "ucb"
+    assert snap["params"]["c"] == 0.05 and snap["params"]["alpha"] == 0.1
+    cell = snap["states"]["0,0"]
+    assert cell["N"] == 1
+    assert cell["heuristics"][h.id] == {"Q": 0.5 * 0.9 + 0.1, "n": 1}
+
+
+def test_solver_logs_its_configuration_and_selector_state():
+    text = (FIXTURES / "ArtificialSudoku4x4.xml").read_text(encoding="utf-8")
+    instance = parse_archive(text)[0]
+    initial = build_initial(instance, random.Random(0))
+    out = io.StringIO()
+
+    run_lahc(
+        instance,
+        initial,
+        random.Random(2),
+        max_iterations=400,
+        logger=SolveLogger(out, window_size=50),
+        snapshot_every=100,
+    )
+
+    (config,) = _events(out, "run_config")
+    assert config["selector"]["type"] == "ucb"
+    assert "acceptance" in config and "pool" in config and "idle_limit" in config
+    states = _events(out, "selector_state")
+    assert len(states) >= 4  # every 100 steps plus the final one
+    last = states[-1]
+    assert last["final"] is True
+    assert {"step", "state", "stagnant_iterations", "current_cost", "best_cost"} <= set(
+        last
+    )
+    assert last["selector"]["states"]

@@ -8,6 +8,8 @@ Writes into --out-dir:
   acceptance_breakdown.{png,pdf} ... split into better / equal / worse
                                  (logs with those counters only)
   final_results.{png,pdf}        final hard cost of every seed, per selector
+  selector_state.csv             mean final UCB Q and n per state and
+                                 heuristic (logs with selector_state only)
   summary.md                     per-selector table + paired exact Wilcoxon
                                  signed-rank tests (by seed) on the
                                  lexicographic cost (hard first, then soft)
@@ -21,8 +23,10 @@ Usage:
 import argparse
 import csv
 import itertools
+import json
 import statistics
 import sys
+import textwrap
 from collections import defaultdict
 from pathlib import Path
 
@@ -46,7 +50,10 @@ def load_results(path: Path) -> tuple[Results, dict[tuple[str, str], list[int]]]
     iterations: dict[tuple[str, str], list[int]] = defaultdict(list)
     with path.open(encoding="utf-8") as f:
         for row in csv.DictReader(f):
-            key = (row["instance_id"], row["selector"])
+            key = (
+                row["instance_id"],
+                plot_convergence.config_label(row["selector"], row["acceptance"]),
+            )
             results[key][int(row["seed"])] = (
                 int(row["infeasibility_after"]),
                 int(row["objective_after"]),
@@ -82,9 +89,114 @@ def wilcoxon_exact(diffs: list[int]) -> float:
 
 
 def _selectors(results: Results) -> list[str]:
-    present = {sel for _, sel in results}
-    order = [s for s in plot_convergence.SELECTOR_ORDER if s in present]
-    return order + sorted(present - set(order))
+    return plot_convergence.order_labels(sel for _, sel in results)
+
+
+def write_selector_state(log_dir: Path, output: Path) -> bool:
+    """CSV of what UCB learned by the end of the run: mean Q and n over the
+    seeds, per (instance, configuration, state, heuristic), from each run's
+    final selector_state record. Returns False when the logs predate those
+    records (nothing is written)."""
+    cells: dict[tuple[str, str, str, str], list[tuple[float, int]]] = defaultdict(list)
+    for path in sorted(log_dir.glob("*.jsonl")):
+        final = None
+        label = None
+        with path.open(encoding="utf-8") as f:
+            for line in f:
+                if '"selector_state"' in line and '"final":true' in line:
+                    final = json.loads(line)
+                elif '"run_summary"' in line:
+                    record = json.loads(line)
+                    label = (
+                        str(record["instance_id"]),
+                        plot_convergence.config_label(
+                            str(record["selector"]),
+                            str(record.get("acceptance", "lahc")),
+                        ),
+                    )
+        if final is None or label is None:
+            continue
+        for state, table in final["selector"].get("states", {}).items():
+            for h_id, stats in table["heuristics"].items():
+                cells[(*label, state, h_id)].append((stats["Q"], stats["n"]))
+    if not cells:
+        return False
+    with output.open("w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(
+            ["instance_id", "config", "state", "heuristic", "q_mean", "n_mean", "seeds"]
+        )
+        for (inst, config, state, h_id), values in sorted(cells.items()):
+            writer.writerow(
+                [
+                    inst,
+                    config,
+                    state,
+                    h_id,
+                    round(statistics.mean(q for q, _ in values), 4),
+                    round(statistics.mean(n for _, n in values), 1),
+                    len(values),
+                ]
+            )
+    return True
+
+
+def hard_breakdown_lines(log_dir: Path) -> list[str]:
+    """Markdown section: mean hard cost per constraint type at the start
+    and at the end of the run, per (instance, selector). Empty when the
+    logs predate the by_type_* fields of run_summary."""
+    before: dict[tuple[str, str], list[dict[str, int]]] = defaultdict(list)
+    after: dict[tuple[str, str], list[dict[str, int]]] = defaultdict(list)
+    for path in sorted(log_dir.glob("*.jsonl")):
+        with path.open(encoding="utf-8") as f:
+            for line in f:
+                if '"run_summary"' not in line:
+                    continue
+                record = json.loads(line)
+                if "by_type_after" not in record:
+                    continue
+                label = plot_convergence.config_label(
+                    str(record["selector"]), str(record.get("acceptance", "lahc"))
+                )
+                key = (str(record["instance_id"]), label)
+                before[key].append(record["by_type_before"]["hard"])
+                after[key].append(record["by_type_after"]["hard"])
+    if not after:
+        return []
+    lines = [
+        "",
+        "## Naruszenia twarde na końcu wg typu ograniczenia",
+        "",
+        "Średni koszt twardy z seedów: start → koniec. Pokazuje, które "
+        "ograniczenia zostają naruszone.",
+    ]
+    for inst in sorted({k[0] for k in after}):
+        present = _selector_order({k[1] for k in after})
+        selectors = [s for s in present if (inst, s) in after]
+        runs = [r for s in selectors for r in after[(inst, s)] + before[(inst, s)]]
+        types = sorted({t for run in runs for t in run})
+        lines += [
+            "",
+            f"### {inst}",
+            "",
+            "| typ ograniczenia | start | " + " | ".join(selectors) + " |",
+            "|---|---|" + "---|" * len(selectors),
+        ]
+        first = before[(inst, selectors[0])]
+        for t in types:
+            start = statistics.mean(run.get(t, 0) for run in first)
+            ends = [
+                statistics.mean(run.get(t, 0) for run in after[(inst, s)])
+                for s in selectors
+            ]
+            lines.append(
+                f"| {t} | {start:.1f} | " + " | ".join(f"{e:.1f}" for e in ends) + " |"
+            )
+    return lines
+
+
+def _selector_order(present: set[str]) -> list[str]:
+    return plot_convergence.order_labels(present)
 
 
 def write_summary(
@@ -93,7 +205,7 @@ def write_summary(
     instances = sorted({inst for inst, _ in results})
     selectors = _selectors(results)
     pairs = list(itertools.combinations(selectors, 2))
-    n_tests = len(instances) * len(pairs)
+    n_tests = max(1, len(instances) * len(pairs))  # 1: a single selector, no pairs
     alpha = 0.05
     lines = [
         "# Podsumowanie eksperymentu",
@@ -150,6 +262,7 @@ def write_summary(
 def plot_final(results: Results, output: Path) -> None:
     instances = sorted({inst for inst, _ in results})
     selectors = _selectors(results)
+    colors = plot_convergence.label_colors(selectors)
     fig, axes = plt.subplots(
         1,
         len(instances),
@@ -164,9 +277,7 @@ def plot_final(results: Results, output: Path) -> None:
             infs = sorted(v[0] for v in results.get((inst, sel), {}).values())
             if not infs:
                 continue
-            color = plot_convergence.SELECTOR_COLORS.get(
-                sel, plot_convergence.TEXT_SECONDARY
-            )
+            color = colors[sel]
             # deterministic horizontal spread so equal values stay visible
             offsets = [(k - (len(infs) - 1) / 2) * 0.04 for k in range(len(infs))]
             ax.scatter(
@@ -200,7 +311,10 @@ def plot_final(results: Results, output: Path) -> None:
             ax.yaxis.set_major_locator(LogLocator(base=10, subs=(1.0, 2.0, 5.0)))
             ax.yaxis.set_major_formatter(FuncFormatter(plot_convergence._format_count))
         ax.yaxis.set_minor_formatter(NullFormatter())
-        ax.set_xticks(range(len(selectors)), selectors, fontsize=8)
+        # long configuration names wrap onto several lines instead of overlapping
+        width = 16 if len(selectors) <= 3 else 11
+        names = [textwrap.fill(s, width, break_long_words=False) for s in selectors]
+        ax.set_xticks(range(len(selectors)), names, fontsize=8)
         ax.set_xlim(-0.6, len(selectors) - 0.4)
         ax.set_title(inst, color=plot_convergence.TEXT_PRIMARY, fontsize=11, loc="left")
         ax.grid(True, axis="y", color=plot_convergence.GRID, linewidth=0.6)
@@ -239,6 +353,11 @@ def main() -> None:
 
     results, iterations = load_results(args.csv)
     write_summary(results, iterations, args.out_dir / "summary.md")
+    write_selector_state(args.log_dir, args.out_dir / "selector_state.csv")
+    breakdown = hard_breakdown_lines(args.log_dir)
+    if breakdown:
+        with (args.out_dir / "summary.md").open("a", encoding="utf-8") as f:
+            f.write("\n".join(breakdown) + "\n")
     plot_final(results, args.out_dir / "final_results.png")
 
     step = max(0.5, args.time_limit / 240)

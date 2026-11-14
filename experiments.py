@@ -68,12 +68,30 @@ class RunResult:
     objective_after: int
     elapsed_s: float
     iterations_done: int
+    # full description of the acceptance criterion, e.g.
+    # "sa_auto(t0_factor=0.01,t_end=1.0,budget=120s)": the short name "sa"
+    # meant T0 = 1e-3 before 18.10.2026 and 1e-2 after, this does not drift
+    acceptance_detail: str = ""
     # LLM fields — "none" / "a" / "b" / "rag"; rest are 0 when LLM disabled.
     llm_variant: str = "none"
     llm_trigger: int = DEFAULT_LLM_TRIGGER
     llm_calls: int = 0
     llm_candidates: int = 0
     llm_accepted: int = 0
+
+
+def _apply_preset(args: argparse.Namespace) -> None:
+    """--preset bazowy: the configuration before the feasibility work
+    (issue #82), so older results can be reproduced with one flag instead
+    of five."""
+    if args.preset != "bazowy":
+        return
+    args.acceptance = ["sa-t0=1e-3" if a == "sa" else a for a in args.acceptance]
+    args.selectors = ["ucb-a=0.08" if s == "ucb" else s for s in args.selectors]
+    args.construct = "naive"
+    args.select_perturbations = True
+    if "repair_clash" not in args.exclude_heuristic:
+        args.exclude_heuristic.append("repair_clash")
 
 
 def _make_selector(selector_name: str) -> "HeuristicSelector":
@@ -97,11 +115,12 @@ def _make_selector(selector_name: str) -> "HeuristicSelector":
         return UCBSelector(alpha=0.15)
     if selector_name == "ucb-2state-c03":
         return UCBSelector(c=0.3, collapse_stagnation=True)
-    if selector_name.startswith("ucb-c="):
-        # e.g. "ucb-c=0.01" -- used to calibrate the exploration constant
-        return UCBSelector(c=float(selector_name.removeprefix("ucb-c=")))
+    if selector_name.startswith("ucb-a="):
+        return UCBSelector(alpha=float(selector_name.removeprefix("ucb-a=")))
     if selector_name.startswith("ucb-alpha="):
         return UCBSelector(alpha=float(selector_name.removeprefix("ucb-alpha=")))
+    if selector_name.startswith("ucb-c="):
+        return UCBSelector(c=float(selector_name.removeprefix("ucb-c=")))
     return RandomSelector()
 
 
@@ -120,6 +139,11 @@ def _make_acceptance(acceptance_name: str, time_limit: float) -> "AcceptanceCrit
         return AutoSAAcceptance(t0_factor=0.0005, time_budget=time_limit)
     if acceptance_name == "sa-t005":
         return AutoSAAcceptance(t0_factor=0.005, time_budget=time_limit)
+    if acceptance_name.startswith("sa-t0="):
+        return AutoSAAcceptance(
+            t0_factor=float(acceptance_name.removeprefix("sa-t0=")),
+            time_budget=time_limit,
+        )
     return LAHCAcceptance(HISTORY_LENGTH)
 
 
@@ -130,6 +154,11 @@ def _run_one(
     seed: int,
     time_limit: float,
     log_path: "Path | None",
+    construct: str = "greedy",
+    select_perturbations: bool = False,
+    time_aware_reward: bool = False,
+    exclude_heuristics: tuple[str, ...] = (),
+    perturbations: bool = True,
     llm_variant: str = "none",
     llm_trigger: int = DEFAULT_LLM_TRIGGER,
 ) -> RunResult:
@@ -138,8 +167,10 @@ def _run_one(
     import json
     from pathlib import Path as _Path
 
-    from src.construct import build_initial
+    from src.construct import build_greedy, build_initial
+    from src.cost import cost_by_constraint_type
     from src.evaluator_ref import evaluate_cost_components
+    from src.heuristics import MANUAL_HEURISTICS
     from src.lahc import run_lahc
     from src.llm.pool import GenerationStats
     from src.parser import parse_archive
@@ -150,7 +181,8 @@ def _run_one(
     instance = next(i for i in instances if i.id == instance_id)
 
     rng = random.Random(seed)
-    initial = build_initial(instance, rng)
+    build = build_greedy if construct == "greedy" else build_initial
+    initial = build(instance, rng)
     inf0, obj0 = evaluate_cost_components(instance, initial)
 
     selector = _make_selector(selector_name)
@@ -186,6 +218,10 @@ def _run_one(
             logger=logger,
             idle_limit=STAGNATION_LIMIT,
             min_relative_improvement=MIN_RELATIVE_IMPROVEMENT,
+            select_perturbations=select_perturbations,
+            time_aware_reward=time_aware_reward,
+            heuristics=[h for h in MANUAL_HEURISTICS if h.id not in exclude_heuristics],
+            perturbations=perturbations,
             llm_enabled=llm_enabled,
             llm_prompt_variant=llm_variant if llm_enabled else "a",
             llm_trigger_multiplier=llm_trigger,
@@ -202,7 +238,7 @@ def _run_one(
     inf1, obj1 = evaluate_cost_components(instance, best)
 
     llm_calls = llm_stats.total_calls if llm_stats else 0
-    llm_candidates = llm_stats.candidates_generated if llm_stats else 0
+    llm_candidates_gen = llm_stats.candidates_generated if llm_stats else 0
     llm_accepted = llm_stats.accepted if llm_stats else 0
 
     if logger is not None and log_path is not None:
@@ -214,16 +250,24 @@ def _run_one(
                         "instance_id": instance_id,
                         "selector": selector_name,
                         "acceptance": acceptance_name,
+                        "acceptance_detail": acceptance.name,
                         "seed": seed,
+                        "construct": construct,
+                        "select_perturbations": select_perturbations,
+                        "perturbations": perturbations,
+                        "time_aware_reward": time_aware_reward,
+                        "exclude_heuristics": list(exclude_heuristics),
                         "llm_variant": llm_variant,
                         "llm_trigger": llm_trigger,
                         "llm_calls": llm_calls,
-                        "llm_candidates": llm_candidates,
+                        "llm_candidates": llm_candidates_gen,
                         "llm_accepted": llm_accepted,
                         "infeasibility_before": inf0,
                         "objective_before": obj0,
                         "infeasibility_after": inf1,
                         "objective_after": obj1,
+                        "by_type_before": cost_by_constraint_type(instance, initial),
+                        "by_type_after": cost_by_constraint_type(instance, best),
                         "iterations_done": iters_done[0],
                         "elapsed_s": round(elapsed, 1),
                     },
@@ -243,10 +287,11 @@ def _run_one(
         objective_after=obj1,
         elapsed_s=round(elapsed, 1),
         iterations_done=iters_done[0],
+        acceptance_detail=acceptance.name,
         llm_variant=llm_variant,
         llm_trigger=llm_trigger,
         llm_calls=llm_calls,
-        llm_candidates=llm_candidates,
+        llm_candidates=llm_candidates_gen,
         llm_accepted=llm_accepted,
     )
 
@@ -332,9 +377,46 @@ def main() -> None:
         help="Directory for per-run JSONL logs (default: data/logs)",
     )
     parser.add_argument(
+        "--construct",
+        choices=["naive", "greedy"],
+        default="greedy",
+        help="Initial solution: greedy (clash-aware, default) or naive",
+    )
+    parser.add_argument(
+        "--select-perturbations",
+        action="store_true",
+        help="Offer small/large_perturbation to the selector (pre-step-6)",
+    )
+    parser.add_argument(
+        "--no-perturbations",
+        action="store_true",
+        help="Never perturb on stagnation (plain SA + selector)",
+    )
+    parser.add_argument(
+        "--time-aware-reward",
+        action="store_true",
+        help="Scale the selector reward by mean move time / move time",
+    )
+    parser.add_argument(
+        "--exclude-heuristic",
+        action="append",
+        default=[],
+        help="Heuristic id to leave out of the pool (repeatable)",
+    )
+    parser.add_argument(
         "--no-logs",
         action="store_true",
         help="Disable per-run JSONL logging",
+    )
+    parser.add_argument(
+        "--preset",
+        choices=["domyslny", "bazowy"],
+        default="domyslny",
+        help=(
+            "bazowy: every setting from before issue #82 at once -- SA with "
+            "T0 1e-3, naive start, perturbations offered to the selector, "
+            "UCB alpha 0.08, no repair_clash"
+        ),
     )
     parser.add_argument(
         "--llm-variants",
@@ -354,6 +436,7 @@ def main() -> None:
         help=f"idle_limit multiplier before LLM fires (default {DEFAULT_LLM_TRIGGER})",
     )
     args = parser.parse_args()
+    _apply_preset(args)
 
     llm_variants: list[str] = args.llm_variants
     has_llm = any(v != "none" for v in llm_variants)
@@ -413,6 +496,11 @@ def main() -> None:
                 seed,
                 args.time_limit,
                 _log_name(inst, sel, acc, seed, llm),
+                args.construct,
+                args.select_perturbations,
+                args.time_aware_reward,
+                tuple(args.exclude_heuristic),
+                not args.no_perturbations,
                 llm,
                 args.llm_trigger,
             ): (inst, sel, acc, seed, llm)

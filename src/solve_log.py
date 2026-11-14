@@ -5,7 +5,17 @@ Emits one JSON object per line to a ``.jsonl`` file.  Event types:
 - ``new_best`` — whenever the best-known cost improves.
 - ``selector_window`` — periodic aggregate of heuristic usage/rewards over
   the last *window_size* iterations (emitted every *window_size* steps).
-- ``perturbation`` — when the stagnation-triggered perturbation fires.
+- ``perturbation`` — when the stagnation-triggered perturbation fires,
+  with the temperature the acceptance criterion was re-heated to.
+- ``perturbation_outcome`` — at the next perturbation or the end of the
+  run: whether the current cost got back to the best cost the perturbation
+  started from (and after how many steps) and whether it led to a new best.
+- ``run_environment`` — once at the start (run_solver.py): git commit,
+  command line, Python version, CPU count -- what reproducing the run needs.
+- ``run_config`` — once at the start: every solver and selector parameter.
+- ``selector_state`` — periodically, at each perturbation and at the end:
+  the selector's learned statistics (for UCB, Q and n per state and
+  heuristic) plus the solver's state, stagnation and SA temperature.
 - ``run_summary`` — single record at the end of a run (config + outcome).
 
 Named ``solve_log`` (not ``logging``) so it never shadows the stdlib module.
@@ -78,8 +88,10 @@ class SolveLogger:
         heuristic_id: str,
         cost_before: int,
         cost_after: int,
+        temperature: float | None = None,
     ) -> None:
-        """Record a stagnation-triggered perturbation."""
+        """Record a stagnation-triggered perturbation; *temperature* is the
+        acceptance temperature the criterion was re-heated to (None for LAHC)."""
         self._emit(
             "perturbation",
             step=step,
@@ -87,6 +99,7 @@ class SolveLogger:
             heuristic_id=heuristic_id,
             cost_before=cost_before,
             cost_after=cost_after,
+            temperature=temperature,
         )
 
     def log_llm_pool_add(
@@ -105,6 +118,24 @@ class SolveLogger:
             source=source,
             trigger_idx=trigger_idx,
         )
+
+    def log_perturbation_outcome(self, **fields: object) -> None:
+        """Record what a perturbation led to (logged at the next perturbation
+        or at the end of the run)."""
+        self._emit("perturbation_outcome", **fields)
+
+    def log_run_environment(self, **fields: object) -> None:
+        """Record what is needed to reproduce the run: code version,
+        command line, interpreter, machine (called once at the start)."""
+        self._emit("run_environment", **fields)
+
+    def log_run_config(self, **fields: Any) -> None:
+        """Record the run's parameters (called once at the start)."""
+        self._emit("run_config", **fields)
+
+    def log_selector_state(self, **fields: Any) -> None:
+        """Record a snapshot of what the selector has learned so far."""
+        self._emit("selector_state", **fields)
 
     def log_run_summary(self, **fields: Any) -> None:
         """Record final run metadata (called once at the end)."""
