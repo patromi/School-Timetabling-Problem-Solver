@@ -45,6 +45,10 @@ DEFAULT_MODEL: str = OPENAI_MODEL if LLM_BACKEND == "openai" else OLLAMA_MODEL
 _CACHE_FILE = Path("generated/llm_cache.jsonl")
 _HTTP_TIMEOUT = 300.0  # 5 min — large models can be slow on first token
 
+# In-memory cache: loaded lazily on first use, updated on every write so
+# repeated call()s within one process never re-read the file from disk.
+_CACHE: dict[str, str] | None = None
+
 
 @dataclass(frozen=True)
 class LLMResponse:
@@ -78,6 +82,13 @@ def _read_cache() -> dict[str, str]:
     return cache
 
 
+def _get_cache() -> dict[str, str]:
+    global _CACHE
+    if _CACHE is None:
+        _CACHE = _read_cache()
+    return _CACHE
+
+
 def _append_cache(
     key: str,
     content: str,
@@ -103,6 +114,9 @@ def _append_cache(
     }
     with _CACHE_FILE.open("a", encoding="utf-8") as fh:
         fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    # Keep the in-memory cache in sync so the next call() doesn't re-read disk.
+    if _CACHE is not None:
+        _CACHE[key] = content
 
 
 def _call_ollama(
@@ -182,7 +196,7 @@ def call(
     key = _cache_key(model, messages)
 
     if use_cache:
-        cache = _read_cache()
+        cache = _get_cache()
         if key in cache:
             return LLMResponse(
                 content=cache[key],

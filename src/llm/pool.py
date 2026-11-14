@@ -138,7 +138,7 @@ def maybe_generate(
     current_step: int,
     prompt_variant: str = VARIANT_A,
     n_candidates: int = DEFAULT_N_CANDIDATES,
-    model: str = llm_client.OLLAMA_MODEL,
+    model: str = llm_client.DEFAULT_MODEL,
     temperature: float = 0.8,
     use_cache: bool = True,
     seed: int | None = None,
@@ -212,8 +212,7 @@ def maybe_generate(
     fresh_heuristics: list[Heuristic] = []
     candidate_idx = 0
 
-    for i in range(n_candidates):
-        h_id = f"llm_{int(time.time())}_{i}"
+    for _ in range(n_candidates):
         try:
             llm_resp = llm_client.call(
                 messages,
@@ -222,6 +221,9 @@ def maybe_generate(
                 use_cache=use_cache,
             )
             code = _extract_code(llm_resp.content)
+            # Use a content hash so the id is stable across runs with the
+            # same LLM response (e.g. cache hits) rather than wall-clock time.
+            h_id = f"llm_{hashlib.sha256(code.encode()).hexdigest()[:12]}"
         except Exception as exc:
             results.append(
                 llm_validator.ValidationResult(

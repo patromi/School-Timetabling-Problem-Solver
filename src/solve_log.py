@@ -54,6 +54,7 @@ class SolveLogger:
         # accepted candidates split by the sign of their cost change
         self._window_accepted_by_change: dict[str, list[int]] = {}
         self._window_start_step: int = 0
+        self._window_last_step: int = 0
 
     # ── public API (called from lahc.py / run_solver.py) ──
 
@@ -176,14 +177,14 @@ class SolveLogger:
             )
             by_change[0 if cost_change < 0 else 1 if cost_change == 0 else 2] += 1
 
+        self._window_last_step = step
         if (step + 1) % self._window_size == 0:
             self._flush_window(step)
 
     def flush(self) -> None:
         """Flush any partial window (call at end of run)."""
-        # Only flush if there is accumulated data
         if self._window_calls:
-            self._flush_window(self._window_start_step + len(self._window_calls) - 1)
+            self._flush_window(self._window_last_step)
 
     # ── internals ──
 
@@ -215,6 +216,7 @@ class SolveLogger:
         self._window_accepted.clear()
         self._window_accepted_by_change.clear()
         self._window_start_step = last_step + 1
+        self._window_last_step = last_step + 1
 
     def _emit(self, event: str, **data: Any) -> None:
         record = {"event": event, "t": time.time(), **data}

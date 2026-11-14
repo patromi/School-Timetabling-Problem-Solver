@@ -479,7 +479,8 @@ def run_lahc(  # noqa: C901 — solver loop; complexity is inherent to the algor
                     steps_done = step + 1
                     continue
                 except ValueError:
-                    pass
+                    stagnant_iterations = 0
+                    perturbation_tier = 1 if perturbation_tier == 0 else 0
 
         # --- LLM trigger (fires independently of perturbation) ---
         if llm_enabled and _llm_stagnant >= _llm_trigger:
@@ -631,7 +632,7 @@ def run_lahc(  # noqa: C901 — solver loop; complexity is inherent to the algor
             criterion.after_step(current_cost, step)
             _finish(evaluator, transaction, accepted, current)
             selector.update(heuristic, reward, state=solver_state)
-            if isinstance(selector, UCBSelector):
+            if isinstance(selector, UCBSelector) and len(pool) > selector.pool_limit:
                 to_remove = selector.try_remove_weakest(pool)
                 if to_remove is not None:
                     pool.remove(to_remove)

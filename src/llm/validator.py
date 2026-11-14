@@ -39,14 +39,32 @@ class ValidationResult:
     code: str
 
 
+_SAFE_BUILTINS: dict[str, object] = {
+    "len": len, "range": range, "enumerate": enumerate, "zip": zip,
+    "list": list, "tuple": tuple, "dict": dict, "set": set,
+    "frozenset": frozenset, "max": max, "min": min, "sum": sum,
+    "abs": abs, "sorted": sorted, "reversed": reversed, "filter": filter,
+    "map": map, "any": any, "all": all, "isinstance": isinstance,
+    "hasattr": hasattr, "getattr": getattr, "type": type,
+    "bool": bool, "int": int, "float": float, "str": str, "repr": repr,
+    "print": print, "ValueError": ValueError, "TypeError": TypeError,
+    "IndexError": IndexError, "KeyError": KeyError,
+    "StopIteration": StopIteration,
+    "True": True, "False": False, "None": None,
+}
+
+
 def _build_heuristic(code: str, h_id: str, source: str = "llm_fresh") -> Heuristic:
     """Compile validated code into a Heuristic object.
 
     Injects the same globals the subprocess sandbox exposes so that helpers
     like valid_start_time_ids and dataclasses work both in the effectiveness
-    check (step 4) and in the live solver loop.
+    check (step 4) and in the live solver loop.  __builtins__ is restricted
+    to the same safe set as the subprocess, closing the gap between the two
+    execution environments.
     """
     ns: dict[str, Any] = {
+        "__builtins__": _SAFE_BUILTINS,
         "math": math,
         "dataclasses": _dataclasses,
         "itertools": itertools,

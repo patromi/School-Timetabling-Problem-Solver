@@ -51,6 +51,11 @@ _FORBIDDEN_NAMES: frozenset[str] = frozenset(
     }
 )
 
+# Roots derived from _ALLOWED_IMPORTS for use in the allowlist check.
+_ALLOWED_IMPORT_ROOTS: frozenset[str] = frozenset(
+    m.split(".")[0] for m in _ALLOWED_IMPORTS
+)
+
 _FORBIDDEN_IMPORT_ROOTS: frozenset[str] = frozenset(
     {
         "os",
@@ -86,15 +91,15 @@ class _ForbiddenNodeVisitor(ast.NodeVisitor):
     def visit_Import(self, node: ast.Import) -> None:
         for alias in node.names:
             root = alias.name.split(".")[0]
-            if root in _FORBIDDEN_IMPORT_ROOTS:
-                raise SyntaxError(f"forbidden import: {alias.name!r}")
+            if root in _FORBIDDEN_IMPORT_ROOTS or root not in _ALLOWED_IMPORT_ROOTS:
+                raise SyntaxError(f"import not allowed: {alias.name!r}")
         self.generic_visit(node)
 
     def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
         module = node.module or ""
         root = module.split(".")[0]
-        if root in _FORBIDDEN_IMPORT_ROOTS:
-            raise SyntaxError(f"forbidden import: {module!r}")
+        if root in _FORBIDDEN_IMPORT_ROOTS or root not in _ALLOWED_IMPORT_ROOTS:
+            raise SyntaxError(f"import not allowed: {module!r}")
         self.generic_visit(node)
 
     def visit_Name(self, node: ast.Name) -> None:
