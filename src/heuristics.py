@@ -42,6 +42,7 @@ class Heuristic:
     protected: bool
     apply: Callable[[Solution, Instance, random.Random], Solution]
     incremental_safe: bool = False
+    source: str = "manual"  # "manual" | "llm_fresh" | "llm_replay"
 
 
 def move_random(solution: Solution, instance: Instance, rng: random.Random) -> Solution:

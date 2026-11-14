@@ -89,6 +89,23 @@ class SolveLogger:
             cost_after=cost_after,
         )
 
+    def log_llm_pool_add(
+        self,
+        *,
+        step: int,
+        h_id: str,
+        source: str,
+        trigger_idx: int,
+    ) -> None:
+        """Record a heuristic being added to the pool from LLM (fresh or replay)."""
+        self._emit(
+            "llm_pool_add",
+            step=step,
+            h_id=h_id,
+            source=source,
+            trigger_idx=trigger_idx,
+        )
+
     def log_run_summary(self, **fields: Any) -> None:
         """Record final run metadata (called once at the end)."""
         self._emit("run_summary", **fields)

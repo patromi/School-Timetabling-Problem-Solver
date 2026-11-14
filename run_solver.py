@@ -105,6 +105,7 @@ def solve(
     llm_operators: list[Heuristic] | None = None,
     llm_only: bool = False,
     idle_limit: int | None = None,
+    seed: int | None = None,
 ) -> tuple[SolveResult, GenerationStats | None]:
     """Buduje rozwiazanie poczatkowe i uruchamia solver; zwraca spakowany wynik."""
     initial = build_initial(instance, rng)
@@ -144,6 +145,7 @@ def solve(
         llm_stats=llm_stats,
         llm_operators=llm_operators,
         idle_limit=idle_limit,
+        seed=seed,
     )
     elapsed = time.time() - t_start
     infeasibility_1, objective_1 = evaluate_cost_components(instance, best)
@@ -379,6 +381,7 @@ def main(argv: list[str] | None = None) -> None:
             llm_operators=llm_operators or None,
             llm_only=args.llm_only,
             idle_limit=args.idle_limit,
+            seed=args.seed,
         )
 
         logger.log_run_summary(

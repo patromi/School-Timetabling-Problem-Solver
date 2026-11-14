@@ -121,8 +121,10 @@ def _run_llm_trigger(
     llm_prompt_variant: str,
     llm_n_candidates: int,
     llm_stats: GenerationStats,
-) -> tuple[list[Heuristic], int]:
-    """Fire the LLM generator and return (new_heuristics, updated_last_step)."""
+    seed: int | None,
+    trigger_idx: int,
+) -> tuple[list[Heuristic], int, int]:
+    """Fire the LLM generator and return (new_heuristics, updated_last_step, updated_trigger_idx)."""
     c_costs = (
         evaluator.constraint_costs()
         if evaluator is not None
@@ -147,6 +149,8 @@ def _run_llm_trigger(
         current_step=step,
         prompt_variant=llm_prompt_variant,
         n_candidates=llm_n_candidates,
+        seed=seed,
+        trigger_idx=trigger_idx,
     )
 
 
@@ -224,6 +228,7 @@ def run_lahc(  # noqa: C901 — solver loop; complexity is inherent to the algor
     llm_n_candidates: int = DEFAULT_N_CANDIDATES,
     llm_stats: GenerationStats | None = None,
     llm_operators: list[Heuristic] | None = None,
+    seed: int | None = None,
 ) -> tuple[Solution, int]:
     """Local search loop with a pluggable acceptance criterion.
 
@@ -311,6 +316,8 @@ def run_lahc(  # noqa: C901 — solver loop; complexity is inherent to the algor
     _llm_trigger = llm_trigger_multiplier * idle_limit
     # initialise far enough back that the first trigger is not blocked by cooldown
     _llm_last_step = -LLM_COOLDOWN_ITERATIONS
+    # counts actual LLM invocations (past cooldown); used as replay key
+    _llm_trigger_idx = 0
 
     for step in range(max_iterations):
         if max_seconds is not None and time.monotonic() - t_start >= max_seconds:
@@ -337,7 +344,7 @@ def run_lahc(  # noqa: C901 — solver loop; complexity is inherent to the algor
 
         # --- LLM trigger (fires independently of perturbation) ---
         if llm_enabled and _llm_stagnant >= _llm_trigger:
-            new_heuristics, _llm_last_step = _run_llm_trigger(
+            new_heuristics, _llm_last_step, _llm_trigger_idx = _run_llm_trigger(
                 instance=instance,
                 current=current,
                 current_cost=current_cost,
@@ -351,8 +358,18 @@ def run_lahc(  # noqa: C901 — solver loop; complexity is inherent to the algor
                 llm_prompt_variant=llm_prompt_variant,
                 llm_n_candidates=llm_n_candidates,
                 llm_stats=_llm_stats,
+                seed=seed,
+                trigger_idx=_llm_trigger_idx,
             )
             pool.extend(new_heuristics)
+            if logger is not None:
+                for h in new_heuristics:
+                    logger.log_llm_pool_add(
+                        step=step,
+                        h_id=h.id,
+                        source=h.source,
+                        trigger_idx=_llm_trigger_idx - 1,
+                    )
 
             if llm_operators:
                 prev_best = best_cost

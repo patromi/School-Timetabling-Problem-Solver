@@ -39,7 +39,7 @@ class ValidationResult:
     code: str
 
 
-def _build_heuristic(code: str, h_id: str) -> Heuristic:
+def _build_heuristic(code: str, h_id: str, source: str = "llm_fresh") -> Heuristic:
     """Compile validated code into a Heuristic object.
 
     Injects the same globals the subprocess sandbox exposes so that helpers
@@ -67,6 +67,7 @@ def _build_heuristic(code: str, h_id: str) -> Heuristic:
         protected=False,
         apply=apply_fn,
         incremental_safe=False,
+        source=source,
     )
 
 
@@ -111,8 +112,16 @@ def validate(
     solution: Solution,
     pool: list[Heuristic],
     seed: int = 0,
+    skip_effectiveness: bool = False,
+    source: str = "llm_fresh",
 ) -> tuple[ValidationResult, Heuristic | None]:
-    """Run all 4 validation steps.
+    """Run the 4-step validation pipeline.
+
+    Args:
+        skip_effectiveness: When True, skip step 4 (used for replay — the code
+            already passed the effectiveness gate on first run).
+        source: Propagated to the Heuristic.source field ("llm_fresh" or
+            "llm_replay").
 
     Returns:
         (ValidationResult, Heuristic) if all steps pass, else (result, None).
@@ -147,11 +156,17 @@ def validate(
 
     # Step 4 — effectiveness: must not be systematically worse than move_random
     try:
-        heuristic = _build_heuristic(code, h_id)
+        heuristic = _build_heuristic(code, h_id, source=source)
     except Exception as exc:
         return ValidationResult(
             passed=False, step_failed=4, error=f"compile error: {exc}", code=code
         ), None
+
+    if skip_effectiveness:
+        return (
+            ValidationResult(passed=True, step_failed=None, error="", code=code),
+            heuristic,
+        )
 
     baseline = next((h for h in pool if h.id == _EFFECTIVENESS_BASELINE_ID), None)
     if baseline is None:
