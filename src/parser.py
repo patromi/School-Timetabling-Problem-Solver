@@ -22,7 +22,9 @@ _CONSTRAINT_META_TAGS = {"Name", "Required", "Weight", "CostFunction", "AppliesT
 
 def _text(node: ET.Element, tag: str, default: str | None = None) -> str | None:
     child = node.find(tag)
-    return child.text if child is not None else default
+    if child is None or child.text is None:
+        return default
+    return child.text
 
 
 def _find(node: ET.Element | None, tag: str) -> ET.Element | None:

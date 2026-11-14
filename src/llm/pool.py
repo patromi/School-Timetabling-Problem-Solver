@@ -71,17 +71,19 @@ class GenerationStats:
 def _extract_code(content: str) -> str:
     """Strip markdown fences if the model wrapped the function in them."""
     lines = content.strip().splitlines()
-    # Drop ```python / ``` fences
-    cleaned: list[str] = []
+    inside: list[str] = []
+    outside: list[str] = []
     inside_fence = False
+    has_fence = False
     for line in lines:
         stripped = line.strip()
         if stripped.startswith("```"):
             inside_fence = not inside_fence
+            has_fence = True
             continue
-        if not inside_fence:
-            cleaned.append(line)
-    code = "\n".join(cleaned).strip()
+        (inside if inside_fence else outside).append(line)
+    # If fences were present return the fenced block; otherwise the whole response.
+    code = "\n".join(inside if has_fence else outside).strip()
     return code
 
 

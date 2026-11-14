@@ -315,6 +315,8 @@ class IncrementalEvaluator:
         )
 
     def accept(self, transaction: Transaction) -> None:
+        if not transaction.open:
+            raise ValueError("transaction is already finished")
         transaction.open = False
 
     def rollback(self, transaction: Transaction) -> None:

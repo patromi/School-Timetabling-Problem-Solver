@@ -341,7 +341,7 @@ def run_lahc(  # noqa: C901 — solver loop; complexity is inherent to the algor
     progress_reference = best_cost
     perturbation_tier = 0
     run_stats = stats if stats is not None else RunStats()
-    if best_cost < INFEASIBILITY_WEIGHT:
+    if best_cost // INFEASIBILITY_WEIGHT == 0:
         run_stats.first_feasible_step = 0
         run_stats.first_feasible_elapsed_s = 0.0
     open_perturbation: _OpenPerturbation | None = None
@@ -384,7 +384,7 @@ def run_lahc(  # noqa: C901 — solver loop; complexity is inherent to the algor
     _llm_trigger_idx = 0
 
     def solver_state_now() -> SolverState:
-        hard_bucket = 1 if current_cost < INFEASIBILITY_WEIGHT else 0
+        hard_bucket = 1 if current_cost // INFEASIBILITY_WEIGHT == 0 else 0
         stagnation_bucket = (
             0
             if stagnant_iterations < _stag_low
@@ -556,30 +556,8 @@ def run_lahc(  # noqa: C901 — solver loop; complexity is inherent to the algor
             )
             move_time = time.perf_counter() - move_start
 
-            if candidate_cost < best_cost and candidate_cost <= progress_reference * (
-                1 - min_relative_improvement
-            ):
-                stagnant_iterations = 0
-                _llm_stagnant = 0
-                progress_reference = candidate_cost
-                perturbation_tier = 0
-            else:
-                stagnant_iterations += 1
-                _llm_stagnant += 1
-
-            if candidate_cost < best_cost:
-                if logger is not None:
-                    infeasibility = candidate_cost // 1_000_000
-                    objective = candidate_cost % 1_000_000
-                    logger.log_new_best(
-                        step=step,
-                        heuristic_id=heuristic.id,
-                        old_cost=best_cost,
-                        new_cost=candidate_cost,
-                        infeasibility=infeasibility,
-                        objective=objective,
-                        elapsed=time.monotonic() - t_start,
-                    )
+            stagnant_iterations += 1
+            _llm_stagnant += 1
 
             accepted = criterion.accepts(current_cost, candidate_cost, rng, step)
             cost_change = candidate_cost - current_cost
@@ -605,6 +583,7 @@ def run_lahc(  # noqa: C901 — solver loop; complexity is inherent to the algor
             if accepted:
                 current, current_cost = candidate, candidate_cost
                 if current_cost < best_cost:
+                    old_best_cost = best_cost
                     best, best_cost = current, current_cost
                     run_stats.last_improvement_step = step
                     run_stats.last_improvement_elapsed_s = round(
@@ -612,12 +591,27 @@ def run_lahc(  # noqa: C901 — solver loop; complexity is inherent to the algor
                     )
                     if (
                         run_stats.first_feasible_step is None
-                        and best_cost < INFEASIBILITY_WEIGHT
+                        and best_cost // INFEASIBILITY_WEIGHT == 0
                     ):
                         run_stats.first_feasible_step = step
                         run_stats.first_feasible_elapsed_s = (
                             run_stats.last_improvement_elapsed_s
                         )
+                    if logger is not None:
+                        logger.log_new_best(
+                            step=step,
+                            heuristic_id=heuristic.id,
+                            old_cost=old_best_cost,
+                            new_cost=best_cost,
+                            infeasibility=best_cost // INFEASIBILITY_WEIGHT,
+                            objective=best_cost % INFEASIBILITY_WEIGHT,
+                            elapsed=time.monotonic() - t_start,
+                        )
+                    if best_cost <= progress_reference * (1 - min_relative_improvement):
+                        stagnant_iterations = 0
+                        _llm_stagnant = 0
+                        progress_reference = best_cost
+                        perturbation_tier = 0
                     if open_perturbation is not None:
                         open_perturbation.new_best = best_cost
                 # the only per-step addition for the logs: one comparison,

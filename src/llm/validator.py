@@ -152,7 +152,7 @@ def validate(
         ), None
 
     # Step 2 — subprocess isolation
-    sub = sandbox.subprocess_run(code, instance, solution)
+    sub = sandbox.subprocess_run(code, instance, solution, seed=seed)
     if not sub["ok"]:
         return ValidationResult(
             passed=False, step_failed=2, error=sub["error"], code=code

@@ -142,7 +142,10 @@ def _apply_json_moves(
 
     valid_slots_by_ref = {e["event_ref"]: set(e["valid_slots"]) for e in violated}
     events = list(solution.events)
-    idx_by_ref = {se.event_ref: i for i, se in enumerate(events)}
+    idx_by_ref: dict[str, int] = {}
+    for i, se in enumerate(events):
+        if se.event_ref not in idx_by_ref:
+            idx_by_ref[se.event_ref] = i
     applied = 0
 
     for move in moves:
@@ -213,7 +216,10 @@ def _apply_filter(
     current = solution
     evaluator = IncrementalEvaluator(instance, current)
     for ref in selected:
-        idx_by_ref = {se.event_ref: i for i, se in enumerate(current.events)}
+        idx_by_ref: dict[str, int] = {}
+        for i, se in enumerate(current.events):
+            if se.event_ref not in idx_by_ref:
+                idx_by_ref[se.event_ref] = i
         if ref not in idx_by_ref:
             continue
         current = _best_time_for_event(
@@ -294,7 +300,10 @@ def _apply_chain(
 
     valid_slots_by_ref = {e["event_ref"]: set(e["valid_slots"]) for e in violated}
     events = list(solution.events)
-    idx_by_ref = {se.event_ref: i for i, se in enumerate(events)}
+    idx_by_ref: dict[str, int] = {}
+    for i, se in enumerate(events):
+        if se.event_ref not in idx_by_ref:
+            idx_by_ref[se.event_ref] = i
     applied = 0
 
     for move in moves[:n_moves]:

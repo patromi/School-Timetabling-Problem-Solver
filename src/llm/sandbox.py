@@ -146,6 +146,7 @@ def _subprocess_worker(
     instance_pickle: bytes,
     solution_pickle: bytes,
     result_queue: "multiprocessing.Queue[dict[str, Any]]",
+    seed: int = 0,
 ) -> None:
     """Runs inside the child process.  Communicates via result_queue."""
     try:
@@ -229,7 +230,7 @@ def _subprocess_worker(
             result_queue.put({"ok": False, "error": "apply is not callable"})
             return
 
-        rng = random_mod.Random(42)
+        rng = random_mod.Random(seed)
         result = apply_fn(solution, instance, rng)
 
         if not isinstance(result, Solution):
@@ -251,6 +252,7 @@ def subprocess_run(
     instance: Instance,
     solution: Solution,
     timeout_s: float = SUBPROCESS_TIMEOUT_S,
+    seed: int = 0,
 ) -> dict[str, Any]:
     """Layer 2: execute code in isolated subprocess with hard timeout.
 
@@ -265,7 +267,7 @@ def subprocess_run(
     q: multiprocessing.Queue[dict[str, Any]] = ctx.Queue()
     proc = ctx.Process(
         target=_subprocess_worker,
-        args=(code, instance_pickle, solution_pickle, q),
+        args=(code, instance_pickle, solution_pickle, q, seed),
         daemon=True,
     )
     proc.start()
@@ -283,7 +285,7 @@ def subprocess_run(
             "event_refs": None,
         }
 
-    if q.empty():
+    try:
+        return q.get(timeout=1.0)
+    except Exception:
         return {"ok": False, "error": "no result from subprocess", "event_refs": None}
-
-    return q.get_nowait()
