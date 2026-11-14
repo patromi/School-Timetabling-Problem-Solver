@@ -1,10 +1,20 @@
-"""Experiment runner: compares selectors and acceptance criteria.
+"""Experiment runner: compares selectors, acceptance criteria, and LLM variants.
 
 Usage:
     uv run python experiments.py
     uv run python experiments.py --time-limit 120 --workers 4
     uv run python experiments.py --instances BR-SA-00 ZA-WD-09 --seeds 0 1 2 3
     uv run python experiments.py --acceptance lahc sa
+
+EXP-L1 — static pool vs LLM pool mode:
+    uv run python experiments.py \\
+        --selectors ucb \\
+        --llm-variants none a b rag \\
+        --time-limit 300 --workers 1
+
+    NOTE: when --llm-variants contains anything other than "none", use
+    --workers 1 to avoid multiple processes competing for the same GPU.
+    Static-pool runs (none) can be parallelised freely.
 """
 
 import argparse
@@ -28,6 +38,9 @@ DEFAULT_SELECTORS = ["random", "epsilon-greedy", "ucb"]
 DEFAULT_ACCEPTANCE = ["sa"]
 DEFAULT_SEEDS = list(range(10))
 DEFAULT_TIME_LIMIT = 120  # seconds per run
+# LLM prompt variants; "none" means LLM disabled (static pool).
+DEFAULT_LLM_VARIANTS = ["none"]
+DEFAULT_LLM_TRIGGER = 3  # idle_limit multiplier before LLM fires
 HISTORY_LENGTH = 30
 LOG_WINDOW_SIZE = 2000  # iterations per selector_window log record
 # Iterations without a new best before perturbation; thirds of it are the
@@ -55,6 +68,12 @@ class RunResult:
     objective_after: int
     elapsed_s: float
     iterations_done: int
+    # LLM fields — "none" / "a" / "b" / "rag"; rest are 0 when LLM disabled.
+    llm_variant: str = "none"
+    llm_trigger: int = DEFAULT_LLM_TRIGGER
+    llm_calls: int = 0
+    llm_candidates: int = 0
+    llm_accepted: int = 0
 
 
 def _make_selector(selector_name: str) -> "HeuristicSelector":
@@ -111,14 +130,18 @@ def _run_one(
     seed: int,
     time_limit: float,
     log_path: "Path | None",
+    llm_variant: str = "none",
+    llm_trigger: int = DEFAULT_LLM_TRIGGER,
 ) -> RunResult:
     """Run one solver configuration. Imports inside so ProcessPoolExecutor
     can spawn cleanly without pickling the module-level state."""
+    import json
     from pathlib import Path as _Path
 
     from src.construct import build_initial
     from src.evaluator_ref import evaluate_cost_components
     from src.lahc import run_lahc
+    from src.llm.pool import GenerationStats
     from src.parser import parse_archive
     from src.solve_log import SolveLogger
 
@@ -132,6 +155,9 @@ def _run_one(
 
     selector = _make_selector(selector_name)
     acceptance = _make_acceptance(acceptance_name, time_limit)
+
+    llm_enabled = llm_variant != "none"
+    llm_stats = GenerationStats() if llm_enabled else None
 
     iters_done = [0]
 
@@ -160,6 +186,11 @@ def _run_one(
             logger=logger,
             idle_limit=STAGNATION_LIMIT,
             min_relative_improvement=MIN_RELATIVE_IMPROVEMENT,
+            llm_enabled=llm_enabled,
+            llm_prompt_variant=llm_variant if llm_enabled else "a",
+            llm_trigger_multiplier=llm_trigger,
+            llm_stats=llm_stats,
+            seed=seed,
         )
     finally:
         if logger is not None:
@@ -170,10 +201,12 @@ def _run_one(
     elapsed = time.monotonic() - t0
     inf1, obj1 = evaluate_cost_components(instance, best)
 
+    llm_calls = llm_stats.total_calls if llm_stats else 0
+    llm_candidates = llm_stats.candidates_generated if llm_stats else 0
+    llm_accepted = llm_stats.accepted if llm_stats else 0
+
     if logger is not None and log_path is not None:
         with _Path(log_path).open("a", encoding="utf-8") as f:
-            import json
-
             f.write(
                 json.dumps(
                     {
@@ -182,6 +215,11 @@ def _run_one(
                         "selector": selector_name,
                         "acceptance": acceptance_name,
                         "seed": seed,
+                        "llm_variant": llm_variant,
+                        "llm_trigger": llm_trigger,
+                        "llm_calls": llm_calls,
+                        "llm_candidates": llm_candidates,
+                        "llm_accepted": llm_accepted,
                         "infeasibility_before": inf0,
                         "objective_before": obj0,
                         "infeasibility_after": inf1,
@@ -205,35 +243,43 @@ def _run_one(
         objective_after=obj1,
         elapsed_s=round(elapsed, 1),
         iterations_done=iters_done[0],
+        llm_variant=llm_variant,
+        llm_trigger=llm_trigger,
+        llm_calls=llm_calls,
+        llm_candidates=llm_candidates,
+        llm_accepted=llm_accepted,
     )
 
 
 def _print_table(results: list[RunResult]) -> None:
     from collections import defaultdict
 
-    groups: dict[tuple[str, str, str], list[RunResult]] = defaultdict(list)
+    groups: dict[tuple[str, str, str, str], list[RunResult]] = defaultdict(list)
     for r in results:
-        groups[(r.instance_id, r.selector, r.acceptance)].append(r)
+        groups[(r.instance_id, r.selector, r.acceptance, r.llm_variant)].append(r)
 
     header = (
-        f"{'Instancja':12} {'Selektor':15} {'Akceptacja':8} {'Seeds':>5} "
-        f"{'inf_avg':>9} {'inf_min':>9} "
-        f"{'obj_avg':>9} {'obj_min':>9} "
-        f"{'t_avg':>7}"
+        f"{'Instancja':12} {'Selektor':15} {'Acc':4} {'LLM':5} {'N':>3} "
+        f"{'inf_avg':>9} {'inf_min':>7} "
+        f"{'obj_avg':>9} {'obj_min':>7} "
+        f"{'t_avg':>7} {'llm_acc':>7}"
     )
     print("\n" + "=" * len(header))
     print(header)
     print("-" * len(header))
 
-    for (inst, sel, acc), runs in sorted(groups.items()):
+    for (inst, sel, acc, llm), runs in sorted(groups.items()):
         infs = [r.infeasibility_after for r in runs]
         objs = [r.objective_after for r in runs]
         ts = [r.elapsed_s for r in runs]
+        llm_acc_total = sum(r.llm_accepted for r in runs)
+        llm_cand_total = sum(r.llm_candidates for r in runs)
+        llm_rate = f"{llm_acc_total}/{llm_cand_total}" if llm_cand_total > 0 else "-"
         print(
-            f"{inst:12} {sel:15} {acc:8} {len(runs):>5} "
-            f"{sum(infs) / len(infs):>9.1f} {min(infs):>9} "
-            f"{sum(objs) / len(objs):>9.1f} {min(objs):>9} "
-            f"{sum(ts) / len(ts):>7.1f}s"
+            f"{inst:12} {sel:15} {acc:4} {llm:5} {len(runs):>3} "
+            f"{sum(infs) / len(infs):>9.1f} {min(infs):>7} "
+            f"{sum(objs) / len(objs):>9.1f} {min(objs):>7} "
+            f"{sum(ts) / len(ts):>7.1f}s {llm_rate:>7}"
         )
     print("=" * len(header))
 
@@ -290,7 +336,33 @@ def main() -> None:
         action="store_true",
         help="Disable per-run JSONL logging",
     )
+    parser.add_argument(
+        "--llm-variants",
+        nargs="+",
+        default=DEFAULT_LLM_VARIANTS,
+        metavar="VARIANT",
+        help=(
+            "LLM prompt variants to include: none a b rag "
+            "(default: none — static pool only). "
+            "Use --workers 1 when any variant != none."
+        ),
+    )
+    parser.add_argument(
+        "--llm-trigger",
+        type=int,
+        default=DEFAULT_LLM_TRIGGER,
+        help=f"idle_limit multiplier before LLM fires (default {DEFAULT_LLM_TRIGGER})",
+    )
     args = parser.parse_args()
+
+    llm_variants: list[str] = args.llm_variants
+    has_llm = any(v != "none" for v in llm_variants)
+    if has_llm and args.workers > 1:
+        print(
+            "UWAGA: --llm-variants zawiera warianty LLM i --workers > 1. "
+            "Wiele procesow moze rywalizowac o GPU. Zalecane --workers 1.",
+            file=sys.stderr,
+        )
 
     log_dir: Path | None = None
     if not args.no_logs:
@@ -298,18 +370,20 @@ def main() -> None:
         log_dir.mkdir(parents=True, exist_ok=True)
 
     jobs = [
-        (inst, sel, acc, seed)
+        (inst, sel, acc, seed, llm)
         for inst in args.instances
         for sel in args.selectors
         for acc in args.acceptance
         for seed in args.seeds
+        for llm in llm_variants
     ]
     total = len(jobs)
     print(
         f"Eksperyment: {len(args.instances)} instancji x "
         f"{len(args.selectors)} selektorow x "
         f"{len(args.acceptance)} kryteriow x "
-        f"{len(args.seeds)} seedow = {total} uruchomien"
+        f"{len(args.seeds)} seedow x "
+        f"{len(llm_variants)} LLM-wariantow = {total} uruchomien"
     )
     print(f"  Limit czasu: {args.time_limit:.0f}s/run  Workers: {args.workers}")
     est_wall = args.time_limit * total / args.workers
@@ -318,6 +392,12 @@ def main() -> None:
         print(f"  Logi JSONL: {log_dir}/\n")
     else:
         print()
+
+    def _log_name(inst: str, sel: str, acc: str, seed: int, llm: str) -> "Path | None":
+        if log_dir is None:
+            return None
+        llm_tag = f"_llm-{llm}" if llm != "none" else ""
+        return log_dir / f"{inst}_{sel}{llm_tag}_{acc}_seed{seed:02d}.jsonl"
 
     results: list[RunResult] = []
     done = 0
@@ -332,27 +412,28 @@ def main() -> None:
                 acc,
                 seed,
                 args.time_limit,
-                log_dir / f"{inst}_{sel}_{acc}_seed{seed:02d}.jsonl"
-                if log_dir
-                else None,
-            ): (inst, sel, acc, seed)
-            for inst, sel, acc, seed in jobs
+                _log_name(inst, sel, acc, seed, llm),
+                llm,
+                args.llm_trigger,
+            ): (inst, sel, acc, seed, llm)
+            for inst, sel, acc, seed, llm in jobs
         }
         for fut in as_completed(futures):
-            inst, sel, acc, seed = futures[fut]
+            inst, sel, acc, seed, llm = futures[fut]
             try:
                 r = fut.result()
                 results.append(r)
                 done += 1
+                llm_info = f"  llm={llm} acc={r.llm_accepted}/{r.llm_candidates}" if llm != "none" else ""
                 print(
                     f"  [{done:>3}/{total}] {inst:12} {sel:15} {acc:4} seed={seed}  "
                     f"inf={r.infeasibility_after:>5}  obj={r.objective_after:>6}  "
-                    f"iter={r.iterations_done:>7}  {r.elapsed_s:.0f}s"
+                    f"iter={r.iterations_done:>7}  {r.elapsed_s:.0f}s{llm_info}"
                 )
             except Exception as e:
                 done += 1
                 print(
-                    f"  [{done:>3}/{total}] {inst} {sel} {acc} seed={seed}  BLAD: {e}",
+                    f"  [{done:>3}/{total}] {inst} {sel} {acc} seed={seed} llm={llm}  BLAD: {e}",
                     file=sys.stderr,
                 )
 
