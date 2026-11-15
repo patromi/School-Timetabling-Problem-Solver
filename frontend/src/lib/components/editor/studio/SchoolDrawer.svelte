@@ -2,6 +2,7 @@
 <script lang="ts">
   import type { InstanceListItem } from "../../../types";
   import { uploadInstanceXml } from "../../../api";
+  import Icon from "../../common/Icon.svelte";
 
   interface Props {
     open: boolean;
@@ -115,7 +116,7 @@
     <div class="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/70">
       <div class="flex items-center gap-2.5">
         <div class="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold text-sm shadow-xs">
-          🏫
+          <Icon name="school" size="sm" class="text-white" />
         </div>
         <div>
           <h2 class="text-sm font-bold text-slate-900 leading-none">
@@ -133,7 +134,7 @@
         class="w-7 h-7 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 flex items-center justify-center transition-all cursor-pointer text-base"
         title="Zamknij (Esc)"
       >
-        ✕
+        <Icon name="close" size="sm" />
       </button>
     </div>
 
@@ -147,7 +148,8 @@
         }}
         class="w-full flex items-center justify-center gap-2 py-2.5 px-3 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl transition-all cursor-pointer shadow-xs active:scale-[0.99]"
       >
-        <span>+ Utwórz nową szkołę</span>
+        <Icon name="add" size="sm" class="text-white" />
+        <span>Utwórz nową szkołę</span>
       </button>
 
       <!-- Drag & Drop Upload Zone -->
@@ -175,9 +177,10 @@
           for="school-drawer-xml-upload"
           class="w-full flex items-center justify-center gap-2 cursor-pointer text-xs font-semibold text-slate-700 hover:text-blue-600 transition-colors py-1"
         >
-          <span>📁 Wgraj plik XML (XHSTT)</span>
+          <Icon name="upload_file" size="sm" class="text-slate-500" />
+          <span>Wgraj plik XML (XHSTT)</span>
           {#if isUploading}
-            <span class="text-blue-600 animate-spin">⏳</span>
+            <Icon name="sync" size="sm" class="text-blue-600 animate-spin" />
           {/if}
         </label>
         <span class="text-[10px] text-slate-400">lub przeciągnij plik tutaj</span>
@@ -197,14 +200,16 @@
           placeholder="Szukaj po nazwie lub identyfikatorze..."
           class="w-full pl-8 pr-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
         />
-        <span class="absolute left-2.5 top-2.5 text-slate-400 text-xs">🔍</span>
+        <span class="absolute left-2.5 top-2.5 text-slate-400">
+          <Icon name="search" size="xs" />
+        </span>
         {#if searchQuery}
           <button
             type="button"
             onclick={() => (searchQuery = "")}
             class="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 text-xs"
           >
-            ✕
+            <Icon name="close" size="xs" />
           </button>
         {/if}
       </div>
@@ -288,9 +293,9 @@
             </div>
 
             <div class="flex items-center gap-2 text-[11px] text-slate-500">
-              <span>📚 <strong>{inst.events_count}</strong> lekcji</span>
+              <span class="flex items-center gap-1"><Icon name="menu_book" size="xs" class="text-slate-400" /> <strong>{inst.events_count}</strong> lekcji</span>
               <span>•</span>
-              <span>👥 <strong>{inst.resources_count}</strong> zasobów</span>
+              <span class="flex items-center gap-1"><Icon name="groups" size="xs" class="text-slate-400" /> <strong>{inst.resources_count}</strong> zasobów</span>
             </div>
 
             <div class="flex items-center justify-between text-[10px] text-slate-400 font-mono mt-0.5">

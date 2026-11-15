@@ -1,6 +1,7 @@
 <!-- frontend/src/lib/components/editor/studio/SummaryStudioView.svelte -->
 <script lang="ts">
   import type { EditorState } from "../editorState.svelte";
+  import Icon from "../../common/Icon.svelte";
 
   interface Props {
     editor: EditorState;
@@ -31,12 +32,12 @@
     <div>
       {#if editor.isSchoolValid}
         <span class="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 flex items-center gap-1.5 shadow-2xs">
-          <span>✓</span>
+          <Icon name="check_circle" size="xs" class="text-emerald-700" />
           <span>Arkusz gotowy do zapisu</span>
         </span>
       {:else}
         <span class="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-amber-50 text-amber-800 border border-amber-200 flex items-center gap-1.5 shadow-2xs">
-          <span>⚠️</span>
+          <Icon name="warning" size="xs" class="text-amber-700" />
           <span>Wymaga uzupełnienia ({editor.validationIssues.length})</span>
         </span>
       {/if}
@@ -94,7 +95,7 @@
   {#if editor.validationIssues.length > 0}
     <div class="p-5 bg-amber-50/80 border border-amber-200 rounded-2xl flex flex-col gap-3 text-xs">
       <span class="font-bold text-amber-900 flex items-center gap-1.5 text-sm">
-        <span>⚠️</span>
+        <Icon name="warning" size="xs" class="text-amber-700" />
         <span>Przed zapisem arkusza należy uzupełnić następujące pozycje:</span>
       </span>
       <div class="divide-y divide-amber-200/60 bg-white/70 rounded-xl border border-amber-200/60 overflow-hidden">
@@ -116,13 +117,13 @@
 
     <div class="flex flex-col gap-2 text-slate-700">
       <div class="flex items-center gap-2 text-emerald-800">
-        <span>✓</span>
+        <Icon name="check" size="xs" class="text-emerald-700" />
         <span>Struktura tygodnia: {editor.selectedDays.length} dni roboczych ({editor.periodsPerDay} lekcji dziennie)</span>
       </div>
 
       {#if editor.classes.length > 0}
         <div class="flex items-center gap-2 {editor.classesWithoutLessons.length > 0 ? 'text-amber-800' : 'text-emerald-800'}">
-          <span>{editor.classesWithoutLessons.length > 0 ? '⚠️' : '✓'}</span>
+          <Icon name={editor.classesWithoutLessons.length > 0 ? "warning" : "check"} size="xs" class={editor.classesWithoutLessons.length > 0 ? "text-amber-700" : "text-emerald-700"} />
           <span>
             {editor.classes.length} oddziałów klasowych
             {#if editor.classesWithoutLessons.length > 0}
@@ -134,21 +135,21 @@
 
       {#if editor.teachers.length > 0}
         <div class="flex items-center gap-2 text-emerald-800">
-          <span>✓</span>
+          <Icon name="check" size="xs" class="text-emerald-700" />
           <span>{editor.teachers.length} pedagogów (łączne zapotrzebowanie: {editor.totalHoursAssigned} z {editor.totalTeacherWorkload} godz. pensum)</span>
         </div>
       {/if}
 
       {#if editor.rooms.length > 0}
         <div class="flex items-center gap-2 text-emerald-800">
-          <span>✓</span>
+          <Icon name="check" size="xs" class="text-emerald-700" />
           <span>{editor.rooms.length} sal lekcyjnych zdefiniowanych w bazie</span>
         </div>
       {/if}
 
       {#if anyTeacherLessonsCount > 0}
         <div class="flex items-center gap-2 text-indigo-900 bg-indigo-50/80 p-2.5 rounded-xl border border-indigo-200">
-          <span class="text-base">🎲</span>
+          <Icon name="shuffle" size="sm" class="text-indigo-600" />
           <span>
             <strong>{anyTeacherLessonsCount} lekcji</strong> z opcją <strong>"Dowolny nauczyciel"</strong> — solver dobierze pedagogów z uprawnieniami podczas optymalizacji.
           </span>
@@ -172,7 +173,7 @@
             : 'bg-slate-200 text-slate-400 cursor-not-allowed'
         }`}
       >
-        <span>💾</span>
+        <Icon name="save" size="xs" class={editor.isSchoolValid ? "text-white" : "text-slate-400"} />
         <span>{isSaving ? "Zapisywanie..." : "Zapisz szkołę w systemie"}</span>
       </button>
     </div>

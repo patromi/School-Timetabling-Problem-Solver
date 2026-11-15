@@ -1,4 +1,6 @@
 <script lang="ts">
+  import Icon from "../../common/Icon.svelte";
+
   interface Props {
     availableCount: number;
     totalSlots: number;
@@ -27,7 +29,7 @@
       class="px-2.5 py-1 bg-white hover:bg-emerald-50 border border-slate-200 hover:border-emerald-200 text-emerald-700 font-medium rounded-lg transition-colors cursor-pointer flex items-center gap-1"
       title="Odblokowuje wszystkie godziny w tygodniu"
     >
-      <span>✨</span>
+      <Icon name="check_circle" size="xs" />
       <span>Odblokuj wszystko</span>
     </button>
     <button
@@ -36,7 +38,7 @@
       class="px-2.5 py-1 bg-white hover:bg-rose-50 border border-slate-200 hover:border-rose-200 text-rose-700 font-medium rounded-lg transition-colors cursor-pointer flex items-center gap-1"
       title="Blokuje wszystkie godziny w tygodniu"
     >
-      <span>🚫</span>
+      <Icon name="block" size="xs" />
       <span>Zablokuj wszystko</span>
     </button>
     <button
@@ -45,7 +47,7 @@
       class="px-2.5 py-1 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-medium rounded-lg transition-colors cursor-pointer flex items-center gap-1"
       title="Odwraca obecne zaznaczenie"
     >
-      <span>🔄</span>
+      <Icon name="swap_horiz" size="xs" />
       <span>Odwróć zaznaczenie</span>
     </button>
   </div>

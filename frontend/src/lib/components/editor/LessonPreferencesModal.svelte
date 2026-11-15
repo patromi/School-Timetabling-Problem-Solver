@@ -2,6 +2,7 @@
   import LessonTimeSlotsGrid from "./preferences/LessonTimeSlotsGrid.svelte";
   import LessonPresetSelector from "./preferences/LessonPresetSelector.svelte";
   import LessonEnforcementCard from "./preferences/LessonEnforcementCard.svelte";
+  import Icon from "../common/Icon.svelte";
 
   interface Props {
     lessonId: string;
@@ -185,8 +186,8 @@
     <!-- Header -->
     <div class="px-6 py-4 bg-gradient-to-r from-slate-900 to-indigo-950 text-white flex items-center justify-between">
       <div class="flex items-center gap-3">
-        <span class="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center text-xl">
-          ⭐
+        <span class="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center">
+          <Icon name="star" size="base" class="text-amber-400" filled />
         </span>
         <div>
           <h3 id="lesson-pref-title" class="text-base font-bold leading-tight">
@@ -200,10 +201,10 @@
       <button
         type="button"
         onclick={onClose}
-        class="text-white/60 hover:text-white p-1 rounded-lg hover:bg-white/10 transition-colors cursor-pointer text-lg"
+        class="text-white/60 hover:text-white p-1 rounded-lg hover:bg-white/10 transition-colors cursor-pointer flex items-center justify-center"
         aria-label="Zamknij"
       >
-        ✕
+        <Icon name="close" size="xs" />
       </button>
     </div>
 

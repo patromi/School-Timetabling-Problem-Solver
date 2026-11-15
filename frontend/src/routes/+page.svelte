@@ -3,6 +3,7 @@
   import { onMount } from "svelte";
   import type { InstanceDetail, InstanceListItem } from "#lib";
   import { fetchInstanceDetails, fetchInstances } from "#lib";
+  import Icon from "../lib/components/common/Icon.svelte";
   import InstanceStudio from "../lib/components/editor/studio/InstanceStudio.svelte";
   import SolverView from "../lib/components/SolverView.svelte";
   import TimetableView from "../lib/components/TimetableView.svelte";
@@ -112,7 +113,7 @@
     <div class="flex items-center gap-4">
       <div class="flex items-center gap-3">
         <div class="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center font-bold text-base shadow-xs">
-          📅
+          <Icon name="calendar_month" size="sm" class="text-white" />
         </div>
         <div>
           <h1 class="text-sm font-bold text-slate-900 leading-none">
@@ -137,7 +138,8 @@
               : "hover:text-slate-900"
           }`}
         >
-          <span>🏫 1. Szkoła i Dane</span>
+          <Icon name="school" size="sm" class={mainView === "studio" ? "text-blue-700" : "text-slate-500"} />
+          <span>1. Szkoła i Dane</span>
         </button>
 
         <button
@@ -149,7 +151,8 @@
               : "hover:text-slate-900"
           }`}
         >
-          <span>⚡ 2. Generator Solver</span>
+          <Icon name="bolt" size="sm" class={mainView === "solver" ? "text-blue-700" : "text-slate-500"} />
+          <span>2. Generator Solver</span>
         </button>
 
         <button
@@ -161,7 +164,8 @@
               : "hover:text-slate-900"
           }`}
         >
-          <span>📅 3. Gotowy Plan Lekcji</span>
+          <Icon name="table_chart" size="sm" class={mainView === "timetable" ? "text-emerald-700" : "text-slate-500"} />
+          <span>3. Gotowy Plan Lekcji</span>
         </button>
       </div>
     </div>

@@ -13,6 +13,7 @@
   import SummaryStudioView from "./SummaryStudioView.svelte";
   import SchoolDrawer from "./SchoolDrawer.svelte";
   import TechnicalInspectorModal from "./TechnicalInspectorModal.svelte";
+  import Icon from "../../common/Icon.svelte";
 
   interface Props {
     initialInstance?: InstanceDetail | null;
@@ -206,7 +207,7 @@
         class="px-3.5 py-2 bg-slate-50 hover:bg-slate-100 text-slate-800 text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center gap-2.5 border border-slate-200/90 shadow-2xs hover:border-slate-300 active:scale-[0.99]"
         title="Otwórz listę szkół lub wgraj plik XML"
       >
-        <span class="text-base">🏫</span>
+        <Icon name="school" size="base" class="text-blue-600 shrink-0" />
         <div class="flex flex-col text-left">
           <span class="text-[9px] text-slate-400 font-semibold uppercase tracking-wider leading-none">Placówka</span>
           <span class="truncate max-w-[180px] sm:max-w-[240px] text-slate-900 font-bold leading-tight mt-0.5">
@@ -241,7 +242,7 @@
           class="px-2.5 py-1.5 text-xs text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 font-medium"
           title="Kliknij, aby zobaczyć brakujące elementy"
         >
-          <span>⚠️</span>
+          <Icon name="warning" size="sm" class="text-amber-600" />
           <span>Do uzupełnienia ({editor.validationIssues.length})</span>
         </button>
       {/if}
@@ -253,7 +254,7 @@
         class="hidden sm:flex items-center gap-1.5 px-3 py-2 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-semibold rounded-xl border border-slate-200 transition-all cursor-pointer shadow-2xs"
         title="Podgląd specyfikacji XHSTT XML oraz modelu JSON API"
       >
-        <span>📄</span>
+        <Icon name="description" size="sm" class="text-slate-500" />
         <span>XHSTT XML/JSON</span>
       </button>
 
@@ -269,10 +270,10 @@
         }`}
       >
         {#if isSaving}
-          <span class="animate-spin">⏳</span>
+          <Icon name="sync" size="sm" class="animate-spin text-white" />
           <span>Zapisywanie...</span>
         {:else}
-          <span>💾</span>
+          <Icon name="save" size="sm" class="text-white" />
           <span>Zapisz szkołę</span>
         {/if}
       </button>
@@ -290,7 +291,7 @@
           }`}
           title="Zapisz zmiany i przejdź do generowania planu (Solver)"
         >
-          <span>⚡</span>
+          <Icon name="bolt" size="sm" class="text-white" />
           <span>Generuj plan</span>
         </button>
       {/if}
@@ -310,7 +311,7 @@
             : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
         }`}
       >
-        <span>👨‍🏫</span>
+        <Icon name="badge" size="sm" class={editor.studioSection === 'teachers' ? 'text-white' : 'text-slate-500'} />
         <span>Kadra pedagogiczna</span>
         <span class={`text-[10px] px-1.5 py-0.2 rounded-full font-semibold ${
           editor.studioSection === "teachers" ? "bg-slate-800 text-slate-200" : "bg-slate-100 text-slate-600"
@@ -329,7 +330,7 @@
             : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
         }`}
       >
-        <span>👥</span>
+        <Icon name="groups" size="sm" class={editor.studioSection === 'classes' ? 'text-white' : 'text-slate-500'} />
         <span>Oddziały klasowe</span>
         <span class={`text-[10px] px-1.5 py-0.2 rounded-full font-semibold ${
           editor.studioSection === "classes" ? "bg-slate-800 text-slate-200" : "bg-slate-100 text-slate-600"
@@ -348,7 +349,7 @@
             : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
         }`}
       >
-        <span>🚪</span>
+        <Icon name="meeting_room" size="sm" class={editor.studioSection === 'rooms' ? 'text-white' : 'text-slate-500'} />
         <span>Sale lekcyjne</span>
         <span class={`text-[10px] px-1.5 py-0.2 rounded-full font-semibold ${
           editor.studioSection === "rooms" ? "bg-slate-800 text-slate-200" : "bg-slate-100 text-slate-600"
@@ -370,7 +371,7 @@
             : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
         }`}
       >
-        <span>🏫</span>
+        <Icon name="domain" size="sm" class={editor.studioSection === 'structure' ? 'text-white' : 'text-slate-500'} />
         <span>Struktura i Tydzień</span>
       </button>
 
@@ -384,7 +385,7 @@
             : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
         }`}
       >
-        <span>⚖️</span>
+        <Icon name="balance" size="sm" class={editor.studioSection === 'rules' ? 'text-white' : 'text-slate-500'} />
         <span>Zasady globalne</span>
       </button>
 
@@ -398,7 +399,7 @@
             : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
         }`}
       >
-        <span>📋</span>
+        <Icon name="assignment" size="sm" class={editor.studioSection === 'summary' ? 'text-white' : 'text-slate-500'} />
         <span>Podsumowanie i Zapis</span>
       </button>
     </div>
@@ -408,7 +409,9 @@
   {#if saveError}
     <div class="mx-6 mt-3 p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 flex items-center justify-between">
       <span>{saveError}</span>
-      <button type="button" class="font-bold cursor-pointer" onclick={() => (saveError = null)}>✕</button>
+      <button type="button" class="cursor-pointer" onclick={() => (saveError = null)}>
+        <Icon name="close" size="xs" />
+      </button>
     </div>
   {/if}
   {#if saveSuccess}
@@ -419,7 +422,7 @@
   {#if editor.externalConstraintsNotice.length > 0}
     <div class="mx-6 mt-3 p-3.5 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
       <div class="flex items-start gap-2.5">
-        <span class="text-base leading-none mt-0.5">⚠️</span>
+        <Icon name="warning" size="xs" class="text-amber-700 mt-0.5 shrink-0" />
         <div>
           <span class="font-bold block">
             Plik XML zawiera zaawansowane reguły spoza uproszczonego edytora Studio:
@@ -434,9 +437,10 @@
         <button
           type="button"
           onclick={() => onSolve(selectedInstanceId)}
-          class="px-3 py-1.5 bg-amber-700 hover:bg-amber-800 text-white font-bold rounded-lg text-[11px] shrink-0 cursor-pointer shadow-2xs transition-colors"
+          class="px-3 py-1.5 bg-amber-700 hover:bg-amber-800 text-white font-bold rounded-lg text-[11px] shrink-0 cursor-pointer shadow-2xs transition-colors flex items-center gap-1"
         >
-          ▶ Układaj z oryginału XML
+          <Icon name="play_arrow" size="xs" class="text-white" />
+          <span>Układaj z oryginału XML</span>
         </button>
       {/if}
     </div>
@@ -465,7 +469,9 @@
         <!-- Search bar -->
         <div class="p-3.5 border-b border-slate-100 bg-slate-50/50 flex flex-col gap-2.5">
           <div class="relative">
-            <span class="absolute left-2.5 top-2 text-slate-400 text-xs">🔍</span>
+            <span class="absolute left-2.5 top-2 text-slate-400 text-xs">
+              <Icon name="search" size="xs" />
+            </span>
             <input
               type="text"
               bind:value={editor.studioSearchQuery}
@@ -511,7 +517,7 @@
                 }`}
               >
                 <div class="flex items-center gap-2.5 overflow-hidden">
-                  <span class="text-base shrink-0">👨‍🏫</span>
+                  <Icon name="badge" size="base" class="shrink-0 {isSelected ? 'text-white' : 'text-slate-400'}" />
                   <div class="overflow-hidden">
                     <span class="font-bold text-xs truncate block">{teacher.name}</span>
                     <span class={`text-[10px] block truncate ${isSelected ? 'text-slate-300' : 'text-slate-400'}`}>
@@ -548,7 +554,7 @@
                 }`}
               >
                 <div class="flex items-center gap-2.5 overflow-hidden">
-                  <span class="text-base shrink-0">👥</span>
+                  <Icon name="groups" size="base" class="shrink-0 {isSelected ? 'text-white' : 'text-slate-400'}" />
                   <div class="overflow-hidden">
                     <span class="font-bold text-xs truncate block">{cls.name}</span>
                     <span class={`text-[10px] block truncate ${isSelected ? 'text-slate-300' : 'text-slate-400'}`}>
@@ -585,7 +591,7 @@
                 }`}
               >
                 <div class="flex items-center gap-2.5 overflow-hidden">
-                  <span class="text-base shrink-0">🚪</span>
+                  <Icon name="meeting_room" size="base" class="shrink-0 {isSelected ? 'text-white' : 'text-slate-400'}" />
                   <div class="overflow-hidden">
                     <span class="font-bold text-xs truncate block">{room.name}</span>
                     <span class={`text-[10px] block truncate ${isSelected ? 'text-slate-300' : 'text-slate-400'}`}>

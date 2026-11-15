@@ -3,6 +3,7 @@
   import AvailabilityAdvancedSettings from "./availability/AvailabilityAdvancedSettings.svelte";
   import AvailabilityContextDrawer from "./availability/AvailabilityContextDrawer.svelte";
   import AvailabilityQuickToolbar from "./availability/AvailabilityQuickToolbar.svelte";
+  import Icon from "../common/Icon.svelte";
 
   export interface AvailabilityExtraParams {
     maxDaysPerWeek?: number | null;
@@ -186,14 +187,8 @@
     <!-- Modal Header -->
     <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between shrink-0 bg-slate-50/50">
       <div class="flex items-center gap-3">
-        <div class="w-10 h-10 rounded-xl bg-blue-50 border border-blue-200 text-blue-700 flex items-center justify-center text-xl shrink-0">
-          {#if resourceType === "teacher"}
-            👨‍🏫
-          {:else if resourceType === "room"}
-            🚪
-          {:else}
-            👥
-          {/if}
+        <div class="w-10 h-10 rounded-xl bg-blue-50 border border-blue-200 text-blue-700 flex items-center justify-center shrink-0">
+          <Icon name={resourceType === "teacher" ? "person" : resourceType === "room" ? "meeting_room" : "groups"} size="base" class="text-blue-600" />
         </div>
         <div>
           <div class="flex items-center gap-2">
@@ -213,10 +208,10 @@
       <button
         type="button"
         onclick={onClose}
-        class="text-slate-400 hover:text-slate-700 text-lg w-8 h-8 rounded-lg flex items-center justify-center hover:bg-slate-100 transition-colors cursor-pointer"
+        class="text-slate-400 hover:text-slate-700 w-8 h-8 rounded-lg flex items-center justify-center hover:bg-slate-100 transition-colors cursor-pointer"
         title="Zamknij"
       >
-        ✕
+        <Icon name="close" size="xs" />
       </button>
     </div>
 
@@ -296,7 +291,7 @@
           onclick={handleSave}
           class="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-xs transition-all cursor-pointer flex items-center gap-1.5"
         >
-          <span>💾</span>
+          <Icon name="check" size="xs" class="text-white" />
           <span>Zastosuj dostępność</span>
         </button>
       </div>

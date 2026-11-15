@@ -1,6 +1,7 @@
 <!-- frontend/src/lib/components/editor/SubjectManagerModal.svelte -->
 <script lang="ts">
   import type { EditorState } from "./editorState.svelte";
+  import Icon from "../common/Icon.svelte";
 
   interface Props {
     editor: EditorState;
@@ -68,8 +69,8 @@
     <!-- Header -->
     <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between shrink-0 bg-slate-50/60">
       <div class="flex items-center gap-3">
-        <span class="w-9 h-9 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center font-bold text-lg">
-          📚
+        <span class="w-9 h-9 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center font-bold">
+          <Icon name="menu_book" size="sm" class="text-purple-700" />
         </span>
         <div>
           <h3 class="text-sm font-bold text-slate-900">Menedżer Przedmiotów Szkolnych</h3>
@@ -81,9 +82,9 @@
       <button
         type="button"
         onclick={onClose}
-        class="w-8 h-8 rounded-lg hover:bg-slate-200/60 text-slate-400 hover:text-slate-600 flex items-center justify-center text-sm font-bold transition-all cursor-pointer"
+        class="w-8 h-8 rounded-lg hover:bg-slate-200/60 text-slate-400 hover:text-slate-600 flex items-center justify-center transition-all cursor-pointer"
       >
-        ✕
+        <Icon name="close" size="xs" />
       </button>
     </div>
 
@@ -137,9 +138,10 @@
                       <button
                         type="button"
                         onclick={applyRename}
-                        class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-lg transition-colors cursor-pointer"
+                        class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-lg transition-colors cursor-pointer flex items-center gap-1"
                       >
-                        ✓ Zapisz
+                        <Icon name="check" size="xs" class="text-white" />
+                        <span>Zapisz</span>
                       </button>
                       <button
                         type="button"
@@ -164,9 +166,10 @@
                       <button
                         type="button"
                         onclick={applyMerge}
-                        class="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-lg transition-colors cursor-pointer"
+                        class="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-lg transition-colors cursor-pointer flex items-center gap-1"
                       >
-                        ✓ Połącz
+                        <Icon name="merge" size="xs" class="text-white" />
+                        <span>Połącz</span>
                       </button>
                       <button
                         type="button"
@@ -202,7 +205,7 @@
                         class="px-2 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 font-semibold rounded-lg text-xs transition-colors cursor-pointer flex items-center gap-1"
                         title="Zmień nazwę przedmiotu we wszystkich lekcjach i nauczycielach"
                       >
-                        <span>✏️</span>
+                        <Icon name="edit" size="xs" />
                         <span>Zmień nazwę</span>
                       </button>
                       {#if editor.uniqueSubjects.length > 1}
@@ -212,7 +215,7 @@
                           class="px-2 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 font-semibold rounded-lg text-xs transition-colors cursor-pointer flex items-center gap-1"
                           title="Scal ten przedmiot z innym (przenieś wszystkie lekcje)"
                         >
-                          <span>🔗</span>
+                          <Icon name="merge" size="xs" />
                           <span>Scal</span>
                         </button>
                       {/if}

@@ -6,6 +6,7 @@
   import EditTeacherFields from "./entity/EditTeacherFields.svelte";
   import EditRoomFields from "./entity/EditRoomFields.svelte";
   import EditLessonFields from "./entity/EditLessonFields.svelte";
+  import Icon from "../common/Icon.svelte";
 
   interface Props {
     editor: EditorState;
@@ -97,9 +98,13 @@
     <!-- Header -->
     <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between shrink-0 bg-slate-50/60">
       <div class="flex items-center gap-2.5">
-        <span class="text-xl">
-          {#if target.type === 'class'}👥{:else if target.type === 'teacher'}👨‍🏫{:else if target.type === 'room'}🏫{:else}📚{/if}
-        </span>
+        <div class="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center">
+          <Icon
+            name={target.type === 'class' ? 'groups' : target.type === 'teacher' ? 'person' : target.type === 'room' ? 'meeting_room' : 'menu_book'}
+            size="sm"
+            class="text-slate-600"
+          />
+        </div>
         <div>
           <h3 class="text-sm font-bold text-slate-900">
             {#if target.type === 'class'}
@@ -120,9 +125,9 @@
       <button
         type="button"
         onclick={onClose}
-        class="w-8 h-8 rounded-lg hover:bg-slate-200/60 text-slate-400 hover:text-slate-600 flex items-center justify-center text-sm font-bold transition-all cursor-pointer"
+        class="w-8 h-8 rounded-lg hover:bg-slate-200/60 text-slate-400 hover:text-slate-600 flex items-center justify-center transition-all cursor-pointer"
       >
-        ✕
+        <Icon name="close" size="xs" />
       </button>
     </div>
 

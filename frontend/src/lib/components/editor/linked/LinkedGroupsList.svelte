@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { LinkedGroupItem } from "../types";
+  import Icon from "../../common/Icon.svelte";
 
   interface Props {
     groups: LinkedGroupItem[];
@@ -40,7 +41,7 @@
 
   {#if groups.length === 0}
     <div class="p-6 rounded-xl border border-dashed border-slate-200 bg-slate-50 text-center flex flex-col items-center justify-center gap-1.5">
-      <span class="text-2xl">🔗</span>
+      <Icon name="link" size="xl" class="text-slate-400" />
       <span class="text-xs font-bold text-slate-700">Brak powiązanych lekcji</span>
       <p class="text-[11px] text-slate-400 max-w-md">
         Utwórz nową grupę poniżej, aby połączyć lekcje z różnych oddziałów (np. podział na grupy językowe z klas 1A i 1B w tym samym slocie).
@@ -67,7 +68,7 @@
                 {@const l = lessons.find((x) => x.id === lid)}
                 {#if l}
                   <span class="inline-flex items-center gap-1 px-2.5 py-1 bg-purple-50 border border-purple-200 text-purple-900 rounded-lg text-[11px] font-medium">
-                    <span>📚</span>
+                    <Icon name="menu_book" size="xs" class="text-purple-600" />
                     <strong>{l.subject}</strong>
                     <span class="text-purple-600">({getClassName(l.classId)} - {getTeacherName(l.teacherId)})</span>
                   </span>

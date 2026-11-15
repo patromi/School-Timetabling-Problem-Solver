@@ -1,6 +1,7 @@
 <!-- frontend/src/lib/components/editor/studio/SchoolStructureView.svelte -->
 <script lang="ts">
   import type { EditorState } from "../editorState.svelte";
+  import Icon from "../../common/Icon.svelte";
 
   interface Props {
     editor: EditorState;
@@ -13,8 +14,8 @@
   <!-- Status & Quick Action Card (Flat, No Gradients) -->
   <div class="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-xs">
     <div class="flex items-center gap-3">
-      <div class="w-10 h-10 rounded-xl bg-blue-50 text-blue-700 flex items-center justify-center text-xl shrink-0 font-bold border border-blue-200/60">
-        🏫
+      <div class="w-10 h-10 rounded-xl bg-blue-50 text-blue-700 flex items-center justify-center shrink-0 border border-blue-200/60">
+        <Icon name="school" size="lg" class="text-blue-600" />
       </div>
       <div>
         <span class="font-bold text-slate-900 block text-sm">Organizacja i parametry szkoły</span>
@@ -37,17 +38,19 @@
               editor.clearToEmptySchool();
             }
           }}
-          class="px-3.5 py-2 bg-slate-50 hover:bg-rose-50 text-rose-700 border border-slate-200 hover:border-rose-200 rounded-xl font-semibold transition-all cursor-pointer shadow-2xs"
+          class="px-3.5 py-2 bg-slate-50 hover:bg-rose-50 text-rose-700 border border-slate-200 hover:border-rose-200 rounded-xl font-semibold transition-all cursor-pointer shadow-2xs flex items-center gap-1.5"
         >
-          🧹 Wyczyść dane
+          <Icon name="delete_sweep" size="xs" class="text-rose-600" />
+          <span>Wyczyść dane</span>
         </button>
       {/if}
       <button
         type="button"
         onclick={() => editor.loadHighSchoolPreset()}
-        class="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-bold transition-all cursor-pointer shadow-xs"
+        class="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-bold transition-all cursor-pointer shadow-xs flex items-center gap-1.5"
       >
-        ⚡ Załaduj wzorzec liceum
+        <Icon name="bolt" size="xs" class="text-amber-400" />
+        <span>Załaduj wzorzec liceum</span>
       </button>
     </div>
   </div>
@@ -132,7 +135,7 @@
               : "bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100"
           }`}
         >
-          <span>{isChecked ? "✓" : "+"}</span>
+          <Icon name={isChecked ? "check" : "add"} size="xs" class={isChecked ? "text-blue-600" : "text-slate-400"} />
           <span>{day}</span>
         </button>
       {/each}

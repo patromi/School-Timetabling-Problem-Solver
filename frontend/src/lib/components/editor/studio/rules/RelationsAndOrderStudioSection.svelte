@@ -2,6 +2,7 @@
 <script lang="ts">
   import type { EditorState } from "../../editorState.svelte";
   import WeightAdjuster from "./WeightAdjuster.svelte";
+  import Icon from "../../../common/Icon.svelte";
 
   interface Props {
     editor: EditorState;
@@ -37,9 +38,10 @@
       <button
         type="button"
         onclick={() => (editor.isLinkedModalOpen = true)}
-        class="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold cursor-pointer shadow-xs transition-colors shrink-0"
+        class="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold cursor-pointer shadow-xs transition-colors shrink-0 flex items-center gap-1.5"
       >
-        🔗 Zarządzaj grupami
+        <Icon name="link" size="xs" class="text-white" />
+        <span>Zarządzaj grupami</span>
       </button>
     </div>
 
@@ -54,7 +56,7 @@
   <div class="p-4 bg-slate-50/70 rounded-xl border border-slate-200/80 flex flex-col gap-3 text-xs">
     <div class="flex items-start justify-between gap-4">
       <div class="flex items-start gap-3">
-        <span class="text-xl">📐</span>
+        <Icon name="low_priority" size="lg" class="text-blue-600 shrink-0 mt-0.5" />
         <div>
           <div class="flex flex-wrap items-center gap-2">
             <span class="font-bold text-slate-900">Kolejność lekcji (np. wykład przed ćwiczeniami)</span>
@@ -81,16 +83,18 @@
             <button
               type="button"
               onclick={() => (editor.newOrderIsSoft = false)}
-              class="px-2.5 py-0.5 rounded text-[11px] font-semibold cursor-pointer {!editor.newOrderIsSoft ? 'bg-rose-600 text-white' : 'text-slate-600'}"
+              class="px-2.5 py-0.5 rounded text-[11px] font-semibold cursor-pointer flex items-center gap-1 {!editor.newOrderIsSoft ? 'bg-rose-600 text-white' : 'text-slate-600'}"
             >
-              🔴 Bezwzględny
+              <Icon name="lock" size="xs" class={!editor.newOrderIsSoft ? 'text-white' : 'text-rose-600'} />
+              <span>Bezwzględny</span>
             </button>
             <button
               type="button"
               onclick={() => (editor.newOrderIsSoft = true)}
-              class="px-2.5 py-0.5 rounded text-[11px] font-semibold cursor-pointer {editor.newOrderIsSoft ? 'bg-amber-600 text-white' : 'text-slate-600'}"
+              class="px-2.5 py-0.5 rounded text-[11px] font-semibold cursor-pointer flex items-center gap-1 {editor.newOrderIsSoft ? 'bg-amber-600 text-white' : 'text-slate-600'}"
             >
-              ⚪ Preferencja
+              <Icon name="tune" size="xs" class={editor.newOrderIsSoft ? 'text-white' : 'text-slate-500'} />
+              <span>Preferencja</span>
             </button>
           </div>
         </div>
@@ -148,9 +152,10 @@
               <button
                 type="button"
                 onclick={() => editor.addOrderRule()}
-                class="px-3.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-lg text-xs cursor-pointer transition-colors shrink-0"
+                class="px-3.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-lg text-xs cursor-pointer transition-colors shrink-0 flex items-center gap-1"
               >
-                + Dodaj
+                <Icon name="add" size="xs" class="text-white" />
+                <span>Dodaj</span>
               </button>
             </div>
           </div>
@@ -164,7 +169,7 @@
                 <div class="flex flex-wrap items-center gap-2">
                   <span class="w-5 h-5 rounded-full bg-blue-100 text-blue-800 font-bold flex items-center justify-center text-[10px]">1</span>
                   <span class="font-bold text-slate-900">{lessonLabel(rule.firstLessonId)}</span>
-                  <span class="text-slate-400">➔</span>
+                  <Icon name="arrow_forward" size="xs" class="text-slate-400" />
                   <span class="w-5 h-5 rounded-full bg-blue-100 text-blue-800 font-bold flex items-center justify-center text-[10px]">2</span>
                   <span class="font-bold text-slate-900">{lessonLabel(rule.secondLessonId)}</span>
                   <span class="text-slate-500 text-[11px]">
@@ -177,7 +182,7 @@
                   class="text-rose-500 hover:text-rose-700 font-bold p-1 rounded-md hover:bg-rose-50 cursor-pointer transition-colors"
                   title="Usuń tę regułę"
                 >
-                  ✕
+                  <Icon name="close" size="xs" />
                 </button>
               </div>
             {/each}
@@ -187,4 +192,3 @@
     {/if}
   </div>
 </div>
-

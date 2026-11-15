@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { SolverStatus } from "../../types";
   import { getDownloadSolutionUrl } from "../../api";
+  import Icon from "../common/Icon.svelte";
 
   interface Props {
     solverStatus: SolverStatus | null;
@@ -52,7 +53,8 @@
     {#if solverStatus?.status === "error"}
       <div class="p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 flex flex-col gap-1.5 shadow-2xs">
         <span class="font-bold text-rose-900 flex items-center gap-1.5">
-          <span>⚠️ Komunikat błędu silnika:</span>
+          <Icon name="warning" size="xs" class="text-rose-600" />
+          <span>Komunikat błędu silnika:</span>
         </span>
         <p class="font-mono text-[11px] bg-white/80 p-2 rounded border border-rose-200 text-rose-700 break-words">
           {solverStatus.error || "Wystąpił nieoczekiwany problem podczas optymalizacji."}
@@ -151,8 +153,10 @@
   <!-- Result Banner when finished -->
   {#if solverStatus?.has_result}
     <div class="bg-emerald-50 border border-emerald-200/90 rounded-2xl p-6 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-      <div class="flex items-center gap-3">
-        <span class="text-3xl">🎉</span>
+      <div class="flex items-center gap-3.5">
+        <div class="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+          <Icon name="task_alt" size="lg" />
+        </div>
         <div>
           <h4 class="text-sm font-bold text-emerald-950">
             Plan lekcji został pomyślnie wygenerowany!
@@ -167,16 +171,19 @@
         <a
           href={getDownloadSolutionUrl()}
           download={`${solverStatus.instance_id}_solution.xml`}
-          class="px-3.5 py-2 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-xl border border-emerald-300 transition-all cursor-pointer shadow-2xs"
+          class="px-3.5 py-2 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-xl border border-emerald-300 transition-all cursor-pointer shadow-2xs flex items-center gap-1.5"
         >
-          📥 Pobierz XML rozwiązania
+          <Icon name="download" size="xs" class="text-slate-600" />
+          <span>Pobierz XML rozwiązania</span>
         </a>
         <button
           type="button"
           onclick={onViewTimetable}
-          class="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-xl shadow-xs transition-all cursor-pointer"
+          class="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-xl shadow-xs transition-all cursor-pointer flex items-center gap-1.5"
         >
-          📅 Wyświetl plan lekcji →
+          <Icon name="calendar_month" size="xs" class="text-white" />
+          <span>Wyświetl plan lekcji</span>
+          <Icon name="arrow_forward" size="xs" class="text-white" />
         </button>
       </div>
     </div>

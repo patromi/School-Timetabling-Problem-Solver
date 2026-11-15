@@ -2,6 +2,7 @@
 <script lang="ts">
   import type { EditorState } from "../../editorState.svelte";
   import WeightAdjuster from "./WeightAdjuster.svelte";
+  import Icon from "../../../common/Icon.svelte";
 
   interface Props {
     editor: EditorState;
@@ -26,7 +27,7 @@
     <div class="p-4 bg-slate-50/70 rounded-xl border border-slate-200/80 flex flex-col gap-3">
       <div class="flex items-start justify-between gap-4">
         <div class="flex items-start gap-3">
-          <span class="text-xl">☕</span>
+          <Icon name="coffee" size="lg" class="text-amber-700 shrink-0 mt-0.5" />
           <div>
             <div class="flex flex-wrap items-center gap-2">
               <span class="font-bold text-slate-900">Brak okienek dla uczniów (lekcje ciągiem)</span>
@@ -62,23 +63,26 @@
               <button
                 type="button"
                 onclick={() => (editor.ruleStudentNoGapsSoft = false)}
-                class="px-2.5 py-0.5 rounded text-[11px] font-semibold cursor-pointer {!editor.ruleStudentNoGapsSoft ? 'bg-rose-600 text-white' : 'text-slate-600'}"
+                class="px-2.5 py-0.5 rounded text-[11px] font-semibold cursor-pointer flex items-center gap-1 {!editor.ruleStudentNoGapsSoft ? 'bg-rose-600 text-white' : 'text-slate-600'}"
               >
-                🔴 Bezwzględny
+                <Icon name="lock" size="xs" class={!editor.ruleStudentNoGapsSoft ? 'text-white' : 'text-rose-600'} />
+                <span>Bezwzględny</span>
               </button>
               <button
                 type="button"
                 onclick={() => { editor.ruleStudentNoGapsSoft = true; editor.studentGapsWeight = 10; }}
-                class="px-2.5 py-0.5 rounded text-[11px] font-semibold cursor-pointer {editor.ruleStudentNoGapsSoft && editor.studentGapsWeight >= 10 ? 'bg-amber-600 text-white' : 'text-slate-600'}"
+                class="px-2.5 py-0.5 rounded text-[11px] font-semibold cursor-pointer flex items-center gap-1 {editor.ruleStudentNoGapsSoft && editor.studentGapsWeight >= 10 ? 'bg-amber-600 text-white' : 'text-slate-600'}"
               >
-                🟡 Ważna zasada
+                <Icon name="star" size="xs" filled class={editor.ruleStudentNoGapsSoft && editor.studentGapsWeight >= 10 ? 'text-white' : 'text-amber-600'} />
+                <span>Ważna zasada</span>
               </button>
               <button
                 type="button"
                 onclick={() => { editor.ruleStudentNoGapsSoft = true; editor.studentGapsWeight = 5; }}
-                class="px-2.5 py-0.5 rounded text-[11px] font-semibold cursor-pointer {editor.ruleStudentNoGapsSoft && editor.studentGapsWeight < 10 ? 'bg-slate-700 text-white' : 'text-slate-600'}"
+                class="px-2.5 py-0.5 rounded text-[11px] font-semibold cursor-pointer flex items-center gap-1 {editor.ruleStudentNoGapsSoft && editor.studentGapsWeight < 10 ? 'bg-slate-700 text-white' : 'text-slate-600'}"
               >
-                ⚪ Preferencja
+                <Icon name="tune" size="xs" class={editor.ruleStudentNoGapsSoft && editor.studentGapsWeight < 10 ? 'text-white' : 'text-slate-500'} />
+                <span>Preferencja</span>
               </button>
             </div>
           </div>
@@ -94,7 +98,7 @@
     <div class="p-4 bg-slate-50/70 rounded-xl border border-slate-200/80 flex flex-col gap-3">
       <div class="flex items-start justify-between gap-4">
         <div class="flex items-start gap-3">
-          <span class="text-xl">👨‍🏫</span>
+          <Icon name="badge" size="lg" class="text-indigo-600 shrink-0 mt-0.5" />
           <div>
             <div class="flex flex-wrap items-center gap-2">
               <span class="font-bold text-slate-900">Domyślny limit okienek dla nauczycieli</span>
@@ -142,16 +146,18 @@
               <button
                 type="button"
                 onclick={() => (editor.teacherGapsWeight = 10)}
-                class="px-2.5 py-0.5 rounded text-[11px] font-semibold cursor-pointer {editor.teacherGapsWeight >= 8 ? 'bg-amber-600 text-white' : 'text-slate-600'}"
+                class="px-2.5 py-0.5 rounded text-[11px] font-semibold cursor-pointer flex items-center gap-1 {editor.teacherGapsWeight >= 8 ? 'bg-amber-600 text-white' : 'text-slate-600'}"
               >
-                🟡 Ważna zasada
+                <Icon name="star" size="xs" filled class={editor.teacherGapsWeight >= 8 ? 'text-white' : 'text-amber-600'} />
+                <span>Ważna zasada</span>
               </button>
               <button
                 type="button"
                 onclick={() => (editor.teacherGapsWeight = 5)}
-                class="px-2.5 py-0.5 rounded text-[11px] font-semibold cursor-pointer {editor.teacherGapsWeight < 8 ? 'bg-slate-700 text-white' : 'text-slate-600'}"
+                class="px-2.5 py-0.5 rounded text-[11px] font-semibold cursor-pointer flex items-center gap-1 {editor.teacherGapsWeight < 8 ? 'bg-slate-700 text-white' : 'text-slate-600'}"
               >
-                ⚪ Preferencja
+                <Icon name="tune" size="xs" class={editor.teacherGapsWeight < 8 ? 'text-white' : 'text-slate-500'} />
+                <span>Preferencja</span>
               </button>
             </div>
           </div>
@@ -166,7 +172,7 @@
       <!-- Dla klas -->
       <div class="flex items-start justify-between gap-4">
         <div class="flex items-start gap-3">
-          <span class="text-xl">📊</span>
+          <Icon name="speed" size="lg" class="text-blue-600 shrink-0 mt-0.5" />
           <div>
             <div class="flex flex-wrap items-center gap-2">
               <span class="font-bold text-slate-900">Domyślne dzienne ramy lekcyjne klas</span>
@@ -208,7 +214,7 @@
 
       <div class="border-t border-slate-200/70 pt-3 flex items-start justify-between gap-4">
         <div class="flex items-start gap-3">
-          <span class="text-xl">🧑‍🏫</span>
+          <Icon name="person" size="lg" class="text-indigo-600 shrink-0 mt-0.5" />
           <div>
             <div class="flex flex-wrap items-center gap-2">
               <span class="font-bold text-slate-900">Domyślne maksymalne obciążenie dzienne nauczycieli</span>
@@ -277,7 +283,7 @@
     <div class="p-4 bg-slate-50/70 rounded-xl border border-slate-200/80 flex flex-col gap-3">
       <div class="flex items-start justify-between gap-4">
         <div class="flex items-start gap-3">
-          <span class="text-xl">📅</span>
+          <Icon name="calendar_today" size="lg" class="text-purple-600 shrink-0 mt-0.5" />
           <div>
             <div class="flex flex-wrap items-center gap-2">
               <span class="font-bold text-slate-900">Kompaktowy tydzień pracy (dni robocze kadry)</span>

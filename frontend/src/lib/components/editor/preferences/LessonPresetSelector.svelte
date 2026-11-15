@@ -1,4 +1,6 @@
 <script lang="ts">
+  import Icon from "../../common/Icon.svelte";
+
   interface Props {
     preference: "any" | "morning" | "afternoon" | "custom";
     onSelect: (type: "any" | "morning" | "afternoon" | "custom") => void;
@@ -24,7 +26,7 @@
         : 'bg-slate-50 border-slate-200 hover:bg-slate-100'}"
     >
       <div class="flex items-center justify-between">
-        <span class="text-base">🕒</span>
+        <Icon name="schedule" size="sm" class="text-blue-600" />
         {#if preference === "any"}<span class="w-2 h-2 rounded-full bg-blue-600"
           ></span>{/if}
       </div>
@@ -46,7 +48,7 @@
         : 'bg-slate-50 border-slate-200 hover:bg-slate-100'}"
     >
       <div class="flex items-center justify-between">
-        <span class="text-base">🌅</span>
+        <Icon name="light_mode" size="sm" class="text-amber-600" />
         {#if preference === "morning"}<span
             class="w-2 h-2 rounded-full bg-amber-600"
           ></span>{/if}
@@ -71,7 +73,7 @@
         : 'bg-slate-50 border-slate-200 hover:bg-slate-100'}"
     >
       <div class="flex items-center justify-between">
-        <span class="text-base">🌇</span>
+        <Icon name="dark_mode" size="sm" class="text-indigo-600" />
         {#if preference === "afternoon"}<span
             class="w-2 h-2 rounded-full bg-indigo-600"
           ></span>{/if}
@@ -94,7 +96,7 @@
         : 'bg-slate-50 border-slate-200 hover:bg-slate-100'}"
     >
       <div class="flex items-center justify-between">
-        <span class="text-base">🎯</span>
+        <Icon name="tune" size="sm" class="text-emerald-600" />
         {#if preference === "custom"}<span
             class="w-2 h-2 rounded-full bg-emerald-600"
           ></span>{/if}

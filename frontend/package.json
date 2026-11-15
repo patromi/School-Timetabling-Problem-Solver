@@ -16,6 +16,7 @@
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch"
   },
   "devDependencies": {
+    "@fontsource-variable/material-symbols-outlined": "^5.3.9",
     "@sveltejs/adapter-auto": "^8.0.0",
     "@sveltejs/adapter-static": "^4.0.0",
     "@sveltejs/kit": "^3.0.0",

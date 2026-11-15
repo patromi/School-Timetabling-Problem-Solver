@@ -2,6 +2,7 @@
 <script lang="ts">
   import type { EditorState } from "../../editorState.svelte";
   import WeightAdjuster from "./WeightAdjuster.svelte";
+  import Icon from "../../../common/Icon.svelte";
 
   interface Props {
     editor: EditorState;
@@ -20,7 +21,7 @@
     <div class="p-4 bg-slate-50/70 rounded-xl border border-slate-200/80 flex flex-col gap-3">
       <div class="flex items-start justify-between gap-4">
         <div class="flex items-start gap-3">
-          <span class="text-xl">🗓️</span>
+          <Icon name="view_week" size="lg" class="text-blue-600 shrink-0 mt-0.5" />
           <div>
             <div class="flex flex-wrap items-center gap-2">
               <span class="font-bold text-slate-900">Równomierne rozłożenie przedmiotów w tygodniu</span>
@@ -66,23 +67,26 @@
               <button
                 type="button"
                 onclick={() => (editor.ruleSpreadSubjectsSoft = false)}
-                class="px-2.5 py-0.5 rounded text-[11px] font-semibold cursor-pointer {!editor.ruleSpreadSubjectsSoft ? 'bg-rose-600 text-white' : 'text-slate-600'}"
+                class="px-2.5 py-0.5 rounded text-[11px] font-semibold cursor-pointer flex items-center gap-1 {!editor.ruleSpreadSubjectsSoft ? 'bg-rose-600 text-white' : 'text-slate-600'}"
               >
-                🔴 Bezwzględny
+                <Icon name="lock" size="xs" class={!editor.ruleSpreadSubjectsSoft ? 'text-white' : 'text-rose-600'} />
+                <span>Bezwzględny</span>
               </button>
               <button
                 type="button"
                 onclick={() => { editor.ruleSpreadSubjectsSoft = true; editor.spreadSubjectsWeight = 10; }}
-                class="px-2.5 py-0.5 rounded text-[11px] font-semibold cursor-pointer {editor.ruleSpreadSubjectsSoft && editor.spreadSubjectsWeight >= 8 ? 'bg-amber-600 text-white' : 'text-slate-600'}"
+                class="px-2.5 py-0.5 rounded text-[11px] font-semibold cursor-pointer flex items-center gap-1 {editor.ruleSpreadSubjectsSoft && editor.spreadSubjectsWeight >= 8 ? 'bg-amber-600 text-white' : 'text-slate-600'}"
               >
-                🟡 Ważna zasada
+                <Icon name="star" size="xs" filled class={editor.ruleSpreadSubjectsSoft && editor.spreadSubjectsWeight >= 8 ? 'text-white' : 'text-amber-600'} />
+                <span>Ważna zasada</span>
               </button>
               <button
                 type="button"
                 onclick={() => { editor.ruleSpreadSubjectsSoft = true; editor.spreadSubjectsWeight = 5; }}
-                class="px-2.5 py-0.5 rounded text-[11px] font-semibold cursor-pointer {editor.ruleSpreadSubjectsSoft && editor.spreadSubjectsWeight < 8 ? 'bg-slate-700 text-white' : 'text-slate-600'}"
+                class="px-2.5 py-0.5 rounded text-[11px] font-semibold cursor-pointer flex items-center gap-1 {editor.ruleSpreadSubjectsSoft && editor.spreadSubjectsWeight < 8 ? 'bg-slate-700 text-white' : 'text-slate-600'}"
               >
-                ⚪ Preferencja
+                <Icon name="tune" size="xs" class={editor.ruleSpreadSubjectsSoft && editor.spreadSubjectsWeight < 8 ? 'text-white' : 'text-slate-500'} />
+                <span>Preferencja</span>
               </button>
             </div>
           </div>
@@ -97,7 +101,7 @@
     <!-- Ciągłość bloków 2-godzinnych -->
     <label class="p-4 bg-slate-50/70 rounded-xl border border-slate-200/80 flex items-start justify-between gap-4 cursor-pointer hover:border-slate-300 transition-colors">
       <div class="flex items-start gap-3">
-        <span class="text-xl">🧱</span>
+        <Icon name="layers" size="lg" class="text-slate-600 shrink-0 mt-0.5" />
         <div>
           <span class="font-bold text-slate-900">Łącz zajęcia 2-godzinne w ciągłe bloki</span>
           <p class="text-slate-500 text-[11px] mt-0.5 leading-snug">
@@ -112,7 +116,7 @@
     <div class="p-4 bg-slate-50/70 rounded-xl border border-slate-200/80 flex flex-col gap-3">
       <div class="flex items-start justify-between gap-4">
         <div class="flex items-start gap-3">
-          <span class="text-xl">🌅</span>
+          <Icon name="light_mode" size="lg" class="text-amber-500 shrink-0 mt-0.5" />
           <div>
             <div class="flex flex-wrap items-center gap-2">
               <span class="font-bold text-slate-900">Przedmioty wymagające skupienia rano</span>
@@ -143,16 +147,18 @@
               <button
                 type="button"
                 onclick={() => (editor.morningCoreSubjectsSoft = false)}
-                class="px-2.5 py-0.5 rounded text-[11px] font-semibold cursor-pointer {!editor.morningCoreSubjectsSoft ? 'bg-rose-600 text-white' : 'text-slate-600'}"
+                class="px-2.5 py-0.5 rounded text-[11px] font-semibold cursor-pointer flex items-center gap-1 {!editor.morningCoreSubjectsSoft ? 'bg-rose-600 text-white' : 'text-slate-600'}"
               >
-                🔴 Bezwzględny
+                <Icon name="lock" size="xs" class={!editor.morningCoreSubjectsSoft ? 'text-white' : 'text-rose-600'} />
+                <span>Bezwzględny</span>
               </button>
               <button
                 type="button"
                 onclick={() => { editor.morningCoreSubjectsSoft = true; editor.morningCoreSubjectsWeight = 4; }}
-                class="px-2.5 py-0.5 rounded text-[11px] font-semibold cursor-pointer {editor.morningCoreSubjectsSoft ? 'bg-amber-600 text-white' : 'text-slate-600'}"
+                class="px-2.5 py-0.5 rounded text-[11px] font-semibold cursor-pointer flex items-center gap-1 {editor.morningCoreSubjectsSoft ? 'bg-amber-600 text-white' : 'text-slate-600'}"
               >
-                ⚪ Preferencja
+                <Icon name="tune" size="xs" class={editor.morningCoreSubjectsSoft ? 'text-white' : 'text-slate-500'} />
+                <span>Preferencja</span>
               </button>
             </div>
           </div>
@@ -167,7 +173,7 @@
     <div class="p-4 bg-slate-50/70 rounded-xl border border-slate-200/80 flex flex-col gap-3">
       <div class="flex items-start justify-between gap-4">
         <div class="flex items-start gap-3">
-          <span class="text-xl">🌇</span>
+          <Icon name="dark_mode" size="lg" class="text-indigo-500 shrink-0 mt-0.5" />
           <div>
             <div class="flex flex-wrap items-center gap-2">
               <span class="font-bold text-slate-900">WF i zajęcia artystyczne w godzinach popołudniowych</span>
@@ -198,16 +204,18 @@
               <button
                 type="button"
                 onclick={() => (editor.afternoonFlexSubjectsSoft = false)}
-                class="px-2.5 py-0.5 rounded text-[11px] font-semibold cursor-pointer {!editor.afternoonFlexSubjectsSoft ? 'bg-rose-600 text-white' : 'text-slate-600'}"
+                class="px-2.5 py-0.5 rounded text-[11px] font-semibold cursor-pointer flex items-center gap-1 {!editor.afternoonFlexSubjectsSoft ? 'bg-rose-600 text-white' : 'text-slate-600'}"
               >
-                🔴 Bezwzględny
+                <Icon name="lock" size="xs" class={!editor.afternoonFlexSubjectsSoft ? 'text-white' : 'text-rose-600'} />
+                <span>Bezwzględny</span>
               </button>
               <button
                 type="button"
                 onclick={() => { editor.afternoonFlexSubjectsSoft = true; editor.afternoonFlexSubjectsWeight = 3; }}
-                class="px-2.5 py-0.5 rounded text-[11px] font-semibold cursor-pointer {editor.afternoonFlexSubjectsSoft ? 'bg-blue-600 text-white' : 'text-slate-600'}"
+                class="px-2.5 py-0.5 rounded text-[11px] font-semibold cursor-pointer flex items-center gap-1 {editor.afternoonFlexSubjectsSoft ? 'bg-blue-600 text-white' : 'text-slate-600'}"
               >
-                ⚪ Preferencja
+                <Icon name="tune" size="xs" class={editor.afternoonFlexSubjectsSoft ? 'text-white' : 'text-slate-500'} />
+                <span>Preferencja</span>
               </button>
             </div>
           </div>
@@ -219,4 +227,3 @@
     </div>
   </div>
 </div>
-

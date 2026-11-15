@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { TimetableCellEntry, TimetableDay } from "../../types";
   import { getSubjectColor } from "./timetableHelpers";
+  import Icon from "../common/Icon.svelte";
 
   interface Props {
     days: TimetableDay[];
@@ -81,7 +82,8 @@
                         <!-- Clash Warning -->
                         {#if entry.is_clash}
                           <div class="text-[10px] font-bold text-rose-700 flex items-center gap-1 mt-1">
-                            <span>⚠️ Kolizja terminów!</span>
+                            <Icon name="warning" size="xs" class="text-rose-600" />
+                            <span>Kolizja terminów!</span>
                           </div>
                         {/if}
 

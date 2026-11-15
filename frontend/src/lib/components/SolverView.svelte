@@ -9,6 +9,7 @@
   } from "../api";
   import SolverConfigPanel, { type Profile } from "./solver/SolverConfigPanel.svelte";
   import SolverTelemetryDashboard from "./solver/SolverTelemetryDashboard.svelte";
+  import Icon from "./common/Icon.svelte";
 
   interface Props {
     selectedInstanceId?: string | null;
@@ -172,7 +173,7 @@
   <div class="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
     <div class="flex items-center gap-3.5">
       <div class="w-12 h-12 rounded-2xl bg-blue-50 text-blue-700 border border-blue-100 flex items-center justify-center font-bold text-xl shadow-2xs">
-        ⚡
+        <Icon name="bolt" size="lg" class="text-blue-600" />
       </div>
       <div>
         <h2 class="text-lg font-bold text-slate-900 leading-tight">
@@ -190,8 +191,9 @@
         onclick={onViewTimetable}
         class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-xs transition-all cursor-pointer flex items-center gap-2"
       >
-        <span>📅 Zobacz gotowy plan</span>
-        <span>→</span>
+        <Icon name="calendar_month" size="sm" class="text-white" />
+        <span>Zobacz gotowy plan</span>
+        <Icon name="arrow_forward" size="xs" class="text-white" />
       </button>
     {/if}
   </div>
@@ -199,7 +201,9 @@
   {#if errorMessage}
     <div class="p-4 bg-rose-50 border border-rose-200 rounded-2xl text-xs text-rose-800 flex items-center justify-between shadow-2xs">
       <span>{errorMessage}</span>
-      <button type="button" class="font-bold cursor-pointer" onclick={() => (errorMessage = null)}>✕</button>
+      <button type="button" class="cursor-pointer" onclick={() => (errorMessage = null)}>
+        <Icon name="close" size="xs" />
+      </button>
     </div>
   {/if}
 

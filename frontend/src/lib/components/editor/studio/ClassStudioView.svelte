@@ -4,6 +4,7 @@
   import type { SimpleClass } from "../types";
   import AvailabilityGrid from "../availability/AvailabilityGrid.svelte";
   import SubjectCombobox from "../common/SubjectCombobox.svelte";
+  import Icon from "../../common/Icon.svelte";
 
   interface Props {
     editor: EditorState;
@@ -113,8 +114,8 @@
   <div class="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-xs flex flex-col gap-4">
     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
       <div class="flex items-center gap-4">
-        <div class="w-14 h-14 rounded-2xl bg-indigo-50 border border-indigo-200/80 text-indigo-700 flex items-center justify-center text-2xl font-bold shrink-0">
-          👥
+        <div class="w-14 h-14 rounded-2xl bg-indigo-50 border border-indigo-200/80 text-indigo-700 flex items-center justify-center font-bold shrink-0">
+          <Icon name="groups" size="2xl" class="text-indigo-700" />
         </div>
         <div>
           <div class="flex items-center gap-2.5">
@@ -145,12 +146,12 @@
 
         {#if totalHours === 0}
           <span class="px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-50 text-amber-800 border border-amber-200 flex items-center gap-1.5">
-            <span>⚠️</span>
+            <Icon name="warning" size="xs" class="text-amber-700" />
             <span>Brak lekcji</span>
           </span>
         {:else}
           <span class="px-3 py-1.5 rounded-xl text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 flex items-center gap-1">
-            <span>✓</span>
+            <Icon name="check" size="xs" class="text-emerald-700" />
             <span>Aktywny oddział</span>
           </span>
         {/if}
@@ -163,7 +164,7 @@
     <div class="flex items-center justify-between">
       <div>
         <h3 class="text-sm font-bold text-slate-900 flex items-center gap-2">
-          <span>📖</span>
+          <Icon name="menu_book" size="xs" class="text-slate-500" />
           <span>Plan nauczania oddziału {cls.name} ({classLessons.length} przedmiotów)</span>
         </h3>
         <p class="text-xs text-slate-500 mt-0.5">
@@ -198,7 +199,7 @@
             <div class="p-3.5 bg-blue-50/70 border-y border-blue-200/90 flex flex-col gap-3">
               <div class="flex items-center justify-between text-xs font-bold text-blue-900">
                 <span class="flex items-center gap-1.5">
-                  <span>✏️</span>
+                  <Icon name="edit" size="xs" class="text-blue-700" />
                   <span>Edycja przedmiotu: {lesson.subject}</span>
                 </span>
                 <span class="text-[11px] text-blue-700 font-normal">Zmień dane i kliknij Zapisz</span>
@@ -228,8 +229,8 @@
                     bind:value={editTeacherId}
                     class="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 font-semibold"
                   >
-                    <option value="__ANY__">🎲 Dowolny nauczyciel (dobiera system)</option>
-                    <option value="">👤 Brak nauczyciela (wakat)</option>
+                    <option value="__ANY__">[Auto] Dowolny nauczyciel (dobiera system)</option>
+                    <option value="">[Wakat] Brak nauczyciela</option>
                     <optgroup label="Przypisz konkretnego pedagoga:">
                       {#each editor.teachers as t}
                         <option value={t.id}>{t.name} ({editor.getTeacherSubjects(t).join(", ") || t.subject})</option>
@@ -289,7 +290,7 @@
                   onclick={() => saveEditedLesson(lesson.id)}
                   class="px-3.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold cursor-pointer shadow-2xs flex items-center gap-1"
                 >
-                  <span>✓</span>
+                  <Icon name="check" size="xs" class="text-white" />
                   <span>Zapisz zmiany</span>
                 </button>
               </div>
@@ -312,7 +313,7 @@
                   {@const qualified = editor.getQualifiedTeachersForSubject(lesson.subject)}
                   <div class="flex flex-col gap-0.5">
                     <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-900 font-bold text-xs border border-indigo-200 shadow-2xs">
-                      <span>🎲</span>
+                      <Icon name="shuffle" size="xs" class="text-indigo-700" />
                       <span>Dowolny nauczyciel</span>
                     </span>
                     <span class="text-[10px] text-indigo-600 truncate max-w-[170px]" title={qualified.map((t) => t.name).join(", ")}>
@@ -330,13 +331,13 @@
                     class="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-800 rounded-lg font-bold border border-blue-200/80 transition-all cursor-pointer flex items-center gap-1.5 shadow-2xs group text-left"
                     title="Przejdź do profilu tego nauczyciela"
                   >
-                    <span>👨‍🏫</span>
+                    <Icon name="badge" size="xs" class="text-blue-600" />
                     <span class="group-hover:underline truncate max-w-[150px]">{assignedTeacher.name}</span>
-                    <span class="text-blue-400 group-hover:text-blue-600 text-[10px]">➔</span>
+                    <Icon name="arrow_forward" size="xs" class="text-blue-400 group-hover:text-blue-600" />
                   </button>
                 {:else}
                   <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md bg-slate-100 text-slate-600 font-medium text-[11px] border border-slate-200 shadow-2xs">
-                    <span>👤</span>
+                    <Icon name="person_off" size="xs" class="text-slate-400" />
                     <span>Wakat (brak nauczyciela)</span>
                   </span>
                 {/if}
@@ -351,7 +352,7 @@
                     class="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-medium border border-slate-200 transition-all cursor-pointer flex items-center gap-1 text-[11px]"
                     title="Przejdź do widoku tej sali"
                   >
-                    <span>🚪</span>
+                    <Icon name="meeting_room" size="xs" class="text-slate-500" />
                     <span>{assignedRoom.name}</span>
                   </button>
                 {:else}
@@ -372,7 +373,7 @@
                   class="p-1.5 text-slate-500 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
                   title="Edytuj ten przedmiot"
                 >
-                  ✏️
+                  <Icon name="edit" size="xs" />
                 </button>
                 <button
                   type="button"
@@ -380,7 +381,7 @@
                   class="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
                   title="Usuń ten przedmiot z planu oddziału"
                 >
-                  ✕
+                  <Icon name="close" size="xs" />
                 </button>
               </div>
             </div>
@@ -392,7 +393,7 @@
     <!-- Pasek szybkiego dodawania przedmiotu wprost w profilu klasy -->
     <div class="pt-4 border-t border-slate-100 flex flex-col gap-3">
       <span class="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-        <span>➕</span>
+        <Icon name="add" size="xs" class="text-slate-700" />
         <span>Dodaj brakujący przedmiot do planu {cls.name}:</span>
       </span>
 
@@ -422,8 +423,8 @@
             bind:value={newLessonTeacherId}
             class="w-full py-1.5 px-2 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-800 focus:outline-none focus:border-blue-500 cursor-pointer"
           >
-            <option value="__ANY__">🎲 Dowolny nauczyciel (dobiera system)</option>
-            <option value="">👤 Brak nauczyciela (wakat)</option>
+            <option value="__ANY__">[Auto] Dowolny nauczyciel (dobiera system)</option>
+            <option value="">[Wakat] Brak nauczyciela</option>
             <optgroup label="Przypisz konkretnego pedagoga:">
               {#each editor.teachers as t}
                 <option value={t.id}>{t.name} ({editor.getTeacherSubjects(t).join(", ") || t.subject})</option>
@@ -487,7 +488,7 @@
     <div class="flex items-center justify-between">
       <div>
         <h3 class="text-sm font-bold text-slate-900 flex items-center gap-2">
-          <span>🗓️</span>
+          <Icon name="calendar_month" size="base" class="text-indigo-600" />
           <span>Dostępność i higiena planu oddziału {cls.name}</span>
         </h3>
         <p class="text-xs text-slate-500 mt-0.5">
@@ -527,8 +528,9 @@
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-2">
       <!-- Min lekcji dziennie -->
       <div class="p-3 bg-slate-50 rounded-xl border border-slate-200/70 flex flex-col justify-between">
-        <label for="class-min-daily-{cls.id}" class="block text-xs font-bold text-slate-800 mb-1">
-          📉 Minimalna liczba lekcji w dniu:
+        <label for="class-min-daily-{cls.id}" class="text-xs font-bold text-slate-800 mb-1 flex items-center gap-1.5">
+          <Icon name="trending_down" size="xs" class="text-blue-600" />
+          <span>Minimalna liczba lekcji w dniu:</span>
         </label>
         <p class="text-[11px] text-slate-500 mb-2">Zapobiega przychodzeniu uczniów na zbyt małą liczbę lekcji.</p>
         <select
@@ -546,8 +548,9 @@
 
       <!-- Maks lekcji dziennie -->
       <div class="p-3 bg-slate-50 rounded-xl border border-slate-200/70 flex flex-col justify-between">
-        <label for="class-max-daily-{cls.id}" class="block text-xs font-bold text-slate-800 mb-1">
-          📈 Maksymalna liczba lekcji w dniu:
+        <label for="class-max-daily-{cls.id}" class="text-xs font-bold text-slate-800 mb-1 flex items-center gap-1.5">
+          <Icon name="trending_up" size="xs" class="text-amber-600" />
+          <span>Maksymalna liczba lekcji w dniu:</span>
         </label>
         <p class="text-[11px] text-slate-500 mb-2">Chroni uczniów przed nadmiernym zmęczeniem długim dniem.</p>
         <select

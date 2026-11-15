@@ -1,6 +1,7 @@
 <!-- frontend/src/lib/components/editor/availability/AvailabilityContextDrawer.svelte -->
 <script lang="ts">
   import type { ResourceContextInfo } from "../AvailabilityModal.svelte";
+  import Icon from "../../common/Icon.svelte";
 
   interface Props {
     resourceType: "teacher" | "room" | "class";
@@ -20,7 +21,7 @@
 <div class="w-full md:w-80 shrink-0 border-t md:border-t-0 md:border-l border-slate-200 bg-slate-50/70 p-5 flex flex-col gap-4 overflow-y-auto">
   <div class="flex items-center justify-between pb-3 border-b border-slate-200">
     <h4 class="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
-      <span>📊</span>
+      <Icon name="bar_chart" size="xs" />
       <span>Podgląd obciążenia</span>
     </h4>
     <span class="text-[10px] px-2 py-0.5 rounded-full font-bold bg-blue-100 text-blue-800">
@@ -67,7 +68,7 @@
   <!-- Conflict Live Warning -->
   {#if (contextInfo.totalAssignedHours ?? 0) > availableCount}
     <div class="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-900 text-xs flex items-start gap-2">
-      <span class="text-base shrink-0">⚠️</span>
+      <Icon name="warning" size="xs" class="text-rose-600 shrink-0 mt-0.5" />
       <div class="leading-snug">
         <strong class="font-bold block">Zbyt wiele wykluczeń!</strong>
         Przydział wymaga <strong>{contextInfo.totalAssignedHours} godz.</strong>, a odblokowano tylko <strong>{availableCount} slotów</strong>.

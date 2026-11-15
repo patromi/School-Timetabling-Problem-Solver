@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { InstanceListItem, SolverStatus } from "../../types";
+  import Icon from "../common/Icon.svelte";
 
   export type Profile = "quick" | "standard" | "deep";
 
@@ -53,7 +54,17 @@
     {#if currentSchool}
       <div class="mt-2 p-2.5 bg-slate-50 rounded-xl border border-slate-100 text-[11px] text-slate-500 flex flex-col gap-1">
         <span class="font-semibold text-slate-700">{currentSchool.name || currentSchool.id}</span>
-        <span>📚 {currentSchool.events_count} lekcji • 👥 {currentSchool.resources_count} osób/sal</span>
+        <div class="flex items-center gap-2.5 text-slate-500">
+          <span class="inline-flex items-center gap-1">
+            <Icon name="menu_book" size="xs" class="text-slate-400" />
+            <span>{currentSchool.events_count} lekcji</span>
+          </span>
+          <span class="text-slate-300">•</span>
+          <span class="inline-flex items-center gap-1">
+            <Icon name="groups" size="xs" class="text-slate-400" />
+            <span>{currentSchool.resources_count} osób/sal</span>
+          </span>
+        </div>
       </div>
     {/if}
   </div>
@@ -74,7 +85,10 @@
           class="mt-0.5 accent-blue-600"
         />
         <div>
-          <span class="text-xs font-bold text-slate-900">🚀 Standardowy (Zalecany)</span>
+          <span class="text-xs font-bold text-slate-900 inline-flex items-center gap-1.5">
+            <Icon name="rocket_launch" size="xs" class="text-blue-600" />
+            <span>Standardowy (Zalecany)</span>
+          </span>
           <p class="text-[11px] text-slate-500 leading-snug mt-0.5">
             20 000 prób optymalizacji (~3 sekundy). Znakomity balans jakości i szybkości.
           </p>
@@ -91,7 +105,10 @@
           class="mt-0.5 accent-blue-600"
         />
         <div>
-          <span class="text-xs font-bold text-slate-900">⚡ Szybki test</span>
+          <span class="text-xs font-bold text-slate-900 inline-flex items-center gap-1.5">
+            <Icon name="bolt" size="xs" class="text-amber-500" />
+            <span>Szybki test</span>
+          </span>
           <p class="text-[11px] text-slate-500 leading-snug mt-0.5">
             5 000 prób (~1 sekunda). Do błyskawicznej weryfikacji poprawności siatki.
           </p>
@@ -108,7 +125,10 @@
           class="mt-0.5 accent-blue-600"
         />
         <div>
-          <span class="text-xs font-bold text-slate-900">🎯 Głęboka optymalizacja</span>
+          <span class="text-xs font-bold text-slate-900 inline-flex items-center gap-1.5">
+            <Icon name="military_tech" size="xs" class="text-purple-600" />
+            <span>Głęboka optymalizacja</span>
+          </span>
           <p class="text-[11px] text-slate-500 leading-snug mt-0.5">
             50 000 prób (~8 sekund). Maksymalny komfort planu i eliminacja trudnych okienek.
           </p>
@@ -125,7 +145,7 @@
       class="text-xs font-semibold text-slate-500 hover:text-slate-800 cursor-pointer flex items-center gap-1"
     >
       <span>{showAdvancedSettings ? 'Ukryj parametry zaawansowane' : 'Pokaż parametry zaawansowane'}</span>
-      <span>{showAdvancedSettings ? '▲' : '▼'}</span>
+      <Icon name={showAdvancedSettings ? "expand_less" : "expand_more"} size="xs" />
     </button>
 
     {#if showAdvancedSettings}
@@ -168,7 +188,8 @@
         onclick={onStop}
         class="w-full py-3 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl shadow-xs transition-all cursor-pointer flex items-center justify-center gap-2 animate-pulse"
       >
-        <span>⏹ Zatrzymaj solver</span>
+        <Icon name="stop" size="sm" class="text-white" />
+        <span>Zatrzymaj solver</span>
       </button>
     {:else}
       <button
@@ -176,7 +197,8 @@
         onclick={onStart}
         class="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-xs transition-all cursor-pointer flex items-center justify-center gap-2"
       >
-        <span>▶ Rozpocznij generowanie planu</span>
+        <Icon name="play_arrow" size="sm" class="text-white" />
+        <span>Rozpocznij generowanie planu</span>
       </button>
     {/if}
   </div>

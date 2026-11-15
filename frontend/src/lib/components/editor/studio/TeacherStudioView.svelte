@@ -4,6 +4,7 @@
   import type { SimpleTeacher } from "../types";
   import AvailabilityGrid from "../availability/AvailabilityGrid.svelte";
   import SubjectCombobox from "../common/SubjectCombobox.svelte";
+  import Icon from "../../common/Icon.svelte";
 
   interface Props {
     editor: EditorState;
@@ -114,8 +115,8 @@
   <div class="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-xs flex flex-col gap-5">
     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
       <div class="flex items-center gap-4">
-        <div class="w-14 h-14 rounded-2xl bg-blue-50 border border-blue-200/80 text-blue-700 flex items-center justify-center text-2xl font-bold shrink-0">
-          👨‍🏫
+        <div class="w-14 h-14 rounded-2xl bg-blue-50 border border-blue-200/80 text-blue-700 flex items-center justify-center font-bold shrink-0">
+          <Icon name="badge" size="2xl" class="text-blue-700" />
         </div>
         <div>
           <div class="flex items-center gap-2.5">
@@ -153,8 +154,8 @@
 
     <!-- Multi-Subject Tag Badges Editor -->
     <div class="pt-3 border-t border-slate-100 flex flex-wrap items-center gap-2">
-      <span class="text-xs font-semibold text-slate-600 mr-1 flex items-center gap-1">
-        <span>🎓</span>
+      <span class="text-xs font-semibold text-slate-600 mr-1 flex items-center gap-1.5">
+        <Icon name="school" size="xs" class="text-slate-600" />
         <span>Kwalifikacje / nauczane przedmioty:</span>
       </span>
       {#each teacherSubjects as sub}
@@ -164,10 +165,10 @@
             <button
               type="button"
               onclick={() => editor.removeSubjectFromTeacher(teacher.id, sub)}
-              class="text-blue-400 hover:text-rose-600 transition-colors ml-0.5 cursor-pointer"
+              class="text-blue-400 hover:text-rose-600 transition-colors ml-0.5 cursor-pointer flex items-center justify-center"
               title={`Usuń ${sub} z listy nauczyciela`}
             >
-              ✕
+              <Icon name="close" size="xs" />
             </button>
           {/if}
         </span>
@@ -223,8 +224,9 @@
               Nadgodziny: +{assignedHours - workload}h
             </span>
           {:else}
-            <span class="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-100 text-emerald-800">
-              ✓ Pełen etat (100%)
+            <span class="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-100 text-emerald-800 inline-flex items-center gap-1">
+              <Icon name="check" size="xs" />
+              <span>Pełen etat (100%)</span>
             </span>
           {/if}
         </div>
@@ -246,7 +248,7 @@
     <div class="flex items-center justify-between">
       <div>
         <h3 class="text-sm font-bold text-slate-900 flex items-center gap-2">
-          <span>📚</span>
+          <Icon name="menu_book" size="base" class="text-blue-600" />
           <span>Plan zajęć prowadzonych przez tego nauczyciela ({teacherLessons.length})</span>
         </h3>
         <p class="text-xs text-slate-500 mt-0.5">
@@ -281,7 +283,7 @@
             <div class="p-3.5 bg-blue-50/70 border-y border-blue-200/90 flex flex-col gap-3">
               <div class="flex items-center justify-between text-xs font-bold text-blue-900">
                 <span class="flex items-center gap-1.5">
-                  <span>✏️</span>
+                  <Icon name="edit" size="xs" class="text-blue-700" />
                   <span>Edycja parametrów lekcji: {lesson.subject}</span>
                 </span>
                 <span class="text-[11px] text-blue-700 font-normal">Zmień dane i zatwierdź</span>
@@ -368,7 +370,7 @@
                   onclick={() => saveEditedLesson(lesson.id)}
                   class="px-3.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold cursor-pointer shadow-2xs flex items-center gap-1"
                 >
-                  <span>✓</span>
+                  <Icon name="check" size="xs" class="text-white" />
                   <span>Zapisz zmiany</span>
                 </button>
               </div>
@@ -393,9 +395,9 @@
                   class="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-800 rounded-lg font-bold border border-blue-200/80 transition-all cursor-pointer flex items-center gap-1.5 shadow-2xs group"
                   title="Przejdź do widoku tej klasy"
                 >
-                  <span>👥</span>
+                  <Icon name="groups" size="xs" />
                   <span class="group-hover:underline">{assignedClass?.name || lesson.classId}</span>
-                  <span class="text-blue-400 group-hover:text-blue-600 text-[10px]">➔</span>
+                  <Icon name="arrow_forward" size="xs" class="text-blue-400 group-hover:text-blue-600" />
                 </button>
               </div>
 
@@ -408,7 +410,7 @@
                     class="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-medium border border-slate-200 transition-all cursor-pointer flex items-center gap-1 text-[11px]"
                     title="Przejdź do widoku tej sali"
                   >
-                    <span>🚪</span>
+                    <Icon name="meeting_room" size="xs" class="text-slate-500" />
                     <span>{assignedRoom.name}</span>
                   </button>
                 {:else}
@@ -429,7 +431,7 @@
                   class="p-1.5 text-slate-500 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
                   title="Edytuj parametry tej lekcji"
                 >
-                  ✏️
+                  <Icon name="edit" size="xs" />
                 </button>
                 <button
                   type="button"
@@ -437,7 +439,7 @@
                   class="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
                   title="Usuń tę pozycję z planu"
                 >
-                  ✕
+                  <Icon name="close" size="xs" />
                 </button>
               </div>
             </div>
@@ -449,7 +451,7 @@
     <!-- Pasek szybkiego przypisywania lekcji wprost w profilu nauczyciela -->
     <div class="pt-4 border-t border-slate-100 flex flex-col gap-3">
       <span class="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-        <span>➕</span>
+        <Icon name="add" size="xs" class="text-slate-700" />
         <span>Przypisz nową klasę / przedmiot dla {teacher.name}:</span>
       </span>
 
@@ -540,7 +542,7 @@
     <div class="flex items-center justify-between">
       <div>
         <h3 class="text-sm font-bold text-slate-900 flex items-center gap-2">
-          <span>🗓️</span>
+          <Icon name="event_available" size="xs" class="text-slate-500" />
           <span>Dostępność i indywidualne reguły czasu pracy</span>
         </h3>
         <p class="text-xs text-slate-500 mt-0.5">
@@ -580,8 +582,9 @@
     <div class="grid grid-cols-1 sm:grid-cols-3 gap-3.5 pt-2">
       <!-- Dni w tygodniu -->
       <div class="p-3 bg-slate-50 rounded-xl border border-slate-200/70 flex flex-col justify-between">
-        <label for="teacher-cluster-input-{teacher.id}" class="block text-xs font-bold text-slate-800 mb-1">
-          📅 Maks. dni roboczych:
+        <label for="teacher-cluster-input-{teacher.id}" class="text-xs font-bold text-slate-800 mb-1 flex items-center gap-1.5">
+          <Icon name="calendar_today" size="xs" class="text-purple-600" />
+          <span>Maks. dni roboczych:</span>
         </label>
         <p class="text-[11px] text-slate-500 mb-2">Limit obecności w szkole (np. dla niepełnego etatu).</p>
         <select
@@ -600,8 +603,9 @@
 
       <!-- Lekcji dziennie -->
       <div class="p-3 bg-slate-50 rounded-xl border border-slate-200/70 flex flex-col justify-between">
-        <label for="teacher-max-daily-{teacher.id}" class="block text-xs font-bold text-slate-800 mb-1">
-          ⏱️ Maks. lekcji w dniu:
+        <label for="teacher-max-daily-{teacher.id}" class="text-xs font-bold text-slate-800 mb-1 flex items-center gap-1.5">
+          <Icon name="speed" size="xs" class="text-blue-600" />
+          <span>Maks. lekcji w dniu:</span>
         </label>
         <p class="text-[11px] text-slate-500 mb-2">Ochrona przed przeciążeniem dziennym.</p>
         <select
@@ -621,8 +625,9 @@
 
       <!-- Okienka w tygodniu -->
       <div class="p-3 bg-slate-50 rounded-xl border border-slate-200/70 flex flex-col justify-between">
-        <label for="teacher-max-gaps-{teacher.id}" class="block text-xs font-bold text-slate-800 mb-1">
-          ☕ Dopuszczalne okienka:
+        <label for="teacher-max-gaps-{teacher.id}" class="text-xs font-bold text-slate-800 mb-1 flex items-center gap-1.5">
+          <Icon name="coffee" size="xs" class="text-amber-700" />
+          <span>Dopuszczalne okienka:</span>
         </label>
         <p class="text-[11px] text-slate-500 mb-2">Limit wolnych godzin pomiędzy lekcjami.</p>
         <select

@@ -1,4 +1,6 @@
 <script lang="ts">
+  import Icon from "../common/Icon.svelte";
+
   interface SimpleClass {
     id: string;
     name: string;
@@ -70,8 +72,8 @@
     <!-- Header -->
     <div class="px-6 py-4 bg-gradient-to-r from-blue-900 to-indigo-950 text-white flex items-center justify-between">
       <div class="flex items-center gap-3">
-        <span class="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center text-xl">
-          📋
+        <span class="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center">
+          <Icon name="content_copy" size="base" class="text-white" />
         </span>
         <div>
           <h3 id="duplicate-modal-title" class="text-base font-bold leading-tight">
@@ -85,10 +87,10 @@
       <button
         type="button"
         onclick={onClose}
-        class="text-white/60 hover:text-white p-1 rounded-lg hover:bg-white/10 transition-colors cursor-pointer text-lg"
+        class="text-white/60 hover:text-white p-1 rounded-lg hover:bg-white/10 transition-colors cursor-pointer flex items-center justify-center"
         aria-label="Zamknij"
       >
-        ✕
+        <Icon name="close" size="xs" />
       </button>
     </div>
 
@@ -180,8 +182,9 @@
         {/if}
       </div>
 
-      <p class="text-[11px] text-slate-500 leading-snug">
-        ⚠️ <strong>Uwaga:</strong> Skopiowanie siatki zastąpi dotychczasowe lekcje w wybranych klasach docelowych dokładnym zestawem godzin z klasy <strong>{sourceClass.name}</strong> ({sourceHours}h w tygodniu).
+      <p class="text-[11px] text-slate-500 leading-snug flex items-start gap-1">
+        <Icon name="warning" size="xs" class="text-amber-600 shrink-0 mt-0.5" />
+        <span><strong>Uwaga:</strong> Skopiowanie siatki zastąpi dotychczasowe lekcje w wybranych klasach docelowych dokładnym zestawem godzin z klasy <strong>{sourceClass.name}</strong> ({sourceHours}h w tygodniu).</span>
       </p>
     </div>
 
@@ -201,6 +204,7 @@
         disabled={selectedTargetIds.size === 0}
         class="px-5 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold rounded-xl shadow-xs transition-all cursor-pointer flex items-center gap-1.5"
       >
+        <Icon name="content_copy" size="xs" class="text-white" />
         <span>Skopiuj siatkę do {selectedTargetIds.size} klas</span>
       </button>
     </div>

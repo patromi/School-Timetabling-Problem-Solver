@@ -3,6 +3,7 @@
   import type { EditorState } from "../editorState.svelte";
   import type { SimpleRoom, RoomType } from "../types";
   import AvailabilityGrid from "../availability/AvailabilityGrid.svelte";
+  import Icon from "../../common/Icon.svelte";
 
   interface Props {
     editor: EditorState;
@@ -21,13 +22,13 @@
 
   function getRoomCategoryIcon(cat: string): string {
     const lower = (cat || "").toLowerCase();
-    if (lower.includes("gimnas") || lower.includes("wf") || lower.includes("sport") || lower.includes("hala") || lower.includes("basen")) return "🏀";
-    if (lower.includes("komp") || lower.includes("it") || lower.includes("inf")) return "💻";
-    if (lower.includes("lab") || lower.includes("chem") || lower.includes("fiz") || lower.includes("biol") || lower.includes("przyrod")) return "🔬";
-    if (lower.includes("język") || lower.includes("angiel") || lower.includes("niemiec")) return "🗣️";
-    if (lower.includes("warsztat") || lower.includes("tech") || lower.includes("praktyk")) return "🔧";
-    if (lower.includes("muzyk") || lower.includes("plastyk") || lower.includes("sztuk")) return "🎨";
-    return "🚪";
+    if (lower.includes("gimnas") || lower.includes("wf") || lower.includes("sport") || lower.includes("hala") || lower.includes("basen")) return "fitness_center";
+    if (lower.includes("komp") || lower.includes("it") || lower.includes("inf")) return "computer";
+    if (lower.includes("lab") || lower.includes("chem") || lower.includes("fiz") || lower.includes("biol") || lower.includes("przyrod")) return "science";
+    if (lower.includes("język") || lower.includes("angiel") || lower.includes("niemiec")) return "translate";
+    if (lower.includes("warsztat") || lower.includes("tech") || lower.includes("praktyk")) return "build";
+    if (lower.includes("muzyk") || lower.includes("plastyk") || lower.includes("sztuk")) return "palette";
+    return "meeting_room";
   }
 
   // Inline row editing state
@@ -103,8 +104,8 @@
   <div class="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-xs flex flex-col gap-4">
     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
       <div class="flex items-center gap-4">
-        <div class="w-14 h-14 rounded-2xl bg-amber-50 border border-amber-200/80 text-amber-700 flex items-center justify-center text-2xl font-bold shrink-0">
-          {getRoomCategoryIcon(room.type)}
+        <div class="w-14 h-14 rounded-2xl bg-amber-50 border border-amber-200/80 text-amber-700 flex items-center justify-center font-bold shrink-0">
+          <Icon name={getRoomCategoryIcon(room.type)} size="2xl" class="text-amber-700" />
         </div>
         <div>
           <div class="flex items-center gap-2.5">
@@ -158,7 +159,7 @@
     <div class="flex items-center justify-between">
       <div>
         <h3 class="text-sm font-bold text-slate-900 flex items-center gap-2">
-          <span>📋</span>
+          <Icon name="assignment" size="xs" class="text-slate-500" />
           <span>Harmonogram wykorzystania sali ({roomLessons.length} lekcji)</span>
         </h3>
         <p class="text-xs text-slate-500 mt-0.5">
@@ -192,7 +193,7 @@
             <div class="p-3.5 bg-blue-50/70 border-y border-blue-200/90 flex flex-col gap-3">
               <div class="flex items-center justify-between text-xs font-bold text-blue-900">
                 <span class="flex items-center gap-1.5">
-                  <span>✏️</span>
+                  <Icon name="edit" size="xs" class="text-blue-700" />
                   <span>Edycja zajęć w sali: {lesson.subject}</span>
                 </span>
                 <span class="text-[11px] text-blue-700 font-normal">Zmień parametry i kliknij Zapisz</span>
@@ -235,8 +236,8 @@
                     bind:value={editTeacherId}
                     class="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
-                    <option value="__ANY__">🎲 Dowolny nauczyciel (dobiera system)</option>
-                    <option value="">👤 Brak nauczyciela (wakat)</option>
+                    <option value="__ANY__">[Auto] Dowolny nauczyciel (dobiera system)</option>
+                    <option value="">[Wakat] Brak nauczyciela</option>
                     <optgroup label="Przypisz konkretnego pedagoga:">
                       {#each editor.teachers as t}
                         <option value={t.id}>{t.name} ({editor.getTeacherSubjects(t).join(", ") || t.subject})</option>
@@ -288,7 +289,7 @@
                   onclick={() => saveEditedLesson(lesson.id)}
                   class="px-3.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold cursor-pointer shadow-2xs flex items-center gap-1"
                 >
-                  <span>✓</span>
+                  <Icon name="check" size="xs" class="text-white" />
                   <span>Zapisz zmiany</span>
                 </button>
               </div>
@@ -313,9 +314,9 @@
                   class="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-800 rounded-lg font-bold border border-blue-200/80 transition-all cursor-pointer flex items-center gap-1.5 shadow-2xs group"
                   title="Przejdź do widoku tej klasy"
                 >
-                  <span>👥</span>
+                  <Icon name="groups" size="xs" class="text-blue-600" />
                   <span class="group-hover:underline">{assignedClass?.name || lesson.classId}</span>
-                  <span class="text-blue-400 group-hover:text-blue-600 text-[10px]">➔</span>
+                  <Icon name="arrow_forward" size="xs" class="text-blue-400 group-hover:text-blue-600" />
                 </button>
               </div>
 
@@ -323,7 +324,7 @@
               <div class="col-span-3">
                 {#if lesson.teacherId === "__ANY__"}
                   <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md bg-indigo-50 text-indigo-900 font-bold text-[11px] border border-indigo-200 shadow-2xs">
-                    <span>🎲</span>
+                    <Icon name="shuffle" size="xs" class="text-indigo-700" />
                     <span>Dowolny nauczyciel</span>
                   </span>
                 {:else if assignedTeacher}
@@ -333,13 +334,13 @@
                     class="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-lg font-medium border border-slate-200 transition-all cursor-pointer flex items-center gap-1.5 group text-left"
                     title="Przejdź do profilu tego pedagoga"
                   >
-                    <span>👨‍🏫</span>
+                    <Icon name="badge" size="xs" class="text-slate-600" />
                     <span class="group-hover:underline truncate max-w-[140px]">{assignedTeacher.name}</span>
-                    <span class="text-slate-400 group-hover:text-slate-600 text-[10px]">➔</span>
+                    <Icon name="arrow_forward" size="xs" class="text-slate-400 group-hover:text-slate-600" />
                   </button>
                 {:else}
                   <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-100 text-slate-600 text-[11px]">
-                    <span>👤</span>
+                    <Icon name="person_off" size="xs" class="text-slate-400" />
                     <span>Wakat</span>
                   </span>
                 {/if}
@@ -358,7 +359,7 @@
                   class="p-1.5 text-slate-500 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
                   title="Edytuj parametry tej lekcji"
                 >
-                  ✏️
+                  <Icon name="edit" size="xs" />
                 </button>
                 <button
                   type="button"
@@ -366,7 +367,7 @@
                   class="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer"
                   title="Odłącz tę salę od lekcji (pozostaw lekcję w sali dowolnej)"
                 >
-                  ✕
+                  <Icon name="close" size="xs" />
                 </button>
               </div>
             </div>
@@ -381,7 +382,7 @@
     <div class="flex items-center justify-between">
       <div>
         <h3 class="text-sm font-bold text-slate-900 flex items-center gap-2">
-          <span>🗓️</span>
+          <Icon name="event_available" size="xs" class="text-slate-500" />
           <span>Dostępność pomieszczenia ({room.name})</span>
         </h3>
         <p class="text-xs text-slate-500 mt-0.5">

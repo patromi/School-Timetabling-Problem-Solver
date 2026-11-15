@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "@fontsource-variable/material-symbols-outlined/index.css";
 @source "../lib";
 
 @layer base {

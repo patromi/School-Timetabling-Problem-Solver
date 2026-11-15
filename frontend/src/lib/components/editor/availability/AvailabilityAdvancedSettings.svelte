@@ -1,5 +1,7 @@
 <!-- frontend/src/lib/components/editor/availability/AvailabilityAdvancedSettings.svelte -->
 <script lang="ts">
+  import Icon from "../../common/Icon.svelte";
+
   interface Props {
     resourceType: "teacher" | "room" | "class";
     days: { id: string; name: string }[];
@@ -43,7 +45,10 @@
         onchange={() => (isSoft = false)}
         class="w-4 h-4 accent-rose-600 cursor-pointer"
       />
-      <span class="font-bold text-rose-700">🔴 Wymóg bezwzględny</span>
+      <span class="inline-flex items-center gap-1.5 font-bold text-rose-700">
+        <Icon name="lock" size="xs" class="text-rose-600" />
+        <span>Wymóg bezwzględny</span>
+      </span>
     </label>
 
     <label class="flex items-center gap-2 cursor-pointer">
@@ -54,7 +59,10 @@
         onchange={() => (isSoft = true)}
         class="w-4 h-4 accent-amber-600 cursor-pointer"
       />
-      <span class="font-bold text-amber-700">🟡 Preferencja osobista</span>
+      <span class="inline-flex items-center gap-1.5 font-bold text-amber-700">
+        <Icon name="tune" size="xs" class="text-amber-600" />
+        <span>Preferencja osobista</span>
+      </span>
     </label>
 
     {#if isSoft}
@@ -77,7 +85,7 @@
   <div class="p-4 bg-white rounded-xl border border-indigo-100 shadow-2xs flex flex-col gap-3 text-xs">
     <div class="flex items-center justify-between border-b border-indigo-50/80 pb-2">
       <div class="flex items-center gap-2">
-        <span class="text-sm">⚡</span>
+        <Icon name="tune" size="xs" class="text-indigo-600" />
         <span class="font-bold text-slate-900">Indywidualne preferencje czasu pracy</span>
         <span class="text-[10px] font-semibold px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded-full border border-indigo-200">
           Ustawienia pedagoga
@@ -91,7 +99,7 @@
       <div class="p-3 bg-slate-50/80 rounded-xl border border-slate-200/60 flex flex-col justify-between">
         <div>
           <label for="teacher-max-days-input" class="font-semibold text-slate-800 flex items-center gap-1.5 mb-1">
-            <span>📅</span>
+            <Icon name="calendar_today" size="xs" class="text-slate-400" />
             <span>Dni w tygodniu:</span>
           </label>
           <p class="text-[11px] text-slate-500 leading-snug">
@@ -118,7 +126,7 @@
       <div class="p-3 bg-slate-50/80 rounded-xl border border-slate-200/60 flex flex-col justify-between">
         <div>
           <label for="teacher-max-daily-input" class="font-semibold text-slate-800 flex items-center gap-1.5 mb-1">
-            <span>⏱️</span>
+            <Icon name="schedule" size="xs" class="text-slate-400" />
             <span>Lekcji dziennie:</span>
           </label>
           <p class="text-[11px] text-slate-500 leading-snug">
@@ -146,7 +154,7 @@
       <div class="p-3 bg-slate-50/80 rounded-xl border border-slate-200/60 flex flex-col justify-between">
         <div>
           <label for="teacher-max-gaps-input" class="font-semibold text-slate-800 flex items-center gap-1.5 mb-1">
-            <span>☕</span>
+            <Icon name="coffee" size="xs" class="text-slate-400" />
             <span>Okienka (tydzień):</span>
           </label>
           <p class="text-[11px] text-slate-500 leading-snug">
@@ -176,7 +184,7 @@
   <div class="p-4 bg-white rounded-xl border border-indigo-100 shadow-2xs flex flex-col gap-3 text-xs">
     <div class="flex items-center justify-between border-b border-indigo-50/80 pb-2">
       <div class="flex items-center gap-2">
-        <span class="text-sm">⚖️</span>
+        <Icon name="balance" size="xs" class="text-indigo-600" />
         <span class="font-bold text-slate-900">Dzienne ramy lekcyjne oddziału</span>
         <span class="text-[10px] font-semibold px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded-full border border-indigo-200">
           Higiena nauki
@@ -190,7 +198,7 @@
       <div class="p-3 bg-slate-50/80 rounded-xl border border-slate-200/60 flex flex-col justify-between">
         <div>
           <label for="class-min-daily-input" class="font-semibold text-slate-800 flex items-center gap-1.5 mb-1">
-            <span>📉</span>
+            <Icon name="speed" size="xs" class="text-slate-400" />
             <span>Minimalna liczba lekcji w dniu:</span>
           </label>
           <p class="text-[11px] text-slate-500 leading-snug">
@@ -216,7 +224,7 @@
       <div class="p-3 bg-slate-50/80 rounded-xl border border-slate-200/60 flex flex-col justify-between">
         <div>
           <label for="class-max-daily-input" class="font-semibold text-slate-800 flex items-center gap-1.5 mb-1">
-            <span>📈</span>
+            <Icon name="speed" size="xs" class="text-slate-400" />
             <span>Maksymalna liczba lekcji w dniu:</span>
           </label>
           <p class="text-[11px] text-slate-500 leading-snug">

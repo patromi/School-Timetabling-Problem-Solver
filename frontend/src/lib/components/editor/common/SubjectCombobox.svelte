@@ -1,6 +1,7 @@
 <!-- frontend/src/lib/components/editor/common/SubjectCombobox.svelte -->
 <script lang="ts">
   import { onMount } from "svelte";
+  import Icon from "../../common/Icon.svelte";
 
   interface Props {
     value?: string;
@@ -155,10 +156,10 @@
             onSelect?.("");
             inputRef?.focus();
           }}
-          class="p-1 text-slate-400 hover:text-slate-600 rounded-md transition-colors cursor-pointer text-[10px]"
+          class="p-1 text-slate-400 hover:text-slate-600 rounded-md transition-colors cursor-pointer text-[10px] flex items-center justify-center"
           title="Wyczyść"
         >
-          ✕
+          <Icon name="close" size="xs" />
         </button>
       {/if}
       <button
@@ -226,7 +227,7 @@
           >
             <span class="truncate">{sub}</span>
             {#if isSelected}
-              <span class="text-blue-600 text-xs">✓</span>
+              <Icon name="check" size="xs" class="text-blue-600" />
             {/if}
           </button>
         {/each}

@@ -4,6 +4,7 @@
   import { getDownloadSolutionUrl, getSolverResult } from "../api";
   import TimetableGridTable from "./timetable/TimetableGridTable.svelte";
   import TimetableAuditSection from "./timetable/TimetableAuditSection.svelte";
+  import Icon from "./common/Icon.svelte";
 
   interface Props {
     onGoToSolver: () => void;
@@ -127,8 +128,8 @@
   {:else if error || !result}
     <!-- Empty State -->
     <div class="bg-white border border-slate-200/90 rounded-2xl p-12 text-center shadow-xs flex flex-col items-center justify-center gap-4 max-w-xl mx-auto">
-      <div class="w-16 h-16 rounded-3xl bg-blue-50 text-blue-600 flex items-center justify-center text-3xl shadow-2xs">
-        📅
+      <div class="w-16 h-16 rounded-3xl bg-blue-50 text-blue-600 flex items-center justify-center shadow-2xs">
+        <Icon name="calendar_month" size="2xl" class="text-blue-600" />
       </div>
       <div>
         <h3 class="text-base font-bold text-slate-900">Brak gotowego planu do wyświetlenia</h3>
@@ -141,8 +142,9 @@
         onclick={onGoToSolver}
         class="mt-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-xs transition-all cursor-pointer flex items-center gap-2"
       >
-        <span>⚡ Uruchom generator planu</span>
-        <span>→</span>
+        <Icon name="bolt" size="xs" class="text-white" />
+        <span>Uruchom generator planu</span>
+        <Icon name="arrow_forward" size="xs" class="text-white" />
       </button>
     </div>
   {:else}
@@ -153,9 +155,10 @@
           <h2 class="text-lg font-bold text-slate-900 tracking-tight">
             Tygodniowy Plan Zajęć Szkolnych
           </h2>
-          <span class="px-2.5 py-0.5 rounded-full text-xs font-semibold
+          <span class="px-2.5 py-0.5 rounded-full text-xs font-semibold inline-flex items-center gap-1.5
             {result.infeasibility === 0 ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-rose-50 text-rose-800 border border-rose-200'}">
-            {result.infeasibility === 0 ? '✅ 0 konfliktów (Plan w 100% poprawny)' : `⚠️ ${result.infeasibility} konfliktów`}
+            <Icon name={result.infeasibility === 0 ? "check_circle" : "warning"} size="xs" />
+            <span>{result.infeasibility === 0 ? '0 konfliktów (Plan w 100% poprawny)' : `${result.infeasibility} konfliktów`}</span>
           </span>
         </div>
         <p class="text-xs text-slate-500 mt-1">
@@ -170,14 +173,16 @@
           onclick={handlePrint}
           class="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl border border-slate-300/80 transition-all cursor-pointer flex items-center gap-1.5 shadow-2xs"
         >
-          <span>🖨️ Drukuj plan</span>
+          <Icon name="print" size="xs" class="text-slate-600" />
+          <span>Drukuj plan</span>
         </button>
         <a
           href={getDownloadSolutionUrl()}
           download="plan_lekcji_rozwiazanie.xml"
           class="px-3.5 py-2 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-xl border border-slate-300/80 transition-all cursor-pointer flex items-center gap-1.5 shadow-2xs"
         >
-          <span>📥 Pobierz plik XML</span>
+          <Icon name="download" size="xs" class="text-slate-600" />
+          <span>Pobierz plik XML</span>
         </a>
       </div>
     </div>
@@ -193,7 +198,8 @@
             perspective === "class" ? "bg-white text-slate-900 shadow-xs font-bold" : "hover:text-slate-900"
           }`}
         >
-          <span>👥 Plan dla Klasy</span>
+          <Icon name="groups" size="xs" />
+          <span>Plan dla Klasy</span>
           <span class="text-[10px] bg-slate-200 px-1.5 py-0.2 rounded-full">{resourcesList.classes.length}</span>
         </button>
 
@@ -204,7 +210,8 @@
             perspective === "teacher" ? "bg-white text-slate-900 shadow-xs font-bold" : "hover:text-slate-900"
           }`}
         >
-          <span>👨‍🏫 Plan dla Nauczyciela</span>
+          <Icon name="person" size="xs" />
+          <span>Plan dla Nauczyciela</span>
           <span class="text-[10px] bg-slate-200 px-1.5 py-0.2 rounded-full">{resourcesList.teachers.length}</span>
         </button>
 
@@ -215,7 +222,8 @@
             perspective === "room" ? "bg-white text-slate-900 shadow-xs font-bold" : "hover:text-slate-900"
           }`}
         >
-          <span>🚪 Obłożenie Sali</span>
+          <Icon name="meeting_room" size="xs" />
+          <span>Obłożenie Sali</span>
           <span class="text-[10px] bg-slate-200 px-1.5 py-0.2 rounded-full">{resourcesList.rooms.length}</span>
         </button>
       </div>

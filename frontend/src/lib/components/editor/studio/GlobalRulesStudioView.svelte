@@ -4,6 +4,7 @@
   import DailyHygieneRulesSection from "./rules/DailyHygieneRulesSection.svelte";
   import WeeklyRhythmRulesSection from "./rules/WeeklyRhythmRulesSection.svelte";
   import RelationsAndOrderStudioSection from "./rules/RelationsAndOrderStudioSection.svelte";
+  import Icon from "../../common/Icon.svelte";
 
   interface Props {
     editor: EditorState;
@@ -16,7 +17,7 @@
   <!-- Nagłówek -->
   <div class="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-xs flex flex-col gap-2">
     <h3 class="text-base font-bold text-slate-900 flex items-center gap-2">
-      <span>⚖️</span>
+      <Icon name="balance" size="base" class="text-slate-700" />
       <span>Ogólne zasady i standardy dydaktyczne szkoły</span>
     </h3>
     <p class="text-xs text-slate-500">
@@ -33,7 +34,7 @@
     <div class="grid grid-cols-1 md:grid-cols-2 gap-3.5">
       <div class="p-4 bg-slate-50 rounded-xl border border-slate-200/70 flex items-start justify-between gap-3 text-xs">
         <div class="flex items-start gap-3">
-          <span class="text-xl">🛡️</span>
+          <Icon name="shield" size="lg" class="text-slate-700" />
           <div>
             <span class="font-bold text-slate-900 block">Brak nakładania się zajęć</span>
             <p class="text-slate-500 text-[11px] mt-0.5 leading-snug">
@@ -48,7 +49,7 @@
 
       <div class="p-4 bg-slate-50 rounded-xl border border-slate-200/70 flex items-start justify-between gap-3 text-xs">
         <div class="flex items-start gap-3">
-          <span class="text-xl">⏱️</span>
+          <Icon name="timer" size="lg" class="text-slate-700" />
           <div>
             <span class="font-bold text-slate-900 block">Kompletny plan zajęć</span>
             <p class="text-slate-500 text-[11px] mt-0.5 leading-snug">

@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { ConstraintScore } from "../../types";
   import { getConstraintScoreFriendlyInfo } from "../../school_helpers";
+  import Icon from "../common/Icon.svelte";
 
   interface Props {
     scores: ConstraintScore[];
@@ -31,9 +32,10 @@
       <button
         type="button"
         onclick={onClearViolation}
-        class="text-xs font-semibold text-blue-600 hover:text-blue-700 cursor-pointer"
+        class="text-xs font-semibold text-blue-600 hover:text-blue-700 cursor-pointer inline-flex items-center gap-1"
       >
-        ✕ Wyłącz podświetlenie reguły
+        <Icon name="close" size="xs" />
+        <span>Wyłącz podświetlenie reguły</span>
       </button>
     {/if}
   </div>
@@ -63,17 +65,27 @@
         }`}
       >
         <div class="flex items-start justify-between gap-2">
-          <span class="text-xs font-bold text-slate-900 leading-snug">
-            {friendly.title}
+          <span class="text-xs font-bold text-slate-900 leading-snug inline-flex items-center gap-1.5">
+            <Icon
+              name={friendly.category === 'uczniowie' ? 'school' : friendly.category === 'nauczyciele' ? 'person' : friendly.category === 'sale' ? 'meeting_room' : 'event'}
+              size="xs"
+              class="text-slate-400 shrink-0"
+            />
+            <span>{friendly.title}</span>
           </span>
           <span class={`text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${
             hasViolations
               ? s.required
                 ? 'bg-rose-100 text-rose-800'
                 : 'bg-amber-100 text-amber-800'
-              : 'bg-emerald-100 text-emerald-800'
+              : 'bg-emerald-100 text-emerald-800 inline-flex items-center gap-0.5'
           }`}>
-            {hasViolations ? `Kara: ${s.cost} pkt` : '✓ 100%'}
+            {#if hasViolations}
+              Kara: {s.cost} pkt
+            {:else}
+              <Icon name="check" size="xs" class="text-emerald-700" />
+              <span>100%</span>
+            {/if}
           </span>
         </div>
         <div class="mt-1 flex items-center gap-1.5">
@@ -92,7 +104,8 @@
           <div class={`mt-2 text-[10px] font-semibold flex items-center gap-1 ${
             s.required ? 'text-rose-800' : 'text-amber-800'
           }`}>
-            <span>🔍 Kliknij, aby podświetlić w siatce</span>
+            <Icon name="search" size="xs" />
+            <span>Kliknij, aby podświetlić w siatce</span>
           </div>
         {/if}
       </button>

@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { LinkedGroupItem } from "../types";
+  import Icon from "../../common/Icon.svelte";
 
   interface Props {
     lessons: Array<{
@@ -97,16 +98,18 @@
       <button
         type="button"
         onclick={presetLanguageGroup}
-        class="px-2 py-0.5 bg-white border border-slate-200 hover:border-purple-300 text-purple-800 rounded text-[10px] font-semibold cursor-pointer transition-all"
+        class="px-2 py-0.5 bg-white border border-slate-200 hover:border-purple-300 text-purple-800 rounded text-[10px] font-semibold cursor-pointer transition-all inline-flex items-center gap-1"
       >
-        🗣️ Języki obce
+        <Icon name="translate" size="xs" />
+        <span>Języki obce</span>
       </button>
       <button
         type="button"
         onclick={presetPeGroup}
-        class="px-2 py-0.5 bg-white border border-slate-200 hover:border-purple-300 text-purple-800 rounded text-[10px] font-semibold cursor-pointer transition-all"
+        class="px-2 py-0.5 bg-white border border-slate-200 hover:border-purple-300 text-purple-800 rounded text-[10px] font-semibold cursor-pointer transition-all inline-flex items-center gap-1"
       >
-        🏃 WF równoległy
+        <Icon name="fitness_center" size="xs" />
+        <span>WF równoległy</span>
       </button>
     </div>
   </div>
@@ -222,7 +225,8 @@
           : "bg-slate-200 text-slate-400 cursor-not-allowed"
       }`}
     >
-      <span>➕ Połącz wybrane lekcje w grupę</span>
+      <Icon name="add_link" size="xs" />
+      <span>Połącz wybrane lekcje w grupę</span>
     </button>
   </div>
 </div>

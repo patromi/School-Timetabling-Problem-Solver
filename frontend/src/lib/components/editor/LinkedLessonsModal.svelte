@@ -2,6 +2,7 @@
   import type { LinkedGroupItem } from "./types";
   import LinkedGroupsList from "./linked/LinkedGroupsList.svelte";
   import NewLinkedGroupForm from "./linked/NewLinkedGroupForm.svelte";
+  import Icon from "../common/Icon.svelte";
 
   export type { LinkedGroupItem };
 
@@ -63,16 +64,16 @@
     >
       <div class="flex items-center gap-3">
         <span
-          class="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center text-xl"
+          class="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center"
         >
-          🔗
+          <Icon name="link" size="base" class="text-white" />
         </span>
         <div>
           <h3
             id="linked-lessons-title"
             class="text-base font-bold leading-tight"
           >
-            równoległe i grupy jednoczesne
+            Lekcje równoległe i grupy jednoczesne
           </h3>
           <p class="text-xs text-purple-200 mt-0.5">
             Synchronizacja godzinowa lekcji między klasami (grupy językowe,
@@ -83,10 +84,10 @@
       <button
         type="button"
         onclick={onClose}
-        class="text-white/60 hover:text-white p-1 rounded-lg hover:bg-white/10 transition-colors cursor-pointer text-lg"
+        class="text-white/60 hover:text-white p-1 rounded-lg hover:bg-white/10 transition-colors cursor-pointer flex items-center justify-center"
         aria-label="Zamknij"
       >
-        ✕
+        <Icon name="close" size="xs" />
       </button>
     </div>
 

@@ -1,5 +1,7 @@
 <!-- frontend/src/lib/components/editor/availability/AvailabilityGrid.svelte -->
 <script lang="ts">
+  import Icon from "../../common/Icon.svelte";
+
   interface Props {
     days: { id: string; name: string }[];
     periodsPerDay: number;
@@ -57,7 +59,7 @@
           >
             <div class="flex items-center justify-between gap-1">
               <span>Godzina \ Dzień</span>
-              <span>⚡</span>
+              <Icon name="bolt" size="xs" />
             </div>
             <span class="text-[9px] font-normal text-slate-400">
               {unavailableSet.size === totalSlots ? "kliknij: odblokuj cały tydzień" : "kliknij: zablokuj cały tydzień"}
@@ -82,7 +84,7 @@
               <div class="flex items-center gap-1">
                 <span>{day.name}</span>
                 {#if dayBlocked}
-                  <span class="text-[11px] text-rose-600 font-bold">🚫</span>
+                  <Icon name="block" size="xs" class="text-rose-600" />
                 {/if}
               </div>
               <span class={`text-[9px] font-normal ${dayBlocked ? "text-rose-600 font-semibold" : "text-slate-400"}`}>
@@ -112,7 +114,7 @@
               <div class="flex items-center justify-between gap-1">
                 <span>Lekcja {period}</span>
                 {#if periodBlocked}
-                  <span class="text-[11px] text-rose-600 font-bold">🚫</span>
+                  <Icon name="block" size="xs" class="text-rose-600" />
                 {/if}
               </div>
               <span class={`text-[9px] font-normal ${periodBlocked ? "text-rose-600 font-semibold" : "text-slate-400"}`}>
@@ -135,10 +137,10 @@
                 }`}
               >
                 {#if unavailable}
-                  <span class="text-xs">🚫</span>
+                  <Icon name="block" size="xs" class="text-rose-700" />
                   <span class="text-[10px] font-bold">Niedostępny</span>
                 {:else}
-                  <span class="text-xs text-slate-300 group-hover:text-emerald-500">✓</span>
+                  <Icon name="check" size="xs" class="text-slate-300 group-hover:text-emerald-500" />
                   <span class="text-[10px] text-slate-400">Dostępny</span>
                 {/if}
               </button>

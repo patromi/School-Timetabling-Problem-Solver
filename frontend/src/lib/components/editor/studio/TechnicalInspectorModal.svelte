@@ -3,6 +3,7 @@
   import { onMount } from "svelte";
   import type { InstanceDetail } from "../../../types";
   import { getExportInstanceUrl } from "../../../api";
+  import Icon from "../../common/Icon.svelte";
 
   interface Props {
     open: boolean;
@@ -98,8 +99,9 @@
 
       <div class="flex items-center gap-2">
         {#if copyFeedback}
-          <span class="text-xs text-emerald-600 font-bold bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200 animate-in fade-in">
-            ✓ {copyFeedback}
+          <span class="text-xs text-emerald-600 font-bold bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200 animate-in fade-in inline-flex items-center gap-1">
+            <Icon name="check" size="xs" />
+            <span>{copyFeedback}</span>
           </span>
         {/if}
 
@@ -108,7 +110,7 @@
           onclick={onClose}
           class="w-8 h-8 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-200/70 flex items-center justify-center transition-all cursor-pointer text-base"
         >
-          ✕
+          <Icon name="close" size="sm" />
         </button>
       </div>
     </div>
@@ -128,7 +130,8 @@
               : "hover:text-slate-900"
           }`}
         >
-          <span>📄 Plik XHSTT XML</span>
+          <Icon name="code" size="sm" />
+          <span>Plik XHSTT XML</span>
         </button>
 
         <button
@@ -140,7 +143,8 @@
               : "hover:text-slate-900"
           }`}
         >
-          <span>🔍 Model JSON API</span>
+          <Icon name="data_object" size="sm" />
+          <span>Model JSON API</span>
         </button>
 
         <button
@@ -152,7 +156,8 @@
               : "hover:text-slate-900"
           }`}
         >
-          <span>⏰ Siatka slotów ({instance.times?.length || 0})</span>
+          <Icon name="schedule" size="sm" />
+          <span>Siatka slotów ({instance.times?.length || 0})</span>
         </button>
 
         <button
@@ -164,7 +169,8 @@
               : "hover:text-slate-900"
           }`}
         >
-          <span>🏷️ Grupy reguł ({(instance.time_groups?.length || 0) + (instance.resource_groups?.length || 0)})</span>
+          <Icon name="label" size="sm" />
+          <span>Grupy reguł ({(instance.time_groups?.length || 0) + (instance.resource_groups?.length || 0)})</span>
         </button>
       </div>
 
@@ -177,14 +183,16 @@
             disabled={!xmlContent}
             class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold rounded-lg transition-all cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
           >
-            <span>📋 Kopiuj XML</span>
+            <Icon name="content_copy" size="xs" />
+            <span>Kopiuj XML</span>
           </button>
           <a
             href={getExportInstanceUrl(instance.id)}
             download={`${instance.id}.xml`}
             class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg transition-all cursor-pointer flex items-center gap-1.5 shadow-xs"
           >
-            <span>📥 Pobierz .xml</span>
+            <Icon name="download" size="xs" class="text-white" />
+            <span>Pobierz .xml</span>
           </a>
         {:else if activeTab === "json"}
           <button
@@ -192,7 +200,8 @@
             onclick={() => copyToClipboard(JSON.stringify(instance, null, 2), "obiekt JSON")}
             class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold rounded-lg transition-all cursor-pointer flex items-center gap-1.5"
           >
-            <span>📋 Kopiuj JSON</span>
+            <Icon name="content_copy" size="xs" />
+            <span>Kopiuj JSON</span>
           </button>
         {/if}
       </div>
