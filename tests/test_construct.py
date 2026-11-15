@@ -193,7 +193,9 @@ def test_build_initial_splits_brazil_instance_without_overflowing_any_time():
         assert start + se.duration <= len(all_time_ids)
 
 
-def _prefer_times_split_archive(event_duration: int, forbidden_durations: list[int]) -> str:
+def _prefer_times_split_archive(
+    event_duration: int, forbidden_durations: list[int]
+) -> str:
     """Mini-archive with one event and PreferTimesConstraint entries that
     declare certain durations as having no valid times (empty <Times>).
     Simulates the AU-SA-96 pattern where splitting is implied by
@@ -261,3 +263,53 @@ def test_build_initial_does_not_split_when_no_forbidden_durations():
     sub_events = [se for se in solution.events if se.event_ref == "E1"]
     assert len(sub_events) == 1
     assert sub_events[0].duration == 4
+
+
+def _clash_cost(instance, solution) -> int:  # type: ignore[no-untyped-def]
+    from src.evaluator_ref import evaluate_constraint
+
+    occurrences = resolve_occurrences(instance, solution)
+    return sum(
+        evaluate_constraint(instance, occurrences, c)
+        for c in instance.constraints
+        if c.type == "AvoidClashesConstraint"
+    )
+
+
+def test_build_greedy_creates_the_same_event_pieces_as_build_initial():
+    # Only the chosen times differ: the same events, split into the same
+    # durations, with every slot filled.
+    from collections import Counter
+
+    from src.construct import build_greedy
+
+    instance = parse_archive(_load("BrazilInstance1.xml"))[0]
+    naive = build_initial(instance, random.Random(0))
+    greedy = build_greedy(instance, random.Random(0))
+
+    def pieces(sol):  # type: ignore[no-untyped-def]
+        return Counter((se.event_ref, se.duration) for se in sol.events)
+
+    assert pieces(greedy) == pieces(naive)
+    for o in resolve_occurrences(instance, greedy):
+        assert o.time_ref is not None
+        assert all(ref is not None for _, ref in o.resource_assignments)
+
+
+def test_build_greedy_starts_with_fewer_clashes_than_build_initial():
+    from src.construct import build_greedy
+
+    instance = parse_archive(_load("BrazilInstance1.xml"))[0]
+    for seed in range(5):
+        naive = _clash_cost(instance, build_initial(instance, random.Random(seed)))
+        greedy = _clash_cost(instance, build_greedy(instance, random.Random(seed)))
+        assert greedy < naive, f"seed={seed}: greedy {greedy} vs naive {naive}"
+
+
+def test_build_greedy_is_deterministic_given_the_same_seed():
+    from src.construct import build_greedy
+
+    instance = parse_archive(_load("BrazilInstance1.xml"))[0]
+    a = build_greedy(instance, random.Random(3))
+    b = build_greedy(instance, random.Random(3))
+    assert a == b

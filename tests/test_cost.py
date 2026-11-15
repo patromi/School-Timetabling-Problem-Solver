@@ -183,3 +183,24 @@ def test_adagen_scalar_uses_the_grown_multiplier():
     cost = Cost(infeasibility=2, objective=3)
 
     assert schedule.scalar(cost, stagnant_iterations=1) == cost.as_scalar(20)
+
+
+def test_cost_by_constraint_type_adds_up_to_the_cost_pair():
+    import random
+
+    from src.construct import build_initial
+    from src.cost import cost_by_constraint_type
+
+    text = (Path(__file__).parent / "fixtures" / "BrazilInstance1.xml").read_text(
+        encoding="utf-8"
+    )
+    instance = parse_archive(text)[0]
+    solution = build_initial(instance, random.Random(0))
+
+    breakdown = cost_by_constraint_type(instance, solution)
+    cost = evaluate_cost(instance, solution)
+
+    assert set(breakdown) == {"hard", "soft"}
+    assert sum(breakdown["hard"].values()) == cost.infeasibility
+    assert sum(breakdown["soft"].values()) == cost.objective
+    assert all(v > 0 for part in breakdown.values() for v in part.values())

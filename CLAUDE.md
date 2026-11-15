@@ -28,8 +28,9 @@ Priorytety projektu (w tej kolejności): poprawność > powtarzalność eksperym
    - stan dyskretny: `(naruszenia_twarde: {0,1}, stagnacja: {niska, srednia, wysoka})` — 6 stanów,
    - statystyki: słownik `(stan, h_id) -> [Q, n]`,
    - wybór: `argmax Q + c*sqrt(ln N / n)`, dla `n == 0` priorytet nieskończony,
-   - aktualizacja Q: średnia wykładnicza `Q <- (1-alpha)*Q + alpha*r`, alpha ~0.08,
-   - nagroda: `r = max(0, (koszt_przed - koszt_po)/koszt_przed)` + bonus za pobicie najlepszego globalnego rozwiązania,
+   - aktualizacja Q: średnia wykładnicza `Q <- (1-alpha)*Q + alpha*r`, alpha 0.02 (pierwotnie ~0.08; przy 0.08 rzadkie sukcesy zanikały po kilkunastu wywołaniach, wszystkie Q spadały do ~0 i UCB w późnej fazie wybierał heurystyki niemal równomiernie),
+   - perturbacje (`small_perturbation`, `large_perturbation`) uruchamia solver przy stagnacji; selektor ich nie wybiera,
+   - nagroda binarna: `r = 1` jeśli kandydat poprawia bieżące rozwiązanie, inaczej `0`, + bonus za pobicie najlepszego globalnego rozwiązania (pierwotnie względna poprawa `(koszt_przed - koszt_po)/koszt_przed`; zmienione, bo przy spłaszczonym koszcie poprawa miękka przy naruszeniach twardych dawała nagrodę ~1e-6 i wszystkie Q ≈ 0 — UCB działał jak round-robin),
    - optymistyczna inicjalizacja Q dla nowych heurystyk, okres ochronny min. 100 wywołań przed usuwaniem,
    - usuwanie: tylko gdy pula > limit (20), heurystyka ma n > 100 i najgorsze Q; heurystyki ręczne mają flagę `protected` i nie są usuwane.
    - ŻADNEGO deep RL (sieci neuronowe) — świadoma decyzja projektowa.
@@ -91,6 +92,23 @@ Skrypt uruchamiający macierz konfiguracji: {losowy, epsilon-greedy, UCB} x {pul
 Pracuj etapami. Przed rozpoczęciem etapu przedstaw krótki plan plików i interfejsów do akceptacji. Po zakończeniu etapu uruchom testy i pokaż wyniki DoD. Jeśli coś w specyfikacji jest niejednoznaczne albo widzisz lepsze rozwiązanie sprzeczne z decyzjami powyżej — zapytaj, zanim zmienisz.
 
 ## Bieżący stan implementacji (repo)
+
+> **Decyzja (18.10.2026): kryterium akceptacji to zawsze symulowane wyżarzanie (SA).** LAHC jest
+> rozwiązaniem historycznym z etapu przejściowego — zostaje w kodzie wyłącznie jako opcja
+> (`--acceptance lahc`) do porównań i odtworzenia starszych wyników. Nowe eksperymenty, wyniki do pracy
+> i domyślne ustawienia mają używać SA (`--acceptance sa`; w `experiments.py` — `AutoSAAcceptance`
+> z temperaturą dobieraną do budżetu czasu, w `run_solver.py` — `SimulatedAnnealingAcceptance`).
+> Plik pętli nadal nazywa się `src/lahc.py` (`run_lahc`), ale samo kryterium akceptacji jest
+> wymienne (`src/acceptance.py`). Opis poniżej dotyczy stanu sprzed tej decyzji.
+>
+> **Domyślna konfiguracja (18.10.2026, issue #82, „konfiguracja 5”):** UCB (`c = 0.02`, `alpha = 0.02`,
+> nagroda binarna, perturbacje poza pulą selektora), SA z temperaturą startową 1e-2 kosztu startowego
+> (`AutoSAAcceptance`), heurystyka `repair_clash` w puli, start zachłanny `build_greedy`. W eksperymencie
+> na 10 seedach dała 25/30 planów wykonalnych na BR-SA-00, GR-H1-97 i GR-PA-08 (bazowo 13/30).
+> Wyniki i wykresy: `data/results/report_final/`. Konfigurację sprzed tej pracy przywraca jedna flaga
+> `experiments.py --preset bazowy` (SA 1e-3, start losowy, perturbacje w puli selektora, UCB alpha 0.08,
+> bez `repair_clash`); każdy z tych elementów ma też osobną flagę. Skrót `sa` w kolumnie `acceptance`
+> oznaczał przed 18.10.2026 T0 = 1e-3 — nowe pliki mają jednoznaczną kolumnę `acceptance_detail`.
 
 Obecnie zaimplementowany pipeline to construct + Late Acceptance Hill Climbing (LAHC), czyli **etap
 przejściowy sprzed powyższej specyfikacji** — nie ma jeszcze selektora RL (Etap 6) ani generatora LLM
