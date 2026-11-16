@@ -49,7 +49,11 @@ class RunStats:
     or once at the end, so collecting them costs nothing per step."""
 
     steps_done: int = 0
+    # search time: wall-clock time without the LLM generator (llm_s)
     elapsed_s: float = 0.0
+    # wall-clock time spent in the LLM generator (LLM calls and validation
+    # of their code); it does not count against max_seconds
+    llm_s: float = 0.0
     # first new best with no hard violation; None if the run never got there
     first_feasible_step: int | None = None
     first_feasible_elapsed_s: float | None = None
@@ -300,8 +304,15 @@ def run_lahc(  # noqa: C901 — solver loop; complexity is inherent to the algor
     idle_limit` iterations without improvement.  Newly validated heuristics
     are appended to the pool and registered with the UCB selector.
     `llm_stats` is updated in-place so the caller can inspect acceptance
-    rates after the run.  LLM wall time is included in elapsed time but
-    the iteration counter is unaffected (pauzy nie psuja kryterium akceptacji).
+    rates after the run.
+
+    Time spent in the LLM generator (the LLM calls and the validation of
+    the code they return) is left out of the search clock: `max_seconds`,
+    every logged `elapsed_s` and the cooling schedule of a time-keyed
+    acceptance criterion (its `pause()` method) count search time only, so
+    a run with the LLM gets the same search budget as one without it.  The
+    LLM time is reported separately in `stats.llm_s`, as the project spec
+    requires.
     """
     if evaluation not in (FULL, INCREMENTAL, VERIFY):
         raise ValueError(f"unknown evaluation mode: {evaluation!r}")
@@ -484,6 +495,7 @@ def run_lahc(  # noqa: C901 — solver loop; complexity is inherent to the algor
 
         # --- LLM trigger (fires independently of perturbation) ---
         if llm_enabled and _llm_stagnant >= _llm_trigger:
+            llm_started = time.monotonic()
             new_heuristics, _llm_last_step, _llm_trigger_idx = _run_llm_trigger(
                 instance=instance,
                 current=current,
@@ -501,6 +513,13 @@ def run_lahc(  # noqa: C901 — solver loop; complexity is inherent to the algor
                 seed=seed,
                 trigger_idx=_llm_trigger_idx,
             )
+            # stop the search clock for the time the generator took
+            llm_spent = time.monotonic() - llm_started
+            t_start += llm_spent
+            run_stats.llm_s = round(run_stats.llm_s + llm_spent, 3)
+            pause = getattr(criterion, "pause", None)
+            if callable(pause):
+                pause(llm_spent)
             pool.extend(new_heuristics)
             # LLM heuristics are non-perturbation; add them to selectable
             if not select_perturbations:

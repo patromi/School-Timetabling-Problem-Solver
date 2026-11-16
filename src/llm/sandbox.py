@@ -263,7 +263,14 @@ def subprocess_run(
     instance_pickle = pickle.dumps(instance)
     solution_pickle = pickle.dumps(solution)
 
-    ctx = multiprocessing.get_context("forkserver")
+    # forkserver on POSIX; Windows has no forkserver, so local development
+    # there falls back to spawn (same isolation, slower start)
+    method = (
+        "forkserver"
+        if "forkserver" in multiprocessing.get_all_start_methods()
+        else "spawn"
+    )
+    ctx = multiprocessing.get_context(method)
     q: multiprocessing.Queue[dict[str, Any]] = ctx.Queue()
     proc = ctx.Process(
         target=_subprocess_worker,

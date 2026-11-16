@@ -28,6 +28,8 @@ from pathlib import Path
 
 import httpx
 
+from src.llm.filelock import append_line
+
 LLM_BACKEND: str = os.environ.get("LLM_BACKEND", "ollama")
 
 OLLAMA_HOST: str = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
@@ -60,8 +62,14 @@ class LLMResponse:
     cached: bool
 
 
-def _cache_key(model: str, messages: list[dict[str, str]]) -> str:
-    payload = json.dumps({"model": model, "messages": messages}, sort_keys=True)
+def _cache_key(model: str, messages: list[dict[str, str]], sample_idx: int = 0) -> str:
+    """Key of one cached response. `sample_idx` tells apart several samples
+    drawn for the same prompt (the candidates of one LLM call); sample 0
+    keeps the original key, so caches written before it still hit."""
+    content: dict[str, object] = {"model": model, "messages": messages}
+    if sample_idx:
+        content["sample_idx"] = sample_idx
+    payload = json.dumps(content, sort_keys=True)
     return hashlib.sha256(payload.encode()).hexdigest()
 
 
@@ -112,8 +120,7 @@ def _append_cache(
         "messages": messages,
         "backend": LLM_BACKEND,
     }
-    with _CACHE_FILE.open("a", encoding="utf-8") as fh:
-        fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    append_line(_CACHE_FILE, json.dumps(entry, ensure_ascii=False))
     # Keep the in-memory cache in sync so the next call() doesn't re-read disk.
     if _CACHE is not None:
         _CACHE[key] = content
@@ -183,6 +190,7 @@ def call(
     temperature: float = 0.8,
     max_tokens: int = 1024,
     use_cache: bool = True,
+    sample_idx: int = 0,
 ) -> LLMResponse:
     """Send a chat request to the configured backend; return cached response when available.
 
@@ -192,8 +200,11 @@ def call(
         temperature: Sampling temperature — 0.8 gives diverse candidates.
         max_tokens:  Maximum tokens to generate.
         use_cache:   When False, always calls the API (useful for testing).
+        sample_idx:  Index of this sample among several drawn for the same
+                     prompt. Without it every candidate after the first
+                     would be a cache hit returning the first one's code.
     """
-    key = _cache_key(model, messages)
+    key = _cache_key(model, messages, sample_idx)
 
     if use_cache:
         cache = _get_cache()

@@ -240,6 +240,17 @@ class AutoSAAcceptance:
         # step is remembered, so reset() knows where a new schedule starts
         self._last_step = step
 
+    def pause(self, seconds: float) -> None:
+        """Leave `seconds` of wall-clock time out of the cooling schedule.
+
+        The solver calls it after the LLM generator ran: the temperature
+        should follow the search time, not the time spent waiting for the
+        LLM and validating its code, so a run with the LLM cools exactly
+        like one without it."""
+        self._start += seconds
+        if self._run_start is not None:
+            self._run_start += seconds
+
     def reset(self, current_cost: int) -> None:
         self._t0 = max(self._t_end, current_cost * self._t0_factor)
         self._start = time.monotonic()

@@ -1,49 +1,62 @@
 #!/bin/bash
-# EXP-L1: UCB static vs UCB + LLM pool — uruchamiane na obl.
+# EXP-L1: UCB z pulą statyczną (llm=none) vs UCB z pulą rozszerzaną przez LLM
+# (llm=a) — oba warianty w jednym zadaniu, na całym węźle obl, równolegle.
+#
+# Oba warianty biegną w tym samym procesie experiments.py, przemieszane w
+# jednej puli workerów, więc dzielą identyczne warunki sprzętowe. Limit
+# czasu dotyczy samego przeszukiwania: czas generatora LLM (zapytania +
+# walidacja kodu) nie wlicza się do niego i ląduje osobno w kolumnie llm_s.
+#
 # Łączy się z serwerem vLLM uruchomionym przez slurm_vllm_hgx2.sh na hgx2.
 #
-# Użycie (bezpośrednie):
-#   VLLM_JOB_ID=<id> sbatch -A <KONTO> scripts/slurm_exp_l1_llm.sh
-# Użycie przez koordynator:
+# Użycie przez koordynator (zalecane):
 #   bash scripts/submit_llm_experiments.sh -A <KONTO>
+# Bezpośrednio (vLLM musi już działać):
+#   sbatch -A <KONTO> scripts/slurm_exp_l1_llm.sh
 
 #SBATCH -J exp_l1_llm
 #SBATCH -p hgx
 #SBATCH -w obl1
-#SBATCH --cpus-per-task 8
-#SBATCH --mem 24G
-#SBATCH -t 06:00:00
+#SBATCH --exclusive
+#SBATCH --cpus-per-task 128
+#SBATCH --mem 256G
+#SBATCH -t 03:00:00
 #SBATCH -o slurm_exp_l1_%j.out
 #SBATCH -e slurm_exp_l1_%j.err
 
 set -euo pipefail
 
 # ── konfiguracja ──────────────────────────────────────────────────────────
-PROJ="$HOME/PycharmProjects/LLM-Driven-Reinforcement-Learning-Hyper-Heuristic-for-the-School-Timetabling-Problem"
-LOG_DIR="/raid/$USER/exp_l1_llm_logs_${SLURM_JOB_ID}"
-RESULTS_CSV="${LOG_DIR}/exp_l1_llm.csv"
+PROJ="${PROJ:-$HOME/PycharmProjects/LLM-Driven-Reinforcement-Learning-Hyper-Heuristic-for-the-School-Timetabling-Problem}"
+LOG_DIR="/raid/$USER/exp_l1_${SLURM_JOB_ID}"
+RESULTS_CSV="${LOG_DIR}/exp_l1.csv"
 
-# vLLM — hostname hgx2, port 8000.
-# Job ID vLLM-a przekazywany przez submit_llm_experiments.sh jako VLLM_JOB_ID;
-# używamy go tylko do znalezienia pliku sygnałowego.
 VLLM_HOST="${VLLM_HOST:-hgx2}"
 VLLM_PORT="${VLLM_PORT:-8000}"
 VLLM_MODEL="${VLLM_MODEL:-Qwen/Qwen2.5-Coder-32B-Instruct}"
 
-# Parametry eksperymentu
-INSTANCES="${EXP_INSTANCES:-BR-SA-00 ZA-WD-09 AU-SA-96}"
+# 10 instancji w zakresie pracy (zasoby przypisane z góry), od małych do
+# dużych; zob. analiza instancji w opisie issue #46.
+INSTANCES="${EXP_INSTANCES:-BR-SA-00 BR-SN-00 FI-WP-06 FI-MP-06 GR-P3-10 GR-PA-08 GR-H1-97 ZA-LW-09 ZA-WD-09 IT-I4-96}"
 SEEDS="${EXP_SEEDS:-0 1 2 3 4 5 6 7 8 9}"
-TIME_LIMIT="${EXP_TIME_LIMIT:-300}"   # 5 min na przebieg, zmień wg potrzeb
+TIME_LIMIT="${EXP_TIME_LIMIT:-300}"   # sekundy przeszukiwania na przebieg
 LLM_TRIGGER="${LLM_TRIGGER:-3}"
+# 96 ze 128 rdzeni: reszta zostaje dla podprocesów sandboxa i walidacji
+WORKERS="${EXP_WORKERS:-96}"
 
 # ── nagłówek ──────────────────────────────────────────────────────────────
-echo "=== EXP-L1 LLM (PUT cluster) ==="
-echo "Node    : $(hostname)"
-echo "Date    : $(date)"
-echo "Job ID  : $SLURM_JOB_ID"
-echo "Project : $PROJ"
-echo "LogDir  : $LOG_DIR"
-echo "vLLM    : http://${VLLM_HOST}:${VLLM_PORT}/v1 (model=$VLLM_MODEL)"
+echo "=== EXP-L1: UCB bez LLM vs UCB + LLM (PUT cluster) ==="
+echo "Node      : $(hostname)  ($(nproc) CPU)"
+echo "Date      : $(date)"
+echo "Job ID    : $SLURM_JOB_ID"
+echo "Project   : $PROJ  ($(git -C "$PROJ" rev-parse --short HEAD))"
+echo "LogDir    : $LOG_DIR"
+echo "vLLM      : http://${VLLM_HOST}:${VLLM_PORT}/v1 (model=$VLLM_MODEL)"
+echo "instances : $INSTANCES"
+echo "seeds     : $SEEDS"
+echo "time-limit: ${TIME_LIMIT}s przeszukiwania / przebieg"
+echo "workers   : $WORKERS"
+echo "llm-trigger: ${LLM_TRIGGER}x"
 echo ""
 
 mkdir -p "$LOG_DIR"
@@ -54,8 +67,8 @@ WAITED=0
 until curl -sf "http://${VLLM_HOST}:${VLLM_PORT}/health" &>/dev/null; do
     sleep 15
     WAITED=$(( WAITED + 15 ))
-    if (( WAITED >= 900 )); then
-        echo "BŁĄD: vLLM nie odpowiedział po 15 minutach." >&2
+    if (( WAITED >= 1800 )); then
+        echo "BŁĄD: vLLM nie odpowiedział po 30 minutach." >&2
         exit 1
     fi
     echo "  ... czekam (${WAITED}s)"
@@ -63,47 +76,34 @@ done
 echo "vLLM gotowy po ${WAITED}s."
 echo ""
 
-# ── ustaw zmienne środowiskowe dla backendu LLM ───────────────────────────
+# ── backend LLM ───────────────────────────────────────────────────────────
 export LLM_BACKEND="openai"
 export OPENAI_BASE_URL="http://${VLLM_HOST}:${VLLM_PORT}/v1"
 export OPENAI_MODEL="$VLLM_MODEL"
 export OPENAI_API_KEY="EMPTY"
 
-# ── przejdź do projektu i aktywuj środowisko uv ───────────────────────────
 cd "$PROJ"
-# uv nie wymaga aktywacji — używa wirtualnego env automatycznie
-
-echo "=== Faza 1: EXP-L1 — UCB + LLM wariant A ==="
-echo "instances : $INSTANCES"
-echo "seeds     : $SEEDS"
-echo "time-limit: ${TIME_LIMIT}s"
-echo "llm-trigger: ${LLM_TRIGGER}x"
-echo ""
 
 # shellcheck disable=SC2086
 uv run python experiments.py \
     --selectors ucb \
-    --llm-variants a \
+    --llm-variants none a \
     --instances $INSTANCES \
     --seeds $SEEDS \
     --time-limit "$TIME_LIMIT" \
-    --workers 1 \
+    --workers "$WORKERS" \
     --llm-trigger "$LLM_TRIGGER" \
     --log-dir "$LOG_DIR" \
     --output "$RESULTS_CSV"
 
 echo ""
-echo "=== Zakończono EXP-L1 LLM ==="
-echo "Wyniki CSV : $RESULTS_CSV"
-echo "Logi JSONL : $LOG_DIR/"
-echo ""
+echo "=== Zakończono EXP-L1 ==="
 
 # ── skopiuj wyniki z /raid do /home (współdzielony NFS) ───────────────────
-DEST="$PROJ/data/logs_llm"
-mkdir -p "$DEST"
+DEST="$PROJ/data/logs_exp_l1/${SLURM_JOB_ID}"
+mkdir -p "$DEST" "$PROJ/data/results"
 cp -r "$LOG_DIR"/. "$DEST/"
-mkdir -p "$PROJ/data/results"
-cp "$RESULTS_CSV" "$PROJ/data/results/exp_l1_llm.csv"
+cp "$RESULTS_CSV" "$PROJ/data/results/exp_l1.csv"
 
-echo "Wyniki skopiowane do: $DEST"
-echo "CSV skopiowane do   : $PROJ/data/results/exp_l1_llm.csv"
+echo "Logi JSONL : $DEST/"
+echo "CSV        : $PROJ/data/results/exp_l1.csv"

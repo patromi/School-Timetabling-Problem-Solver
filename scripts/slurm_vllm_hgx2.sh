@@ -56,6 +56,7 @@ python -m vllm.entrypoints.openai.api_server \
     --dtype auto \
     --max-model-len 4096 \
     --gpu-memory-utilization 0.90 \
+    --max-num-seqs 128 \
     --trust-remote-code \
     &
 
