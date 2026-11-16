@@ -26,8 +26,8 @@
 # przebiegi i pominie skończone fazy.
 #
 # Użycie:
+#   cd <katalog projektu>          # wyniki i logi trafią do tego katalogu
 #   sbatch -A <KONTO> scripts/slurm_exp_matrix_static.sh
-#   sbatch -A <KONTO> -w obl2 scripts/slurm_exp_matrix_static.sh      # inny węzeł
 #   EXP_PHASES="selektory ablacja" sbatch -A <KONTO> --export=ALL \
 #       scripts/slurm_exp_matrix_static.sh                             # wybrane fazy
 #   EXP_PREFIX=proba EXP_SEEDS="0 1" EXP_SHORT=1 \
@@ -45,7 +45,9 @@
 set -euo pipefail
 
 # ── konfiguracja ──────────────────────────────────────────────────────────
-PROJ="${PROJ:-$HOME/PycharmProjects/LLM-Driven-Reinforcement-Learning-Hyper-Heuristic-for-the-School-Timetabling-Problem}"
+# katalog repo: ten, z którego zlecono sbatch (SLURM_SUBMIT_DIR), więc
+# zlecaj z katalogu projektu; PROJ=... nadpisuje
+PROJ="${PROJ:-$SLURM_SUBMIT_DIR}"
 PREFIX="${EXP_PREFIX:-static}"
 PHASES="${EXP_PHASES:-selektory akceptacja preset ablacja budzet}"
 
@@ -64,12 +66,10 @@ if [[ "${EXP_SHORT:-0}" == "1" ]]; then
     BUDGETS="10 20"
 fi
 
-# CSV na /home (współdzielony): przeżyje awarię węzła i pozwala na --resume
-# z dowolnego węzła. Logi JSONL na lokalnym /raid, na końcu fazy pakowane
-# do jednego archiwum na /home.
+# wyniki i logi w katalogu projektu (CSV dopisywane po każdym przebiegu,
+# więc --resume działa po ponownym zleceniu z tego samego katalogu)
 RESULTS_DIR="$PROJ/data/results/${PREFIX}"
-RAID_DIR="/raid/$USER/${PREFIX}_logs"
-LOGS_DEST="$PROJ/data/logs_${PREFIX}"
+LOGS_DIR="$PROJ/data/logs_${PREFIX}"
 
 echo "=== Eksperymenty bez LLM (PUT cluster) ==="
 echo "Node      : $(hostname)  ($(nproc) wątków)"
@@ -83,7 +83,7 @@ echo "Workers   : $WORKERS"
 echo "Wyniki    : $RESULTS_DIR/"
 echo ""
 
-mkdir -p "$RESULTS_DIR" "$RAID_DIR" "$LOGS_DEST"
+mkdir -p "$RESULTS_DIR" "$LOGS_DIR"
 cd "$PROJ"
 
 # przygotowanie: pliki LFS (archiwum instancji leży w LFS) i środowisko uv;
@@ -101,18 +101,17 @@ run() {
     shift 2
     echo ""
     echo "────── $name (${limit}s / przebieg) — start $(date +%H:%M) ──────"
-    mkdir -p "$RAID_DIR/$name"
+    mkdir -p "$LOGS_DIR/$name"
     # shellcheck disable=SC2086
     uv run python experiments.py \
         --instances $INSTANCES \
         --seeds $SEEDS \
         --time-limit "$limit" \
         --workers "$WORKERS" \
-        --log-dir "$RAID_DIR/$name" \
+        --log-dir "$LOGS_DIR/$name" \
         --output "$RESULTS_DIR/${name}.csv" \
         --resume \
         "$@"
-    tar czf "$LOGS_DEST/${name}.tar.gz" -C "$RAID_DIR/$name" .
     echo "────── $name — koniec $(date +%H:%M) ──────"
 }
 
@@ -143,4 +142,4 @@ done
 echo ""
 echo "=== Zakończono $(date) ==="
 echo "CSV        : $RESULTS_DIR/"
-echo "Logi JSONL : $LOGS_DEST/*.tar.gz"
+echo "Logi JSONL : $LOGS_DIR/"
