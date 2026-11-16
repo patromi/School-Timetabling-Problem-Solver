@@ -27,9 +27,11 @@
 set -euo pipefail
 
 # ── konfiguracja ──────────────────────────────────────────────────────────
-PROJ="${PROJ:-$HOME/PycharmProjects/LLM-Driven-Reinforcement-Learning-Hyper-Heuristic-for-the-School-Timetabling-Problem}"
-LOG_DIR="/raid/$USER/exp_l1_${SLURM_JOB_ID}"
-RESULTS_CSV="${LOG_DIR}/exp_l1.csv"
+# katalog repo: ten, z którego zlecono sbatch (SLURM_SUBMIT_DIR), więc
+# zlecaj z katalogu projektu; PROJ=... nadpisuje
+PROJ="${PROJ:-$SLURM_SUBMIT_DIR}"
+LOG_DIR="$PROJ/data/logs_exp_l1/${SLURM_JOB_ID}"
+RESULTS_CSV="$PROJ/data/results/exp_l1.csv"
 
 VLLM_HOST="${VLLM_HOST:-hgx2}"
 VLLM_PORT="${VLLM_PORT:-8000}"
@@ -59,7 +61,7 @@ echo "workers   : $WORKERS"
 echo "llm-trigger: ${LLM_TRIGGER}x"
 echo ""
 
-mkdir -p "$LOG_DIR"
+mkdir -p "$LOG_DIR" "$PROJ/data/results"
 
 # ── czekaj na gotowość vLLM ───────────────────────────────────────────────
 echo "Sprawdzam dostępność vLLM na http://${VLLM_HOST}:${VLLM_PORT}/health ..."
@@ -99,11 +101,5 @@ uv run python experiments.py \
 echo ""
 echo "=== Zakończono EXP-L1 ==="
 
-# ── skopiuj wyniki z /raid do /home (współdzielony NFS) ───────────────────
-DEST="$PROJ/data/logs_exp_l1/${SLURM_JOB_ID}"
-mkdir -p "$DEST" "$PROJ/data/results"
-cp -r "$LOG_DIR"/. "$DEST/"
-cp "$RESULTS_CSV" "$PROJ/data/results/exp_l1.csv"
-
-echo "Logi JSONL : $DEST/"
-echo "CSV        : $PROJ/data/results/exp_l1.csv"
+echo "Logi JSONL : $LOG_DIR/"
+echo "CSV        : $RESULTS_CSV"

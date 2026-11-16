@@ -60,7 +60,8 @@ fi
 
 SEEDS=$(seq -s' ' 0 $(( NUM_SEEDS - 1 )))
 
-PROJ="$HOME/PycharmProjects/LLM-Driven-Reinforcement-Learning-Hyper-Heuristic-for-the-School-Timetabling-Problem"
+# katalog repo: bieżący (uruchamiaj z katalogu projektu); PROJ=... nadpisuje
+PROJ="${PROJ:-$PWD}"
 SCRIPTS="$PROJ/scripts"
 
 # ── szacowany czas ────────────────────────────────────────────────────────
