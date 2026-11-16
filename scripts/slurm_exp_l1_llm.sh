@@ -15,7 +15,8 @@
 #   sbatch -A <KONTO> scripts/slurm_exp_l1_llm.sh
 
 #SBATCH -J exp_l1_llm
-#SBATCH -p hgx
+# węzły obl1/obl2 (CPU) są w partycji obl -- nie hgx, jak podaje instrukcja
+#SBATCH -p obl
 #SBATCH -w obl1
 #SBATCH --exclusive
 #SBATCH --cpus-per-task 128

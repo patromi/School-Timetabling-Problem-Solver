@@ -127,7 +127,7 @@ echo ">> Submituję strażnika: anuluje vLLM po zakończeniu EXP-L1 ..."
 CANCEL_JOB=$(sbatch_cmd \
     -A "$ACCOUNT" \
     -J vllm_cancel \
-    -p hgx \
+    -p obl \
     --cpus-per-task 1 \
     --mem 512M \
     --time="00:05:00" \

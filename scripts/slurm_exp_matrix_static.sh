@@ -28,17 +28,19 @@
 # Użycie:
 #   cd <katalog projektu>          # wyniki i logi trafią do tego katalogu
 #   sbatch -A <KONTO> scripts/slurm_exp_matrix_static.sh
+#   sbatch -A <KONTO> -w obl2 scripts/slurm_exp_matrix_static.sh   # konkretny węzeł
 #   EXP_PHASES="selektory ablacja" sbatch -A <KONTO> --export=ALL \
 #       scripts/slurm_exp_matrix_static.sh                             # wybrane fazy
 #   EXP_PREFIX=proba EXP_SEEDS="0 1" EXP_SHORT=1 \
 #       sbatch -A <KONTO> --export=ALL scripts/slurm_exp_matrix_static.sh   # próba ~10 min
 
 #SBATCH -J exp_static_24h
-#SBATCH -p hgx
-#SBATCH -w obl1
+# węzły obl1/obl2 (CPU) są w partycji obl -- nie hgx, jak podaje instrukcja
+# klastra; bez -w SLURM bierze wolny węzeł obl
+#SBATCH -p obl
 #SBATCH --exclusive
 #SBATCH --mem 0
-#SBATCH -t 24:00:00
+#SBATCH -t 23:00:00
 #SBATCH -o slurm_exp_static_%j.out
 #SBATCH -e slurm_exp_static_%j.err
 
