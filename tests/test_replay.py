@@ -20,17 +20,23 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-
 from src.construct import build_initial
 from src.evaluator_ref import evaluate_constraint_costs
 from src.lahc import run_lahc
+from src.llm import client as llm_client
 from src.llm import replay as llm_replay
 from src.llm.client import LLMResponse
 from src.llm.pool import GenerationStats, maybe_generate
+from src.llm.prompt import VARIANT_A
 from src.parser import parse_archive
 from src.solve_log import SolveLogger
 
 FIXTURES = Path(__file__).parent / "fixtures"
+
+# replay key used by the unit tests below
+KEY = {"variant": "a", "model": "m"}
+# the key maybe_generate uses with its default prompt variant and model
+POOL_KEY = {"variant": VARIANT_A, "model": llm_client.DEFAULT_MODEL}
 
 _MOCK_HEURISTIC_CODE = """\
 def apply(solution, instance, rng):
@@ -72,7 +78,7 @@ def _mock_response() -> LLMResponse:
 
 def test_load_returns_empty_for_missing_file(tmp_path: Path) -> None:
     with patch.object(llm_replay, "_REPLAY_DIR", tmp_path):
-        entries = llm_replay.load(seed=0, instance_id="AU-SA-96")
+        entries = llm_replay.load(seed=0, instance_id="AU-SA-96", **KEY)
     assert entries == []
 
 
@@ -85,8 +91,9 @@ def test_save_and_load_roundtrip(tmp_path: Path) -> None:
             candidate_idx=0,
             h_id="llm_123_0",
             code=_MOCK_HEURISTIC_CODE,
+            **KEY,
         )
-        entries = llm_replay.load(seed=42, instance_id="AU-SA-96")
+        entries = llm_replay.load(seed=42, instance_id="AU-SA-96", **KEY)
 
     assert len(entries) == 1
     e = entries[0]
@@ -99,36 +106,36 @@ def test_save_and_load_roundtrip(tmp_path: Path) -> None:
 def test_multiple_entries_sorted_by_trigger_then_candidate(tmp_path: Path) -> None:
     with patch.object(llm_replay, "_REPLAY_DIR", tmp_path):
         # Insert out-of-order
-        llm_replay.save_entry(42, "inst", 1, 1, "h_1_1", "code_1_1")
-        llm_replay.save_entry(42, "inst", 0, 1, "h_0_1", "code_0_1")
-        llm_replay.save_entry(42, "inst", 1, 0, "h_1_0", "code_1_0")
-        llm_replay.save_entry(42, "inst", 0, 0, "h_0_0", "code_0_0")
+        llm_replay.save_entry(42, "inst", 1, 1, "h_1_1", "code_1_1", **KEY)
+        llm_replay.save_entry(42, "inst", 0, 1, "h_0_1", "code_0_1", **KEY)
+        llm_replay.save_entry(42, "inst", 1, 0, "h_1_0", "code_1_0", **KEY)
+        llm_replay.save_entry(42, "inst", 0, 0, "h_0_0", "code_0_0", **KEY)
 
-        entries = llm_replay.load(seed=42, instance_id="inst")
+        entries = llm_replay.load(seed=42, instance_id="inst", **KEY)
 
     assert [e["h_id"] for e in entries] == ["h_0_0", "h_0_1", "h_1_0", "h_1_1"]
 
 
 def test_has_trigger_false_when_no_entries(tmp_path: Path) -> None:
     with patch.object(llm_replay, "_REPLAY_DIR", tmp_path):
-        assert llm_replay.has_trigger(0, "inst", 0) is False
+        assert llm_replay.has_trigger(0, "inst", 0, **KEY) is False
 
 
 def test_has_trigger_true_after_save(tmp_path: Path) -> None:
     with patch.object(llm_replay, "_REPLAY_DIR", tmp_path):
-        llm_replay.save_entry(0, "inst", 2, 0, "h", "code")
-        assert llm_replay.has_trigger(0, "inst", 2) is True
-        assert llm_replay.has_trigger(0, "inst", 0) is False
-        assert llm_replay.has_trigger(0, "inst", 1) is False
+        llm_replay.save_entry(0, "inst", 2, 0, "h", "code", **KEY)
+        assert llm_replay.has_trigger(0, "inst", 2, **KEY) is True
+        assert llm_replay.has_trigger(0, "inst", 0, **KEY) is False
+        assert llm_replay.has_trigger(0, "inst", 1, **KEY) is False
 
 
 def test_different_seeds_use_separate_files(tmp_path: Path) -> None:
     with patch.object(llm_replay, "_REPLAY_DIR", tmp_path):
-        llm_replay.save_entry(1, "inst", 0, 0, "h_seed1", "code_a")
-        llm_replay.save_entry(2, "inst", 0, 0, "h_seed2", "code_b")
+        llm_replay.save_entry(1, "inst", 0, 0, "h_seed1", "code_a", **KEY)
+        llm_replay.save_entry(2, "inst", 0, 0, "h_seed2", "code_b", **KEY)
 
-        e1 = llm_replay.load(1, "inst")
-        e2 = llm_replay.load(2, "inst")
+        e1 = llm_replay.load(1, "inst", **KEY)
+        e2 = llm_replay.load(2, "inst", **KEY)
 
     assert e1[0]["h_id"] == "h_seed1"
     assert e2[0]["h_id"] == "h_seed2"
@@ -136,11 +143,11 @@ def test_different_seeds_use_separate_files(tmp_path: Path) -> None:
 
 def test_different_instances_use_separate_files(tmp_path: Path) -> None:
     with patch.object(llm_replay, "_REPLAY_DIR", tmp_path):
-        llm_replay.save_entry(0, "AU-SA-96", 0, 0, "h_au", "code_au")
-        llm_replay.save_entry(0, "BR-SA-00", 0, 0, "h_br", "code_br")
+        llm_replay.save_entry(0, "AU-SA-96", 0, 0, "h_au", "code_au", **KEY)
+        llm_replay.save_entry(0, "BR-SA-00", 0, 0, "h_br", "code_br", **KEY)
 
-        au = llm_replay.load(0, "AU-SA-96")
-        br = llm_replay.load(0, "BR-SA-00")
+        au = llm_replay.load(0, "AU-SA-96", **KEY)
+        br = llm_replay.load(0, "BR-SA-00", **KEY)
 
     assert au[0]["h_id"] == "h_au"
     assert br[0]["h_id"] == "h_br"
@@ -149,8 +156,8 @@ def test_different_instances_use_separate_files(tmp_path: Path) -> None:
 def test_special_chars_in_instance_id_do_not_crash(tmp_path: Path) -> None:
     """instance_id with slashes / spaces / dots must be sanitised to a valid filename."""
     with patch.object(llm_replay, "_REPLAY_DIR", tmp_path):
-        llm_replay.save_entry(0, "inst/with spaces.and-dots", 0, 0, "h", "code")
-        entries = llm_replay.load(0, "inst/with spaces.and-dots")
+        llm_replay.save_entry(0, "inst/with spaces.and-dots", 0, 0, "h", "code", **KEY)
+        entries = llm_replay.load(0, "inst/with spaces.and-dots", **KEY)
 
     assert len(entries) == 1
     # Verify the file was actually created under tmp_path (not in a subdirectory
@@ -163,8 +170,8 @@ def test_special_chars_in_instance_id_do_not_crash(tmp_path: Path) -> None:
 def test_replay_file_is_valid_jsonl(tmp_path: Path) -> None:
     with patch.object(llm_replay, "_REPLAY_DIR", tmp_path):
         for i in range(3):
-            llm_replay.save_entry(0, "inst", 0, i, f"h_{i}", f"code_{i}")
-        path = tmp_path / "seed_0_inst.jsonl"
+            llm_replay.save_entry(0, "inst", 0, i, f"h_{i}", f"code_{i}", **KEY)
+        path = tmp_path / "seed_0_inst_a_m.jsonl"
 
     lines = path.read_text(encoding="utf-8").splitlines()
     assert len(lines) == 3
@@ -221,7 +228,7 @@ def test_maybe_generate_saves_to_replay_on_first_run(
             seed=7,
             trigger_idx=0,
         )
-        entries = llm_replay.load(7, small_instance.id)
+        entries = llm_replay.load(7, small_instance.id, **POOL_KEY)
 
     assert new_trigger_idx == 1
     if stats.accepted >= 1:
@@ -241,6 +248,7 @@ def test_maybe_generate_uses_replay_on_second_run(
             candidate_idx=0,
             h_id="llm_preloaded_0",
             code=_MOCK_HEURISTIC_CODE,
+            **POOL_KEY,
         )
 
     stats = GenerationStats()
@@ -280,6 +288,7 @@ def test_replayed_heuristic_has_source_llm_replay(
             seed=5, instance_id=small_instance.id,
             trigger_idx=0, candidate_idx=0,
             h_id="h_replay", code=_MOCK_HEURISTIC_CODE,
+            **POOL_KEY,
         )
     stats = GenerationStats()
     with (

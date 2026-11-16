@@ -14,6 +14,7 @@ added Heuristic objects; lahc.py appends them to its pool list.
 
 import hashlib
 import json
+import os
 import random
 import time
 from dataclasses import dataclass, field
@@ -100,7 +101,9 @@ def _save_generated(
     _GENERATED_DIR.mkdir(parents=True, exist_ok=True)
     timestamp = int(time.time())
     code_hash = hashlib.sha256(code.encode()).hexdigest()[:10]
-    stem = f"{timestamp}_{h_id}_{code_hash}"
+    # the pid keeps parallel runs saving the same code in the same second
+    # from overwriting each other's metadata
+    stem = f"{timestamp}_{os.getpid()}_{h_id}_{code_hash}"
 
     code_path = _GENERATED_DIR / f"{stem}.py"
     meta_path = _GENERATED_DIR / f"{stem}.json"
@@ -169,7 +172,9 @@ def maybe_generate(
 
     # --- replay path ---
     if seed is not None:
-        replay_entries = llm_replay.load(seed, instance.id)
+        replay_entries = llm_replay.load(
+            seed, instance.id, variant=prompt_variant, model=model
+        )
         trigger_entries = [
             e for e in replay_entries if e["trigger_idx"] == trigger_idx
         ]
@@ -214,13 +219,19 @@ def maybe_generate(
     fresh_heuristics: list[Heuristic] = []
     candidate_idx = 0
 
-    for _ in range(n_candidates):
+    # ids already in the pool or accepted earlier in this call: the LLM may
+    # return the same code twice, and a duplicate id would get two pool
+    # entries but share one set of selector statistics
+    known_ids = {h.id for h in pool}
+
+    for sample_idx in range(n_candidates):
         try:
             llm_resp = llm_client.call(
                 messages,
                 model=model,
                 temperature=temperature,
                 use_cache=use_cache,
+                sample_idx=sample_idx,
             )
             code = _extract_code(llm_resp.content)
             # Use a content hash so the id is stable across runs with the
@@ -258,7 +269,10 @@ def maybe_generate(
             elapsed_s=llm_resp.elapsed_s,
         )
 
+        if heuristic is not None and heuristic.id in known_ids:
+            heuristic = None
         if heuristic is not None:
+            known_ids.add(heuristic.id)
             fresh_heuristics.append(heuristic)
             if selector is not None:
                 selector.add_heuristic(heuristic)
@@ -270,6 +284,8 @@ def maybe_generate(
                     candidate_idx=candidate_idx,
                     h_id=h_id,
                     code=code,
+                    variant=prompt_variant,
+                    model=model,
                 )
             candidate_idx += 1
 

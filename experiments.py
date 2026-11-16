@@ -9,12 +9,14 @@ Usage:
 EXP-L1 — static pool vs LLM pool mode:
     uv run python experiments.py \\
         --selectors ucb \\
-        --llm-variants none a b rag \\
-        --time-limit 300 --workers 1
+        --llm-variants none a \\
+        --time-limit 300 --workers 96
 
-    NOTE: when --llm-variants contains anything other than "none", use
-    --workers 1 to avoid multiple processes competing for the same GPU.
-    Static-pool runs (none) can be parallelised freely.
+    The time limit is search time: time spent in the LLM generator does not
+    count against it and is reported separately (column llm_s). With a local
+    Ollama (LLM_BACKEND=ollama) use --workers 1 so the runs do not compete
+    for one GPU; with a vLLM server on another node (LLM_BACKEND=openai) the
+    runs can be parallelised freely.
 """
 
 import argparse
@@ -56,6 +58,10 @@ STAGNATION_LIMIT = 3000
 # but UCB ended worse (mean hard 103.5 -> 112.3, 2:8 seeds, p = 0.020), so it
 # is off.
 MIN_RELATIVE_IMPROVEMENT = 0.0
+# Iteration cap of one run. Runs are bounded by --time-limit; the cap only
+# has to be out of reach. It used to be 10 million, which a fast instance
+# (GR-PA-08 does ~3000 it/s) hits after ~1 h and then stops early.
+MAX_ITERATIONS = 1_000_000_000
 
 
 @dataclass
@@ -68,6 +74,7 @@ class RunResult:
     objective_before: int
     infeasibility_after: int
     objective_after: int
+    # wall-clock time of the whole run, search plus LLM (llm_s)
     elapsed_s: float
     iterations_done: int
     # full description of the acceptance criterion, e.g.
@@ -80,6 +87,8 @@ class RunResult:
     llm_calls: int = 0
     llm_candidates: int = 0
     llm_accepted: int = 0
+    # wall-clock time in the LLM generator, outside the search time limit
+    llm_s: float = 0.0
 
 
 def _apply_preset(args: argparse.Namespace) -> None:
@@ -173,7 +182,7 @@ def _run_one(
     from src.cost import cost_by_constraint_type
     from src.evaluator_ref import evaluate_cost_components
     from src.heuristics import MANUAL_HEURISTICS
-    from src.lahc import run_lahc
+    from src.lahc import RunStats, run_lahc
     from src.llm.pool import GenerationStats
     from src.parser import parse_archive
     from src.solve_log import SolveLogger
@@ -194,6 +203,7 @@ def _run_one(
     llm_stats = GenerationStats() if llm_enabled else None
 
     iters_done = [0]
+    run_stats = RunStats()
 
     def _on_progress(it: int, _cost: int) -> None:
         iters_done[0] = it
@@ -210,7 +220,7 @@ def _run_one(
             instance,
             initial,
             rng,
-            max_iterations=10_000_000,
+            max_iterations=MAX_ITERATIONS,
             max_seconds=time_limit,
             selector=selector,
             acceptance=acceptance,
@@ -229,6 +239,7 @@ def _run_one(
             llm_trigger_multiplier=llm_trigger,
             llm_stats=llm_stats,
             seed=seed,
+            stats=run_stats,
         )
     finally:
         if logger is not None:
@@ -272,6 +283,7 @@ def _run_one(
                         "by_type_after": cost_by_constraint_type(instance, best),
                         "iterations_done": iters_done[0],
                         "elapsed_s": round(elapsed, 1),
+                        "llm_s": round(run_stats.llm_s, 1),
                     },
                     separators=(",", ":"),
                 )
@@ -295,6 +307,7 @@ def _run_one(
         llm_calls=llm_calls,
         llm_candidates=llm_candidates_gen,
         llm_accepted=llm_accepted,
+        llm_s=round(run_stats.llm_s, 1),
     )
 
 
@@ -331,15 +344,48 @@ def _print_table(results: list[RunResult]) -> None:
     print("=" * len(header))
 
 
-def _save_csv(results: list[RunResult], path: Path) -> None:
+def _append_csv(result: RunResult, path: Path) -> None:
+    """Append one finished run to the results CSV (header on first write),
+    so a long experiment killed half-way keeps every run it finished."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", newline="", encoding="utf-8") as f:
-        col_names = [field.name for field in fields(RunResult)]
+    new_file = not path.exists()
+    col_names = [field.name for field in fields(RunResult)]
+    with path.open("a", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=col_names)
-        writer.writeheader()
-        for r in results:
-            writer.writerow(r.__dict__)
-    print(f"\nWyniki zapisane do: {path}")
+        if new_file:
+            writer.writeheader()
+        writer.writerow(result.__dict__)
+
+
+def _done_runs(path: Path) -> set[tuple[str, str, str, int, str]]:
+    """Keys (instance, selector, acceptance, seed, llm variant) of the runs
+    already in a results CSV, for --resume."""
+    if not path.exists():
+        return set()
+    with path.open(newline="", encoding="utf-8") as f:
+        return {
+            (
+                row["instance_id"],
+                row["selector"],
+                row["acceptance"],
+                int(row["seed"]),
+                row.get("llm_variant") or "none",
+            )
+            for row in csv.DictReader(f)
+        }
+
+
+def _pending_jobs(
+    jobs: list[tuple[str, str, str, int, str]], output: Path, resume: bool
+) -> list[tuple[str, str, str, int, str]]:
+    """With `resume`, the jobs not yet in `output`; without it all of them,
+    and an existing `output` is removed so the new run starts it afresh."""
+    if not resume:
+        output.unlink(missing_ok=True)
+        return jobs
+    done_runs = _done_runs(output)
+    print(f"--resume: {len(done_runs)} przebiegow juz w {output}, pomijam je")
+    return [job for job in jobs if job not in done_runs]
 
 
 def main() -> None:
@@ -371,6 +417,14 @@ def main() -> None:
         "--output",
         type=Path,
         default=Path("data/results/experiment_selectors.csv"),
+    )
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help=(
+            "Keep the runs already in --output and run only the missing ones "
+            "(without it an existing --output is overwritten)"
+        ),
     )
     parser.add_argument(
         "--log-dir",
@@ -428,7 +482,7 @@ def main() -> None:
         help=(
             "LLM prompt variants to include: none a b rag "
             "(default: none — static pool only). "
-            "Use --workers 1 when any variant != none."
+            "With a local Ollama use --workers 1 when any variant != none."
         ),
     )
     parser.add_argument(
@@ -445,10 +499,14 @@ def main() -> None:
 
     if has_llm:
         _lfs_pull(verbose=True)
-    if has_llm and args.workers > 1:
+    if (
+        has_llm
+        and args.workers > 1
+        and os.environ.get("LLM_BACKEND", "ollama") == "ollama"
+    ):
         print(
-            "UWAGA: --llm-variants zawiera warianty LLM i --workers > 1. "
-            "Wiele procesow moze rywalizowac o GPU. Zalecane --workers 1.",
+            "UWAGA: --llm-variants zawiera warianty LLM, --workers > 1 i lokalna "
+            "Ollama. Wiele procesow moze rywalizowac o GPU. Zalecane --workers 1.",
             file=sys.stderr,
         )
 
@@ -465,6 +523,7 @@ def main() -> None:
         for seed in args.seeds
         for llm in llm_variants
     ]
+    jobs = _pending_jobs(jobs, args.output, args.resume)
     total = len(jobs)
     print(
         f"Eksperyment: {len(args.instances)} instancji x "
@@ -516,6 +575,7 @@ def main() -> None:
             try:
                 r = fut.result()
                 results.append(r)
+                _append_csv(r, args.output)
                 done += 1
                 llm_info = f"  llm={llm} acc={r.llm_accepted}/{r.llm_candidates}" if llm != "none" else ""
                 print(
@@ -533,7 +593,7 @@ def main() -> None:
     elapsed_min = (time.monotonic() - t_wall) / 60
     print(f"\nWszystkie uruchomienia zakonczone w {elapsed_min:.1f} min")
     _print_table(results)
-    _save_csv(results, args.output)
+    print(f"\nWyniki zapisane do: {args.output}")
 
 
 if __name__ == "__main__":
