@@ -55,8 +55,18 @@ PHASES="${EXP_PHASES:-selektory akceptacja preset ablacja budzet}"
 INSTANCES="${EXP_INSTANCES:-BR-SA-00 BR-SM-00 BR-SN-00 FI-WP-06 FI-MP-06 FI-PB-98 GR-P3-10 GR-PA-08 GR-H1-97 ZA-LW-09 ZA-WD-09 IT-I4-96 KS-PR-11}"
 SELECTORS="random epsilon-greedy ucb"
 SEEDS="${EXP_SEEDS:-$(seq -s' ' 0 49)}"
-# jeden przebieg na wątek; 6 wątków zostaje dla systemu i procesu głównego
-WORKERS="${EXP_WORKERS:-$(( $(nproc) - 6 ))}"
+# jeden przebieg na wątek; przy dużym przydziale 6 wątków zostaje dla
+# systemu i procesu głównego, przy małym (<= 12) wszystkie idą na przebiegi
+THREADS=$(nproc)
+if (( THREADS > 12 )); then
+    WORKERS="${EXP_WORKERS:-$(( THREADS - 6 ))}"
+else
+    WORKERS="${EXP_WORKERS:-$THREADS}"
+fi
+if (( THREADS < 32 )); then
+    echo "UWAGA: zadanie dostało tylko $THREADS wątków -- pełna macierz potrwa" \
+         "wielokrotnie dłużej niż doba. Zleć je z -c <liczba CPU>." >&2
+fi
 
 # budżety w sekundach; EXP_SHORT=1 skraca wszystko do próby
 MAIN_T=600
