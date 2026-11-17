@@ -2,19 +2,20 @@
 # Eksperymenty bez LLM na całą dobę na węźle obl: pięć faz po kolei, każda
 # z własnym CSV. Domyślnie 13 instancji w zakresie pracy x 50 seedów, po
 # jednym przebiegu na wątek (nproc - 6 równolegle, czyli 250 na obl).
+# Budżet wyrażony w iteracjach (--iterations), nie w czasie, więc wyniki są
+# powtarzalne niezależnie od szybkości węzła.
 #
-#   faza        konfiguracje                                   przebiegi  czas
-#   selektory   random / epsilon-greedy / ucb, SA, 10 min          1950  ~1,3 h
-#   akceptacja  te same selektory z LAHC, 10 min                   1950  ~1,3 h
+#   faza        konfiguracje                                   przebiegi
+#   selektory   random / epsilon-greedy / ucb, SA, 100k it        1950
+#   akceptacja  te same selektory z LAHC, 100k it                 1950
 #               (SA do porównania z fazy "selektory")
-#   preset      te same selektory, --preset bazowy, 10 min         1950  ~1,3 h
+#   preset      te same selektory, --preset bazowy, 100k it       1950
 #               (konfiguracja sprzed issue #82)
-#   ablacja     UCB: c 0,005 / 0,1 / 0,5, alfa 0,005 / 0,08,       3900  ~2,7 h
-#               2 stany zamiast 6; 10 min (UCB domyślny z
+#   ablacja     UCB: c 0,005 / 0,1 / 0,5, alfa 0,005 / 0,08,     3900
+#               2 stany zamiast 6; 100k it (UCB domyślny z
 #               fazy "selektory")
-#   budzet      3 selektory przy 1, 5 i 30 min (10 min z fazy     5850  ~4,8 h
-#               "selektory")
-#   razem                                                         15600 ~11,5 h
+#   budzet      3 selektory przy 10k / 100k / 300k it             5850
+#   razem                                                        15600
 #
 # Przy jednym przebiegu na wątek dwa przebiegi dzielą fizyczny rdzeń (SMT),
 # więc każdy robi mniej iteracji na sekundę niż sam na rdzeniu. Wszystkie
@@ -70,12 +71,12 @@ if (( THREADS < 32 )); then
          "wielokrotnie dłużej niż doba. Zleć je z -c <liczba CPU>." >&2
 fi
 
-# budżety w sekundach; EXP_SHORT=1 skraca wszystko do próby
-MAIN_T=600
-BUDGETS="60 300 1800"
+# budżety w iteracjach; EXP_SHORT=1 skraca wszystko do próby
+MAIN_ITERS=100000
+BUDGETS="10000 100000 300000"
 if [[ "${EXP_SHORT:-0}" == "1" ]]; then
-    MAIN_T=30
-    BUDGETS="10 20"
+    MAIN_ITERS=1000
+    BUDGETS="500 1000"
 fi
 
 # wyniki i logi w katalogu projektu (CSV dopisywane po każdym przebiegu,
@@ -107,18 +108,18 @@ if head -c 200 data/xhstt2014/XHSTT-2014.xml | grep -q "git-lfs"; then
     exit 1
 fi
 
-# run NAZWA LIMIT_S [argumenty experiments.py...]
+# run NAZWA LIMIT_ITERS [argumenty experiments.py...]
 run() {
-    local name="$1" limit="$2"
+    local name="$1" iters="$2"
     shift 2
     echo ""
-    echo "────── $name (${limit}s / przebieg) — start $(date +%H:%M) ──────"
+    echo "────── $name (${iters} it / przebieg) — start $(date +%H:%M) ──────"
     mkdir -p "$LOGS_DIR/$name"
     # shellcheck disable=SC2086
     uv run python experiments.py \
         --instances $INSTANCES \
         --seeds $SEEDS \
-        --time-limit "$limit" \
+        --iterations "$iters" \
         --workers "$WORKERS" \
         --log-dir "$LOGS_DIR/$name" \
         --output "$RESULTS_DIR/${name}.csv" \
@@ -131,20 +132,20 @@ for phase in $PHASES; do
     case "$phase" in
         selektory)
             # shellcheck disable=SC2086
-            run selektory "$MAIN_T" --selectors $SELECTORS ;;
+            run selektory "$MAIN_ITERS" --selectors $SELECTORS ;;
         akceptacja)
             # shellcheck disable=SC2086
-            run akceptacja_lahc "$MAIN_T" --selectors $SELECTORS --acceptance lahc ;;
+            run akceptacja_lahc "$MAIN_ITERS" --selectors $SELECTORS --acceptance lahc ;;
         preset)
             # shellcheck disable=SC2086
-            run preset_bazowy "$MAIN_T" --selectors $SELECTORS --preset bazowy ;;
+            run preset_bazowy "$MAIN_ITERS" --selectors $SELECTORS --preset bazowy ;;
         ablacja)
-            run ablacja_ucb "$MAIN_T" --selectors \
+            run ablacja_ucb "$MAIN_ITERS" --selectors \
                 ucb-c=0.005 ucb-c=0.1 ucb-c=0.5 ucb-a=0.005 ucb-a=0.08 ucb-2state ;;
         budzet)
-            for t in $BUDGETS; do
+            for it in $BUDGETS; do
                 # shellcheck disable=SC2086
-                run "budzet_${t}s" "$t" --selectors $SELECTORS
+                run "budzet_${it}it" "$it" --selectors $SELECTORS
             done ;;
         *)
             echo "Nieznana faza: $phase" >&2; exit 1 ;;

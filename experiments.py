@@ -135,7 +135,11 @@ def _make_selector(selector_name: str) -> "HeuristicSelector":
     return RandomSelector()
 
 
-def _make_acceptance(acceptance_name: str, time_limit: float) -> "AcceptanceCriterion":
+def _make_acceptance(
+    acceptance_name: str,
+    time_limit: float,
+    iteration_budget: int | None = None,
+) -> "AcceptanceCriterion":
     from src.acceptance import AutoSAAcceptance, LAHCAcceptance
 
     if acceptance_name == "lahc-L10":
@@ -145,15 +149,16 @@ def _make_acceptance(acceptance_name: str, time_limit: float) -> "AcceptanceCrit
     if acceptance_name == "lahc-L300":
         return LAHCAcceptance(300)
     if acceptance_name == "sa":
-        return AutoSAAcceptance(time_budget=time_limit)
+        return AutoSAAcceptance(time_budget=time_limit, iteration_budget=iteration_budget)
     if acceptance_name == "sa-t0005":
-        return AutoSAAcceptance(t0_factor=0.0005, time_budget=time_limit)
+        return AutoSAAcceptance(t0_factor=0.0005, time_budget=time_limit, iteration_budget=iteration_budget)
     if acceptance_name == "sa-t005":
-        return AutoSAAcceptance(t0_factor=0.005, time_budget=time_limit)
+        return AutoSAAcceptance(t0_factor=0.005, time_budget=time_limit, iteration_budget=iteration_budget)
     if acceptance_name.startswith("sa-t0="):
         return AutoSAAcceptance(
             t0_factor=float(acceptance_name.removeprefix("sa-t0=")),
             time_budget=time_limit,
+            iteration_budget=iteration_budget,
         )
     return LAHCAcceptance(HISTORY_LENGTH)
 
@@ -172,6 +177,7 @@ def _run_one(
     perturbations: bool = True,
     llm_variant: str = "none",
     llm_trigger: int = DEFAULT_LLM_TRIGGER,
+    iteration_budget: int | None = None,
 ) -> RunResult:
     """Run one solver configuration. Imports inside so ProcessPoolExecutor
     can spawn cleanly without pickling the module-level state."""
@@ -197,7 +203,7 @@ def _run_one(
     inf0, obj0 = evaluate_cost_components(instance, initial)
 
     selector = _make_selector(selector_name)
-    acceptance = _make_acceptance(acceptance_name, time_limit)
+    acceptance = _make_acceptance(acceptance_name, time_limit, iteration_budget)
 
     llm_enabled = llm_variant != "none"
     llm_stats = GenerationStats() if llm_enabled else None
@@ -220,8 +226,8 @@ def _run_one(
             instance,
             initial,
             rng,
-            max_iterations=MAX_ITERATIONS,
-            max_seconds=time_limit,
+            max_iterations=iteration_budget if iteration_budget is not None else MAX_ITERATIONS,
+            max_seconds=None if iteration_budget is not None else time_limit,
             selector=selector,
             acceptance=acceptance,
             evaluation="incremental",
@@ -408,6 +414,15 @@ def main() -> None:
         help=f"Max seconds per run (default {DEFAULT_TIME_LIMIT})",
     )
     parser.add_argument(
+        "--iterations",
+        type=int,
+        default=None,
+        help=(
+            "Max iterations per run; overrides --time-limit when set. "
+            "SA cooling switches to iteration-budget mode."
+        ),
+    )
+    parser.add_argument(
         "--workers",
         type=int,
         default=min(os.cpu_count() or 4, 8),
@@ -532,9 +547,13 @@ def main() -> None:
         f"{len(args.seeds)} seedow x "
         f"{len(llm_variants)} LLM-wariantow = {total} uruchomien"
     )
-    print(f"  Limit czasu: {args.time_limit:.0f}s/run  Workers: {args.workers}")
-    est_wall = args.time_limit * total / args.workers
-    print(f"  Szacowany czas całkowity: ~{est_wall / 60:.0f} min")
+    if args.iterations is not None:
+        print(f"  Limit iteracji: {args.iterations}/run  Workers: {args.workers}")
+        print(f"  Szacowany czas całkowity: nieznany (tryb iteracyjny)")
+    else:
+        print(f"  Limit czasu: {args.time_limit:.0f}s/run  Workers: {args.workers}")
+        est_wall = args.time_limit * total / args.workers
+        print(f"  Szacowany czas całkowity: ~{est_wall / 60:.0f} min")
     if log_dir:
         print(f"  Logi JSONL: {log_dir}/\n")
     else:
@@ -567,6 +586,7 @@ def main() -> None:
                 not args.no_perturbations,
                 llm,
                 args.llm_trigger,
+                args.iterations,
             ): (inst, sel, acc, seed, llm)
             for inst, sel, acc, seed, llm in jobs
         }
