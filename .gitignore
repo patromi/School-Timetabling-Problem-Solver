@@ -77,3 +77,11 @@ dmypy.json
 
 # Ruff
 .ruff_cache/
+
+# Frontend & Node
+node_modules/
+**/node_modules/
+.svelte-kit/
+**/.svelte-kit/
+frontend/dist/
+
