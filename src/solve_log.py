@@ -55,6 +55,15 @@ class SolveLogger:
         self._window_accepted_by_change: dict[str, list[int]] = {}
         self._window_start_step: int = 0
         self._window_last_step: int = 0
+        # ── solver context (latest value seen in this window) ──
+        self._window_start_elapsed: float | None = None
+        self._window_last_elapsed: float | None = None
+        self._ctx_current_inf: int | None = None
+        self._ctx_current_obj: int | None = None
+        self._ctx_best_inf: int | None = None
+        self._ctx_best_obj: int | None = None
+        self._ctx_temperature: float | None = None
+        self._ctx_stagnation: int | None = None
 
     # ── public API (called from lahc.py / run_solver.py) ──
 
@@ -152,6 +161,13 @@ class SolveLogger:
         reward: float,
         accepted: bool,
         cost_change: int = 0,
+        current_inf: int | None = None,
+        current_obj: int | None = None,
+        best_inf: int | None = None,
+        best_obj: int | None = None,
+        temperature: float | None = None,
+        stagnation: int | None = None,
+        elapsed_s: float | None = None,
     ) -> None:
         """Accumulate per-heuristic stats for the current window.
 
@@ -160,6 +176,11 @@ class SolveLogger:
         equal (== 0) and worse (> 0): an accepted candidate with equal cost
         moves the search sideways (or not at all), so a high acceptance rate
         alone does not show that the search is still making progress.
+
+        The optional solver-context fields (current_inf/obj, best_inf/obj,
+        temperature, stagnation, elapsed_s) are stored as the latest snapshot
+        seen in this window and emitted with the ``selector_window`` record,
+        enabling cost-trajectory and SA-temperature plots from the logs.
 
         When *step* crosses a window boundary, a ``selector_window``
         record is flushed automatically.
@@ -176,6 +197,24 @@ class SolveLogger:
                 heuristic_id, [0, 0, 0]
             )
             by_change[0 if cost_change < 0 else 1 if cost_change == 0 else 2] += 1
+
+        # update solver context snapshot
+        if current_inf is not None:
+            self._ctx_current_inf = current_inf
+        if current_obj is not None:
+            self._ctx_current_obj = current_obj
+        if best_inf is not None:
+            self._ctx_best_inf = best_inf
+        if best_obj is not None:
+            self._ctx_best_obj = best_obj
+        if temperature is not None:
+            self._ctx_temperature = temperature
+        if stagnation is not None:
+            self._ctx_stagnation = stagnation
+        if elapsed_s is not None:
+            if self._window_start_elapsed is None:
+                self._window_start_elapsed = elapsed_s
+            self._window_last_elapsed = elapsed_s
 
         self._window_last_step = step
         if (step + 1) % self._window_size == 0:
@@ -204,11 +243,32 @@ class SolveLogger:
                 else 0.0,
             }
 
+        iters_per_s: float | None = None
+        if (
+            self._window_start_elapsed is not None
+            and self._window_last_elapsed is not None
+            and self._window_last_elapsed > self._window_start_elapsed
+        ):
+            iters_per_s = round(
+                self._window_size / (self._window_last_elapsed - self._window_start_elapsed),
+                1,
+            )
+
         self._emit(
             "selector_window",
             window_start=self._window_start_step,
             window_end=last_step,
             heuristics=heuristics,
+            current_inf=self._ctx_current_inf,
+            current_obj=self._ctx_current_obj,
+            best_inf=self._ctx_best_inf,
+            best_obj=self._ctx_best_obj,
+            temperature=self._ctx_temperature,
+            stagnation=self._ctx_stagnation,
+            elapsed_s=round(self._window_last_elapsed, 3)
+            if self._window_last_elapsed is not None
+            else None,
+            iters_per_s=iters_per_s,
         )
 
         self._window_calls.clear()
@@ -217,6 +277,13 @@ class SolveLogger:
         self._window_accepted_by_change.clear()
         self._window_start_step = last_step + 1
         self._window_last_step = last_step + 1
+        self._window_start_elapsed = None
+        self._ctx_current_inf = None
+        self._ctx_current_obj = None
+        self._ctx_best_inf = None
+        self._ctx_best_obj = None
+        self._ctx_temperature = None
+        self._ctx_stagnation = None
 
     def _emit(self, event: str, **data: Any) -> None:
         record = {"event": event, "t": time.time(), **data}

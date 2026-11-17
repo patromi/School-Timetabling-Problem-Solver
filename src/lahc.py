@@ -658,6 +658,13 @@ def run_lahc(  # noqa: C901 — solver loop; complexity is inherent to the algor
                     reward=reward,
                     accepted=accepted,
                     cost_change=cost_change,
+                    current_inf=current_cost // INFEASIBILITY_WEIGHT,
+                    current_obj=current_cost % INFEASIBILITY_WEIGHT,
+                    best_inf=best_cost // INFEASIBILITY_WEIGHT,
+                    best_obj=best_cost % INFEASIBILITY_WEIGHT,
+                    temperature=_temperature(criterion, step),
+                    stagnation=stagnant_iterations,
+                    elapsed_s=time.monotonic() - t_start,
                 )
 
         if on_progress is not None:
