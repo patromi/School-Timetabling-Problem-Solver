@@ -132,6 +132,7 @@ def _make_selector(selector_name: str) -> "HeuristicSelector":
         return UCBSelector(alpha=float(selector_name.removeprefix("ucb-alpha=")))
     if selector_name.startswith("ucb-c="):
         return UCBSelector(c=float(selector_name.removeprefix("ucb-c=")))
+    # ucb-preprocessing is handled in _run_one (needs instance access)
     return RandomSelector()
 
 
@@ -202,7 +203,19 @@ def _run_one(
     initial = build(instance, rng)
     inf0, obj0 = evaluate_cost_components(instance, initial)
 
-    selector = _make_selector(selector_name)
+    base_pool = [h for h in MANUAL_HEURISTICS if h.id not in exclude_heuristics]
+
+    if selector_name == "ucb-preprocessing":
+        from src.preprocessing import analyze_instance, filter_heuristic_pool, get_initial_q_map
+        from src.selectors import UCBSelector
+
+        profile = analyze_instance(instance)
+        q_map = get_initial_q_map(profile)
+        selector = UCBSelector(initial_q_map=q_map)
+        base_pool = filter_heuristic_pool(profile, base_pool)
+    else:
+        selector = _make_selector(selector_name)
+
     acceptance = _make_acceptance(acceptance_name, time_limit, iteration_budget)
 
     llm_enabled = llm_variant != "none"
@@ -238,7 +251,7 @@ def _run_one(
             min_relative_improvement=MIN_RELATIVE_IMPROVEMENT,
             select_perturbations=select_perturbations,
             time_aware_reward=time_aware_reward,
-            heuristics=[h for h in MANUAL_HEURISTICS if h.id not in exclude_heuristics],
+            heuristics=base_pool,
             perturbations=perturbations,
             llm_enabled=llm_enabled,
             llm_prompt_variant=llm_variant if llm_enabled else "a",
