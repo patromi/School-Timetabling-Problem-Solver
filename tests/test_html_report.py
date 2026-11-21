@@ -350,3 +350,169 @@ def test_render_timetable_page_evaluation_section_handles_no_constraints():
 
     assert "Brak ograniczeń wymaganych w tej instancji." in html
     assert "Brak ograniczeń preferowanych w tej instancji." in html
+
+
+def test_violation_event_refs_covers_resource_group_and_pair_constraints():
+    from src.html_report.evaluation import violation_event_refs
+    from src.model import AppliesTo, Constraint, EventPair, Group
+
+    base = _instance()
+    # Add an EventGroup containing E1 and E3 for group-based constraints
+    base.event_groups.append(Group(id="EG1", name="EG1", kind="EventGroup"))
+    base.events[0].group_refs.append("EG1")
+    base.events[2].group_refs.append("EG1")
+    # Also test an unassigned Teacher slot on E3 copy or temporary event
+    occ = resolve_occurrences(
+        base,
+        Solution(
+            instance_ref=base.id,
+            events=[
+                SolutionEvent(event_ref="E1", time_ref="Mon_1"),
+                SolutionEvent(event_ref="E2", time_ref="Tue_1", duration=2),
+                # Gap on Mon between Mon_1 and Mon_3 for C1 & T1; also 2 events on Mon for EG1
+                SolutionEvent(event_ref="E3", time_ref="Mon_3"),
+            ],
+        ),
+    )
+
+    # LimitIdleTimesConstraint: C1 has an idle gap on Mon (Mon_2), not on Tue
+    c_idle = Constraint(
+        type="LimitIdleTimesConstraint",
+        id="C_IDLE",
+        name="No gaps",
+        required=True,
+        weight=1,
+        cost_function="Linear",
+        applies_to=AppliesTo(resources=["C1"]),
+        params={"TimeGroups": [{"reference": "gr_Mon"}, {"reference": "gr_Tue"}], "Minimum": 0, "Maximum": 0},
+    )
+    assert set(violation_event_refs(base, occ, c_idle)) == {"E1", "E3"}
+
+    # LimitBusyTimesConstraint: C1 has 2 events on Mon and 2 hours on Tue; max 1 -> both days violate
+    c_busy = Constraint(
+        type="LimitBusyTimesConstraint",
+        id="C_BUSY",
+        name="Max 1",
+        required=False,
+        weight=1,
+        cost_function="Linear",
+        applies_to=AppliesTo(resources=["C1"]),
+        params={"TimeGroups": [{"reference": "gr_Mon"}], "Minimum": 0, "Maximum": 1},
+    )
+    assert set(violation_event_refs(base, occ, c_busy)) == {"E1", "E3"}
+
+    # ClusterBusyTimesConstraint: C1 active on 2 days, max 1 day -> all events on those days
+    c_cluster = Constraint(
+        type="ClusterBusyTimesConstraint",
+        id="C_CLUSTER",
+        name="Max 1 day",
+        required=False,
+        weight=1,
+        cost_function="Linear",
+        applies_to=AppliesTo(resources=["C1"]),
+        params={"TimeGroups": [{"reference": "gr_Mon"}, {"reference": "gr_Tue"}], "Minimum": 0, "Maximum": 1},
+    )
+    assert set(violation_event_refs(base, occ, c_cluster)) == {"E1", "E2", "E3"}
+
+    # LimitWorkloadConstraint: T1 teaches E1(1h) + E3(1h) = 2h; max 1h
+    c_work = Constraint(
+        type="LimitWorkloadConstraint",
+        id="C_WORK",
+        name="Max 1h",
+        required=False,
+        weight=1,
+        cost_function="Linear",
+        applies_to=AppliesTo(resources=["T1", "T2"]),
+        params={"Minimum": 0, "Maximum": 1},
+    )
+    # T1 (E1, E3) violates (2 > 1) and T2 (E2, duration 2 > 1) violates
+    assert set(violation_event_refs(base, occ, c_work)) == {"E1", "E2", "E3"}
+
+    # SpreadEventsConstraint: EG1 has 2 events starting in gr_Mon (max 1)
+    c_spread = Constraint(
+        type="SpreadEventsConstraint",
+        id="C_SPREAD",
+        name="Spread",
+        required=False,
+        weight=1,
+        cost_function="Linear",
+        applies_to=AppliesTo(event_groups=["EG1"]),
+        params={"TimeGroups": [{"reference": "gr_Mon", "Minimum": 0, "Maximum": 1}]},
+    )
+    assert set(violation_event_refs(base, occ, c_spread)) == {"E1", "E3"}
+
+    # LinkEventsConstraint: E1 at Mon_1, E3 at Mon_3 -> misaligned
+    c_link = Constraint(
+        type="LinkEventsConstraint",
+        id="C_LINK",
+        name="Link",
+        required=True,
+        weight=1,
+        cost_function="Linear",
+        applies_to=AppliesTo(event_groups=["EG1"]),
+    )
+    assert set(violation_event_refs(base, occ, c_link)) == {"E1", "E3"}
+
+    # OrderEventsConstraint: E3 (Mon_3) before E1 (Mon_1) -> violated
+    c_order = Constraint(
+        type="OrderEventsConstraint",
+        id="C_ORDER",
+        name="Order",
+        required=True,
+        weight=1,
+        cost_function="Linear",
+        applies_to=AppliesTo(event_pairs=[EventPair(first_event="E3", second_event="E1", min_separation=0)]),
+    )
+    assert set(violation_event_refs(base, occ, c_order)) == {"E3", "E1"}
+
+    # AvoidSplitAssignmentsConstraint & AssignResourceConstraint require unpreassigned resource slots
+    from dataclasses import replace as dc_replace
+
+    for ev in (base.events[0], base.events[2]):
+        ev.resources = [
+            dc_replace(er, resource_ref=None) if er.role == "Teacher" else er
+            for er in ev.resources
+        ]
+    occ_split = resolve_occurrences(
+        base,
+        Solution(
+            instance_ref=base.id,
+            events=[
+                SolutionEvent(event_ref="E1", time_ref="Mon_1", resources=[SolutionEventResource(role="Teacher", resource_ref="T1")]),
+                SolutionEvent(event_ref="E3", time_ref="Mon_3", resources=[SolutionEventResource(role="Teacher", resource_ref="T2")]),
+            ],
+        ),
+    )
+    c_split_assign = Constraint(
+        type="AvoidSplitAssignmentsConstraint",
+        id="C_ASA",
+        name="One teacher",
+        required=True,
+        weight=1,
+        cost_function="Linear",
+        applies_to=AppliesTo(event_groups=["EG1"]),
+        params={"Role": "Teacher"},
+    )
+    assert set(violation_event_refs(base, occ_split, c_split_assign)) == {"E1", "E3"}
+
+    occ_unassigned = resolve_occurrences(
+        base,
+        Solution(
+            instance_ref=base.id,
+            events=[
+                SolutionEvent(event_ref="E1", time_ref="Mon_1", resources=[]),
+                SolutionEvent(event_ref="E3", time_ref="Mon_3", resources=[SolutionEventResource(role="Teacher", resource_ref="T2")]),
+            ],
+        ),
+    )
+    c_assign_res = Constraint(
+        type="AssignResourceConstraint",
+        id="C_AR",
+        name="Assign teacher",
+        required=True,
+        weight=1,
+        cost_function="Linear",
+        applies_to=AppliesTo(events=["E1", "E3"]),
+        params={"Role": "Teacher"},
+    )
+    assert violation_event_refs(base, occ_unassigned, c_assign_res) == ["E1"]

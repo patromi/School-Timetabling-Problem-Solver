@@ -236,14 +236,45 @@ def test_resolve_occurrences_falls_back_to_preassigned_time_when_solution_event_
     [
         ("Linear", 0, 0),
         ("Linear", 3, 3),
+        ("LINEAR", 3, 3),
+        ("linear", 3, 3),
+        (" Linear ", 3, 3),
         ("Quadratic", 3, 9),
+        ("QUADRATIC", 3, 9),
+        ("quadratic", 3, 9),
         ("Step", 0, 0),
         ("Step", 1, 1),
         ("Step", 5, 1),
+        ("STEP", 5, 1),
+        ("step", 5, 1),
     ],
 )
 def test_apply_cost_function(name, deviation, expected):
     assert apply_cost_function(name, deviation) == expected
+
+
+def test_apply_cost_function_unknown():
+    with pytest.raises(ValueError, match="unknown XHSTT cost function"):
+        apply_cost_function("Exponential", 3)
+
+
+def test_constraint_cost_function_normalization():
+    from src.model import Constraint, normalize_cost_function
+
+    assert normalize_cost_function("LINEAR") == "Linear"
+    assert normalize_cost_function("quadratic") == "Quadratic"
+    assert normalize_cost_function("STEP") == "Step"
+    assert normalize_cost_function("Unknown") == "Unknown"
+
+    c = Constraint(
+        type="AvoidClashesConstraint",
+        id="C1",
+        name="test",
+        required=True,
+        weight=1,
+        cost_function="LINEAR",
+    )
+    assert c.cost_function == "Linear"
 
 
 COURSE_AS_EVENT_GROUP_ARCHIVE = """<HighSchoolTimetableArchive>

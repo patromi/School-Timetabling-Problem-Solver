@@ -76,6 +76,18 @@ class AppliesTo:
     event_pairs: list[EventPair] = field(default_factory=list)
 
 
+def normalize_cost_function(name: str) -> str:
+    """Normalizes an XHSTT cost function name to standard casing ('Linear', 'Quadratic', 'Step')."""
+    cleaned = name.strip().lower()
+    if cleaned == "linear":
+        return "Linear"
+    if cleaned == "quadratic":
+        return "Quadratic"
+    if cleaned == "step":
+        return "Step"
+    return name
+
+
 @dataclass
 class Constraint:
     """Generic representation of any of the 16 XHSTT constraint types.
@@ -94,6 +106,9 @@ class Constraint:
     cost_function: str
     applies_to: AppliesTo = field(default_factory=AppliesTo)
     params: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        self.cost_function = normalize_cost_function(self.cost_function)
 
 
 @dataclass

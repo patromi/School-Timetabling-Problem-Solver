@@ -1,0 +1,12 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python: UI",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/run_ui.py",
+            "console": "integratedTerminal"
+        }
+    ]
+}

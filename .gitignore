@@ -1,4 +1,13 @@
-# Python cache and temporary files
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Python cache and bytecode
 __pycache__/
 *.py[cod]
 *$py.class
@@ -22,37 +31,28 @@ share/python-wheels/
 *.egg
 MANIFEST
 
-# Pytest & Coverage
+# Testing and coverage
 .pytest_cache/
 .coverage
 .coverage.*
 htmlcov/
-nosetests.xml
+.tox/
+.nox/
 coverage.xml
 *.cover
 *.py,cover
-.htmlcov/
+.hypothesis/
 
-# Type checker & Linters
-.mypy_cache/
-.dmypy.json
-dmypy.json
-.ruff_cache/
+# IDE and editors
+.idea/
+*.swp
+*.swo
+*~
+.cursor/
 
-# Environments
-.env
-.venv
-env/
-venv/
-ENV/
-env.bak/
-venv.bak/
-
-# Snakemake
-.snakemake/
-
-# Project Directories & Data files
-# We ignore the contents of these directories but track the directories themselves using .gitkeep files.
+# DVC and Data
+.dvc/cache
+.dvc/tmp
 data/processed/*
 !data/processed/.gitkeep
 data/results/*
@@ -60,6 +60,8 @@ data/results/*
 data/logs/
 data/logs_*/
 !data/results/.gitkeep
+data/custom_instances/*
+!data/custom_instances/.gitkeep
 generated/**
 !generated/.gitkeep
 !generated/replay/
@@ -69,25 +71,18 @@ output/*
 !data/results/summary.csv
 !data/results/summary.md
 
-# IDEs and Editors
-.vscode/*
-!.vscode/tasks.json
-.idea/
-*.swp
-*.swo
+# MyPy
+.mypy_cache/
+.dmypy.json
+dmypy.json
 
-# Solver output results
-output/
+# Ruff
+.ruff_cache/
 
-# Git worktrees (superpowers subagent-driven-development workspaces)
-.worktrees/
-.superpowers/
+# Frontend & Node
+node_modules/
+**/node_modules/
+.svelte-kit/
+**/.svelte-kit/
+frontend/dist/
 
-# KHE / C build artifacts & on-demand downloads
-*.o
-*.a
-*.cgi
-*.tar.gz
-tools/khe/bin/
-tools/khe/khe-*/
-.tmp_val/

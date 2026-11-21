@@ -1,0 +1,9 @@
+@import "tailwindcss";
+@import "@fontsource-variable/material-symbols-outlined/index.css";
+@source "../lib";
+
+@layer base {
+  body {
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  }
+}
