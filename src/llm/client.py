@@ -12,6 +12,10 @@ Configuration via environment variables:
   OPENAI_MODEL     — model name for OpenAI-compatible backend,
                      default deepseek-ai/DeepSeek-V4.1-Flash-1017
   OPENAI_API_KEY   — API key (optional, vLLM does not require one)
+  LLM_MAX_TOKENS   — default completion budget, default 1024; reasoning
+                     models (DeepSeek-R1) need far more, e.g. 16384, since
+                     the hidden reasoning counts against it
+  LLM_HTTP_TIMEOUT — HTTP timeout in seconds, default 300
 
 Every call (hit or miss) is appended to generated/llm_cache.jsonl so that
 the full prompt->response log is preserved for the thesis chapter.  Cache
@@ -45,7 +49,10 @@ OPENAI_API_KEY: str = os.environ.get("OPENAI_API_KEY", "EMPTY")
 DEFAULT_MODEL: str = OPENAI_MODEL if LLM_BACKEND == "openai" else OLLAMA_MODEL
 
 _CACHE_FILE = Path("generated/llm_cache.jsonl")
-_HTTP_TIMEOUT = 300.0  # 5 min — large models can be slow on first token
+# 5 min by default — large models can be slow on first token; a reasoning
+# model under load from many parallel runs needs more (LLM_HTTP_TIMEOUT)
+_HTTP_TIMEOUT = float(os.environ.get("LLM_HTTP_TIMEOUT", "300"))
+DEFAULT_MAX_TOKENS: int = int(os.environ.get("LLM_MAX_TOKENS", "1024"))
 
 # In-memory cache: loaded lazily on first use, updated on every write so
 # repeated call()s within one process never re-read the file from disk.
@@ -177,18 +184,37 @@ def _call_openai(
         raw.raise_for_status()
     data = raw.json()
     usage = data.get("usage", {})
+    choice = data["choices"][0]
+    # with --reasoning-parser vLLM moves the reasoning to reasoning_content;
+    # content is null when the token budget ran out before the answer
+    content = _strip_reasoning(choice["message"].get("content") or "")
+    if not content.strip():
+        raise RuntimeError(
+            f"empty answer (finish_reason={choice.get('finish_reason')}, "
+            f"completion_tokens={usage.get('completion_tokens', 0)}); "
+            "raise LLM_MAX_TOKENS"
+        )
     return (
-        data["choices"][0]["message"]["content"],
+        content,
         usage.get("prompt_tokens", 0),
         usage.get("completion_tokens", 0),
     )
+
+
+def _strip_reasoning(content: str) -> str:
+    """Drop a <think>...</think> block left in the answer by a reasoning
+    model served without a reasoning parser; its draft code would otherwise
+    be merged with the final code by the fence extraction."""
+    if "</think>" in content:
+        return content.rsplit("</think>", 1)[1]
+    return content
 
 
 def call(
     messages: list[dict[str, str]],
     model: str = DEFAULT_MODEL,
     temperature: float = 0.8,
-    max_tokens: int = 1024,
+    max_tokens: int = DEFAULT_MAX_TOKENS,
     use_cache: bool = True,
     sample_idx: int = 0,
 ) -> LLMResponse:
@@ -198,7 +224,7 @@ def call(
         messages:    OpenAI-style list of {role, content} dicts.
         model:       Model tag/name (overrides DEFAULT_MODEL).
         temperature: Sampling temperature — 0.8 gives diverse candidates.
-        max_tokens:  Maximum tokens to generate.
+        max_tokens:  Maximum tokens to generate (LLM_MAX_TOKENS by default).
         use_cache:   When False, always calls the API (useful for testing).
         sample_idx:  Index of this sample among several drawn for the same
                      prompt. Without it every candidate after the first

@@ -1,6 +1,8 @@
 #!/bin/bash
 # EXP-L1: UCB z pulą statyczną (llm=none) vs UCB z pulą rozszerzaną przez LLM
 # (llm=a) — oba warianty w jednym zadaniu, na całym węźle obl, równolegle.
+# Warianty wybiera EXP_LLM_VARIANTS (np. "a b rag" — trzy warianty promptu
+# bez puli statycznej).
 #
 # Oba warianty biegną w tym samym procesie experiments.py, przemieszane w
 # jednej puli workerów, więc dzielą identyczne warunki sprzętowe. Limit
@@ -32,7 +34,7 @@ set -euo pipefail
 # zlecaj z katalogu projektu; PROJ=... nadpisuje
 PROJ="${PROJ:-$SLURM_SUBMIT_DIR}"
 LOG_DIR="$PROJ/data/logs_exp_l1/${SLURM_JOB_ID}"
-RESULTS_CSV="$PROJ/data/results/exp_l1.csv"
+RESULTS_CSV="$PROJ/data/results/${EXP_OUTPUT_NAME:-exp_l1}.csv"
 
 VLLM_HOST="${VLLM_HOST:-hgx2}"
 VLLM_PORT="${VLLM_PORT:-8000}"
@@ -44,6 +46,9 @@ INSTANCES="${EXP_INSTANCES:-BR-SA-00 BR-SN-00 FI-WP-06 FI-MP-06 GR-P3-10 GR-PA-0
 SEEDS="${EXP_SEEDS:-0 1 2 3 4 5 6 7 8 9}"
 TIME_LIMIT="${EXP_TIME_LIMIT:-300}"   # sekundy przeszukiwania na przebieg
 LLM_TRIGGER="${LLM_TRIGGER:-3}"
+LLM_VARIANTS="${EXP_LLM_VARIANTS:-none a}"
+# ile sekund czekać na /health; duży model (R1) ładuje się kilkadziesiąt minut
+VLLM_WAIT_S="${VLLM_WAIT_S:-1800}"
 # 96 ze 128 rdzeni: reszta zostaje dla podprocesów sandboxa i walidacji
 WORKERS="${EXP_WORKERS:-96}"
 
@@ -60,6 +65,8 @@ echo "seeds     : $SEEDS"
 echo "time-limit: ${TIME_LIMIT}s przeszukiwania / przebieg"
 echo "workers   : $WORKERS"
 echo "llm-trigger: ${LLM_TRIGGER}x"
+echo "warianty  : $LLM_VARIANTS"
+echo "max_tokens: ${LLM_MAX_TOKENS:-1024}  timeout HTTP: ${LLM_HTTP_TIMEOUT:-300}s"
 echo ""
 
 mkdir -p "$LOG_DIR" "$PROJ/data/results"
@@ -70,13 +77,20 @@ WAITED=0
 until curl -sf "http://${VLLM_HOST}:${VLLM_PORT}/health" &>/dev/null; do
     sleep 15
     WAITED=$(( WAITED + 15 ))
-    if (( WAITED >= 1800 )); then
-        echo "BŁĄD: vLLM nie odpowiedział po 30 minutach." >&2
+    if (( WAITED >= VLLM_WAIT_S )); then
+        echo "BŁĄD: vLLM nie odpowiedział po ${VLLM_WAIT_S}s." >&2
         exit 1
     fi
     echo "  ... czekam (${WAITED}s)"
 done
 echo "vLLM gotowy po ${WAITED}s."
+# sprawdź, że serwer serwuje model o nazwie z VLLM_MODEL -- przy
+# niezgodności każde wywołanie LLM skończy się błędem 404
+if ! curl -sf "http://${VLLM_HOST}:${VLLM_PORT}/v1/models" | grep -q "\"${VLLM_MODEL}\""; then
+    echo "BŁĄD: vLLM nie serwuje modelu '${VLLM_MODEL}':" >&2
+    curl -s "http://${VLLM_HOST}:${VLLM_PORT}/v1/models" >&2 || true
+    exit 1
+fi
 echo ""
 
 # ── backend LLM ───────────────────────────────────────────────────────────
@@ -90,14 +104,15 @@ cd "$PROJ"
 # shellcheck disable=SC2086
 uv run python experiments.py \
     --selectors ucb \
-    --llm-variants none a \
+    --llm-variants $LLM_VARIANTS \
     --instances $INSTANCES \
     --seeds $SEEDS \
     --time-limit "$TIME_LIMIT" \
     --workers "$WORKERS" \
     --llm-trigger "$LLM_TRIGGER" \
     --log-dir "$LOG_DIR" \
-    --output "$RESULTS_CSV"
+    --output "$RESULTS_CSV" \
+    --resume
 
 echo ""
 echo "=== Zakończono EXP-L1 ==="
