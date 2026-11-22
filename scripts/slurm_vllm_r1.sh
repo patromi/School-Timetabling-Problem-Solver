@@ -17,7 +17,10 @@
 #SBATCH --gres=gpu:8
 #SBATCH --cpus-per-task=32
 #SBATCH --mem=256G
-#SBATCH --time=72:00:00
+# 3 dni eksperymentu + zapas na ładowanie modelu i kolejkę obl1 (eksperyment
+# startuje najwcześniej razem z serwerem); strażnik i tak wyłączy serwer
+# zaraz po końcu eksperymentu
+#SBATCH --time=3-06:00:00
 #SBATCH --output=slurm_vllm_r1_%j.out
 
 PORT="${VLLM_PORT:-8000}"

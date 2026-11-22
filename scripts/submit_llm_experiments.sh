@@ -17,12 +17,16 @@
 #   -i <INSTANCJE>      Instancje oddzielone spacją (domyślnie 10 instancji
 #                       w zakresie pracy, zob. slurm_exp_l1_llm.sh)
 #   -w <WORKERS>        Równoległe przebiegi na obl (domyślnie 96)
+#   -I "<ITERACJE>"     Budżety w iteracjach zamiast -t, np. "10000 100000";
+#                       każdy po kolei, z własnym CSV (<nazwa>_<N>it.csv)
 #   -V <WARIANTY>       Warianty LLM oddzielone spacją (domyślnie "none a")
 #   --exp-time <H:M:S>  Limit zadania eksperymentu (domyślnie szacowany)
 #   --r1                DeepSeek-R1 na całym hgx2 (slurm_vllm_r1.sh, model
 #                       deepseek-r1), warianty "a b rag" bez puli statycznej,
+#                       budżety 10k / 100k / 300k iteracji, 13 instancji,
+#                       25 seedów (jak static v2), 3 x 975 przebiegów,
 #                       max_tokens 16384, timeout HTTP 30 min, czekanie na
-#                       start serwera do 2 h, limit eksperymentu 23 h,
+#                       start serwera do 2 h, limit eksperymentu 3 dni,
 #                       wyniki w data/results/exp_l1_r1.csv
 #   --obl2              Użyj obl2 zamiast obl1
 #   --dry-run           Wypisz komendy bez uruchamiania
@@ -40,6 +44,7 @@ set -euo pipefail
 ACCOUNT=""
 MODEL="Qwen/Qwen2.5-Coder-32B-Instruct"
 TIME_LIMIT=300
+ITERATIONS=""
 NUM_SEEDS=10
 INSTANCES="BR-SA-00 BR-SN-00 FI-WP-06 FI-MP-06 GR-P3-10 GR-PA-08 GR-H1-97 ZA-LW-09 ZA-WD-09 IT-I4-96"
 WORKERS=96
@@ -56,8 +61,9 @@ while [[ $# -gt 0 ]]; do
         -A)        ACCOUNT="$2"; shift 2 ;;
         -m)        MODEL="$2"; shift 2 ;;
         -t)        TIME_LIMIT="$2"; shift 2 ;;
-        -n)        NUM_SEEDS="$2"; shift 2 ;;
-        -i)        INSTANCES="$2"; shift 2 ;;
+        -I)        ITERATIONS="$2"; shift 2 ;;
+        -n)        NUM_SEEDS="$2"; SEEDS_SET=1; shift 2 ;;
+        -i)        INSTANCES="$2"; INSTANCES_SET=1; shift 2 ;;
         -w)        WORKERS="$2"; shift 2 ;;
         -V)        VARIANTS="$2"; VARIANTS_SET=1; shift 2 ;;
         --exp-time) EXP_TIME="$2"; shift 2 ;;
@@ -88,7 +94,12 @@ if [[ $R1 -eq 1 ]]; then
     LLM_MAX_TOKENS=16384
     LLM_HTTP_TIMEOUT=1800
     VLLM_WAIT_S=7200
-    [[ -z "$EXP_TIME" ]] && EXP_TIME="23:00:00"
+    [[ -z "$EXP_TIME" ]] && EXP_TIME="3-00:00:00"
+    # ten sam budżet co główna faza slurm_exp_matrix_static.sh
+    [[ -z "$ITERATIONS" ]] && ITERATIONS="10000 100000 300000"
+    # 13 instancji w zakresie pracy, te same co w slurm_exp_matrix_static.sh
+    [[ -z "${INSTANCES_SET:-}" ]] && INSTANCES="BR-SA-00 BR-SM-00 BR-SN-00 FI-WP-06 FI-MP-06 FI-PB-98 GR-P3-10 GR-PA-08 GR-H1-97 ZA-LW-09 ZA-WD-09 IT-I4-96 KS-PR-11"
+    [[ -z "${SEEDS_SET:-}" ]] && NUM_SEEDS=25
 fi
 
 SEEDS=$(seq -s' ' 0 $(( NUM_SEEDS - 1 )))
@@ -102,7 +113,9 @@ SCRIPTS="$PROJ/scripts"
 # każda fala trwa limit przeszukiwania + czas LLM (zapas x2) + 10 min na start
 INST_COUNT=$(echo "$INSTANCES" | wc -w)
 VAR_COUNT=$(echo "$VARIANTS" | wc -w)
-RUNS=$(( INST_COUNT * NUM_SEEDS * VAR_COUNT ))
+BUDGET_COUNT=1
+[[ -n "$ITERATIONS" ]] && BUDGET_COUNT=$(echo "$ITERATIONS" | wc -w)
+RUNS=$(( INST_COUNT * NUM_SEEDS * VAR_COUNT * BUDGET_COUNT ))
 WAVES=$(( (RUNS + WORKERS - 1) / WORKERS ))
 EXP_MIN=$(( WAVES * TIME_LIMIT * 2 / 60 + 10 ))
 EXP_H=$(( EXP_MIN / 60 ))
@@ -120,7 +133,11 @@ echo "max_tokens  : $LLM_MAX_TOKENS  timeout HTTP: ${LLM_HTTP_TIMEOUT}s"
 echo "Node CPU    : $OBL_NODE (cały węzeł)"
 echo "Instancje   : $INSTANCES"
 echo "Seedy       : $SEEDS"
-echo "Time-limit  : ${TIME_LIMIT}s przeszukiwania / przebieg"
+if [[ -n "$ITERATIONS" ]]; then
+    echo "Budżety     : ${ITERATIONS} iteracji / przebieg (po kolei)"
+else
+    echo "Time-limit  : ${TIME_LIMIT}s przeszukiwania / przebieg"
+fi
 echo "Przebiegi   : $RUNS ($VAR_COUNT warianty), $WORKERS workerów, $WAVES fal"
 echo "Limit EXP   : $EXP_TIME"
 if [[ $R1 -eq 1 ]]; then
@@ -162,6 +179,7 @@ echo ">> Submituję: EXP-L1 (na $OBL_NODE, po starcie vLLM job $VLLM_JOB) ..."
 EXP_ENV="ALL,PROJ=${PROJ},VLLM_HOST=hgx2,VLLM_PORT=${VLLM_PORT},VLLM_MODEL=${MODEL}"
 EXP_ENV="${EXP_ENV},EXP_INSTANCES=${INSTANCES},EXP_SEEDS=${SEEDS}"
 EXP_ENV="${EXP_ENV},EXP_TIME_LIMIT=${TIME_LIMIT},EXP_WORKERS=${WORKERS}"
+EXP_ENV="${EXP_ENV},EXP_ITERATIONS=${ITERATIONS}"
 EXP_ENV="${EXP_ENV},EXP_LLM_VARIANTS=${VARIANTS},EXP_OUTPUT_NAME=${OUTPUT_NAME}"
 EXP_ENV="${EXP_ENV},LLM_MAX_TOKENS=${LLM_MAX_TOKENS},LLM_HTTP_TIMEOUT=${LLM_HTTP_TIMEOUT}"
 EXP_ENV="${EXP_ENV},VLLM_WAIT_S=${VLLM_WAIT_S}"
@@ -206,4 +224,8 @@ echo "             tail -f slurm_exp_l1_${EXP_JOB}.out"
 echo "             tail -f slurm_vllm_*${VLLM_JOB}.out"
 echo " Anuluj:     scancel $VLLM_JOB $EXP_JOB $CANCEL_JOB"
 echo "==========================================="
-echo "Wyniki: $PROJ/data/results/${OUTPUT_NAME}.csv"
+if [[ -n "$ITERATIONS" ]]; then
+    echo "Wyniki: $PROJ/data/results/${OUTPUT_NAME}_<N>it.csv (N = $ITERATIONS)"
+else
+    echo "Wyniki: $PROJ/data/results/${OUTPUT_NAME}.csv"
+fi

@@ -45,6 +45,10 @@ VLLM_MODEL="${VLLM_MODEL:-Qwen/Qwen2.5-Coder-32B-Instruct}"
 INSTANCES="${EXP_INSTANCES:-BR-SA-00 BR-SN-00 FI-WP-06 FI-MP-06 GR-P3-10 GR-PA-08 GR-H1-97 ZA-LW-09 ZA-WD-09 IT-I4-96}"
 SEEDS="${EXP_SEEDS:-0 1 2 3 4 5 6 7 8 9}"
 TIME_LIMIT="${EXP_TIME_LIMIT:-300}"   # sekundy przeszukiwania na przebieg
+# budżety w iteracjach oddzielone spacją, np. "10000 100000 300000"
+# (jak w slurm_exp_matrix_static.sh); ustawione zastępują limit czasu,
+# więc wyniki nie zależą od szybkości węzła; każdy budżet ma własny CSV
+ITERATIONS="${EXP_ITERATIONS:-}"
 LLM_TRIGGER="${LLM_TRIGGER:-3}"
 LLM_VARIANTS="${EXP_LLM_VARIANTS:-none a}"
 # ile sekund czekać na /health; duży model (R1) ładuje się kilkadziesiąt minut
@@ -62,7 +66,11 @@ echo "LogDir    : $LOG_DIR"
 echo "vLLM      : http://${VLLM_HOST}:${VLLM_PORT}/v1 (model=$VLLM_MODEL)"
 echo "instances : $INSTANCES"
 echo "seeds     : $SEEDS"
-echo "time-limit: ${TIME_LIMIT}s przeszukiwania / przebieg"
+if [[ -n "$ITERATIONS" ]]; then
+    echo "budżety   : ${ITERATIONS} iteracji / przebieg (po kolei)"
+else
+    echo "time-limit: ${TIME_LIMIT}s przeszukiwania / przebieg"
+fi
 echo "workers   : $WORKERS"
 echo "llm-trigger: ${LLM_TRIGGER}x"
 echo "warianty  : $LLM_VARIANTS"
@@ -101,21 +109,39 @@ export OPENAI_API_KEY="EMPTY"
 
 cd "$PROJ"
 
-# shellcheck disable=SC2086
-uv run python experiments.py \
-    --selectors ucb \
-    --llm-variants $LLM_VARIANTS \
-    --instances $INSTANCES \
-    --seeds $SEEDS \
-    --time-limit "$TIME_LIMIT" \
-    --workers "$WORKERS" \
-    --llm-trigger "$LLM_TRIGGER" \
-    --log-dir "$LOG_DIR" \
-    --output "$RESULTS_CSV" \
-    --resume
+# run CSV LOG_DIR [argumenty budżetu...]
+run() {
+    local csv="$1" logs="$2"
+    shift 2
+    mkdir -p "$logs"
+    echo "────── $(basename "$csv") — start $(date +%H:%M) ──────"
+    # shellcheck disable=SC2086
+    uv run python experiments.py \
+        --selectors ucb \
+        --llm-variants $LLM_VARIANTS \
+        --instances $INSTANCES \
+        --seeds $SEEDS \
+        --workers "$WORKERS" \
+        --llm-trigger "$LLM_TRIGGER" \
+        --log-dir "$logs" \
+        --output "$csv" \
+        --resume \
+        "$@"
+    echo "────── $(basename "$csv") — koniec $(date +%H:%M) ──────"
+}
+
+if [[ -n "$ITERATIONS" ]]; then
+    # kilka budżetów po kolei, każdy z własnym CSV: klucz --resume nie
+    # zawiera budżetu, więc wspólny plik pomieszałby przebiegi
+    for it in $ITERATIONS; do
+        run "${RESULTS_CSV%.csv}_${it}it.csv" "$LOG_DIR/${it}it" --iterations "$it"
+    done
+else
+    run "$RESULTS_CSV" "$LOG_DIR" --time-limit "$TIME_LIMIT"
+fi
 
 echo ""
 echo "=== Zakończono EXP-L1 ==="
 
 echo "Logi JSONL : $LOG_DIR/"
-echo "CSV        : $RESULTS_CSV"
+echo "CSV        : ${RESULTS_CSV%.csv}*.csv"
