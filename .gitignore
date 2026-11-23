@@ -92,6 +92,7 @@ output/
 *.a
 *.cgi
 *.tar.gz
+!data/logs_static_v2.tar.gz
 tools/khe/bin/
 tools/khe/khe-*/
 .tmp_val/
