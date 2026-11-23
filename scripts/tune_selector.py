@@ -15,6 +15,23 @@ Etapy (każdy dopisuje wyniki do <out>/<etap>.csv i umie się wznowić):
   test300  4 selektory, 300k iteracji                        13 inst. x 30 seedów
   report   werdykt względem random -> <out>/test_report.csv
 
+Druga runda (--stages sa2 sa2final test2_100 test2_300 report2, domyślnie do
+data/results/tuning_v2). Pierwsza wskazała t0 = 0,01 i idle = 6000 na granicy
+siatki, więc rozszerzamy tylko SA; UCB zostaje przy c = 0,02, alfa = 0,02,
+premii 0,1 i 6 stanach:
+
+  sa2        t0 {0,01 0,02 0,05} x idle {6000 12000 25000 bez perturbacji},
+             osobno dla random i UCB                         6 inst. x 10 seedów
+  sa2final   dogrywka 3 najlepszych każdego selektora        6 inst. x 20 seedów
+             -> <out>/best_config.json
+  test2_100  4 selektory, 100k iteracji, seedy 300-349      13 inst. x 50 seedów
+  test2_300  4 selektory, 300k iteracji, seedy 300-329      13 inst. x 30 seedów
+  report2    werdykt względem random -> <out>/test_report.csv
+
+Seedy 200-249 widzieliśmy już w pierwszej rundzie, więc test używa nowych.
+Wariant bez perturbacji zachowuje progi stanów UCB z idle = 6000 (idle wyznacza
+też te progi), żeby różnił się od niego tylko brakiem perturbacji.
+
 Strojenie widzi tylko 6 instancji i seedy 100-129. Test używa seedów 200-249,
 których strojenie nie widziało, oraz wszystkich 13 instancji. Random dostaje
 własne najlepsze SA, żeby przewaga UCB nie wynikała z lepszej temperatury.
@@ -25,6 +42,8 @@ Konfiguracje porównujemy średnią rangą kosztu leksykograficznego w blokach
 
 Użycie:
     uv run python scripts/tune_selector.py --stages sa ucb ucb2 test100 test300 report
+    uv run python scripts/tune_selector.py --stages sa2 sa2final test2_100 \
+        test2_300 report2
     uv run python scripts/tune_selector.py --short --out <katalog>   # próba
 """
 
@@ -38,7 +57,7 @@ import sys
 import time
 from collections import defaultdict
 from concurrent.futures import ProcessPoolExecutor, as_completed
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -49,6 +68,7 @@ sys.path.insert(0, str(ROOT))
 
 ARCHIVE = ROOT / "data" / "xhstt2014" / "XHSTT-2014.xml"
 STAGES = ["sa", "ucb", "ucb2", "test100", "test300", "report"]
+STAGES_V2 = ["sa2", "sa2final", "test2_100", "test2_300", "report2"]
 
 TUNE_INSTANCES = ["BR-SA-00", "FI-WP-06", "FI-MP-06", "GR-PA-08", "GR-H1-97", "ZA-LW-09"]
 ALL_INSTANCES = [
@@ -83,6 +103,7 @@ CSV_FIELDS = [
     "alpha",
     "bonus",
     "states",
+    "perturb",
     "instance",
     "seed",
     "iterations",
@@ -150,6 +171,28 @@ SHORT = Grid(
     seeds_test={"test100": (200, 201), "test300": (200, 201)},
 )
 
+# wartość w siatce idle oznaczająca wariant bez perturbacji
+NO_PERTURB = 0
+FULL_V2 = replace(
+    FULL,
+    t0=(0.01, 0.02, 0.05),
+    idle=(6000, 12000, 25000, NO_PERTURB),
+    top_k=3,
+    test_budgets={"test2_100": 100_000, "test2_300": 300_000},
+    seeds_test={
+        "test2_100": tuple(range(300, 350)),
+        "test2_300": tuple(range(300, 330)),
+    },
+)
+SHORT_V2 = replace(
+    SHORT,
+    t0=(0.01, 0.02),
+    idle=(60, 120, NO_PERTURB),
+    top_k=2,
+    test_budgets={"test2_100": 300, "test2_300": 600},
+    seeds_test={"test2_100": (300, 301), "test2_300": (300, 301)},
+)
+
 
 @dataclass(frozen=True)
 class Config:
@@ -162,12 +205,14 @@ class Config:
     alpha: float = 0.02
     bonus: float = 0.1
     states: int = 6
+    perturb: bool = True
 
     @property
     def id(self) -> str:
+        suffix = "" if self.perturb else "|bez_perturbacji"
         return (
             f"{self.selector}|t0={self.t0:g}|idle={self.idle}|c={self.c:g}"
-            f"|a={self.alpha:g}|b={self.bonus:g}|s={self.states}"
+            f"|a={self.alpha:g}|b={self.bonus:g}|s={self.states}{suffix}"
         )
 
 
@@ -257,7 +302,7 @@ def run_task(task: Task) -> Row:
             idle_limit=cfg.idle,
             min_relative_improvement=0.0,
             heuristics=pool,
-            perturbations=True,
+            perturbations=cfg.perturb,
             seed=seed,
         )
     finally:
@@ -314,6 +359,8 @@ def read_rows(path: Path) -> list[Row]:
     for r in rows:
         r.update({k: int(r[k]) for k in ints})
         r.update({k: float(r[k]) for k in floats})
+        # pliki sprzed drugiej rundy nie mają tej kolumny (zawsze z perturbacjami)
+        r["perturb"] = r.get("perturb", "True") == "True"
     return rows
 
 
@@ -330,6 +377,7 @@ def config_of(row: Row) -> Config:
         alpha=row["alpha"],
         bonus=row["bonus"],
         states=row["states"],
+        perturb=row["perturb"],
     )
 
 
@@ -452,8 +500,46 @@ def best_configs(out: Path, grid: Grid) -> dict[str, Config]:
     }
 
 
+def sa2_tasks(grid: Grid) -> list[Task]:
+    # bez perturbacji: progi stanów UCB jak przy najmniejszym idle z siatki
+    state_idle = grid.idle[0]
+    configs = [
+        Config(selector=sel, t0=t0, idle=idle)
+        if idle != NO_PERTURB
+        else Config(selector=sel, t0=t0, idle=state_idle, perturb=False)
+        for sel in ("random", "ucb")
+        for t0, idle in itertools.product(grid.t0, grid.idle)
+    ]
+    return tasks_for(configs, grid.tune_instances, grid.seeds_tune, grid.tune_iterations)
+
+
+def sa2final_tasks(out: Path, grid: Grid) -> list[Task]:
+    rows = complete_rows(out, "sa2", sa2_tasks(grid))
+    top = [
+        t["config"]
+        for sel in ("random", "ucb")
+        for t in ranking([r for r in rows if r["selector"] == sel])[: grid.top_k]
+    ]
+    return tasks_for(top, grid.tune_instances, grid.seeds_final, grid.tune_iterations)
+
+
+def best_configs_v2(out: Path, grid: Grid) -> dict[str, Config]:
+    """Konfiguracje do testu drugiej rundy; zwycięzcy tylko z seedów dogrywki."""
+    rows = complete_rows(out, "sa2final", sa2final_tasks(out, grid))
+    rnd = ranking([r for r in rows if r["selector"] == "random"])[0]["config"]
+    ucb = ranking([r for r in rows if r["selector"] == "ucb"])[0]["config"]
+    return {
+        "random": rnd,
+        "epsilon-greedy": replace(rnd, selector="epsilon-greedy"),
+        "ucb": ucb,
+        "ucb-preprocessing": replace(ucb, selector="ucb-preprocessing"),
+    }
+
+
 def test_tasks(out: Path, grid: Grid, stage: str) -> list[Task]:
-    configs = best_configs(out, grid)
+    configs = (
+        best_configs_v2(out, grid) if stage in STAGES_V2 else best_configs(out, grid)
+    )
     tasks = []
     for sel in TEST_SELECTORS:
         for instance, seed in itertools.product(
@@ -471,6 +557,10 @@ def stage_tasks(out: Path, grid: Grid, stage: str) -> list[Task]:
         return ucb_tasks(out, grid)
     if stage == "ucb2":
         return ucb2_tasks(out, grid)
+    if stage == "sa2":
+        return sa2_tasks(grid)
+    if stage == "sa2final":
+        return sa2final_tasks(out, grid)
     return test_tasks(out, grid, stage)
 
 
@@ -488,7 +578,12 @@ def run_stage(out: Path, grid: Grid, stage: str, workers: int) -> None:
     if pending:
         new_file = not path.exists()
         with path.open("a", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(f, fieldnames=CSV_FIELDS)
+            # dopisując do starszego pliku trzymamy się jego nagłówka
+            fields = CSV_FIELDS
+            if not new_file:
+                with path.open(newline="", encoding="utf-8") as existing:
+                    fields = next(csv.reader(existing))
+            writer = csv.DictWriter(f, fieldnames=fields, extrasaction="ignore")
             if new_file:
                 writer.writeheader()
             with ProcessPoolExecutor(max_workers=workers) as pool:
@@ -516,8 +611,16 @@ def run_stage(out: Path, grid: Grid, stage: str, workers: int) -> None:
         table = ranking(rows)
         write_ranking(out / f"ranking_{stage}.csv", table)
         print(f"  najlepsza konfiguracja: {table[0]['config_id']}")
-    if stage == "ucb2":
-        best = {k: asdict(v) for k, v in best_configs(out, grid).items()}
+    elif stage in ("sa2", "sa2final"):
+        for sel in ("random", "ucb"):
+            table = ranking([r for r in rows if r["selector"] == sel])
+            write_ranking(out / f"ranking_{stage}_{sel}.csv", table)
+            print(f"  najlepsze SA dla {sel}: {table[0]['config_id']}")
+    if stage in ("ucb2", "sa2final"):
+        chosen = (
+            best_configs(out, grid) if stage == "ucb2" else best_configs_v2(out, grid)
+        )
+        best = {k: asdict(v) for k, v in chosen.items()}
         (out / "best_config.json").write_text(
             json.dumps(best, indent=2), encoding="utf-8"
         )
@@ -660,17 +763,33 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Strojenie SA i UCB oraz test względem random."
     )
-    parser.add_argument("--stages", nargs="+", choices=STAGES, default=STAGES)
-    parser.add_argument("--out", type=Path, default=ROOT / "data" / "results" / "tuning")
+    parser.add_argument(
+        "--stages", nargs="+", choices=STAGES + STAGES_V2, default=STAGES
+    )
+    parser.add_argument(
+        "--out",
+        type=Path,
+        default=None,
+        help="domyślnie data/results/tuning, dla drugiej rundy tuning_v2",
+    )
     parser.add_argument("--workers", type=int, default=os.cpu_count() or 1)
     parser.add_argument("--short", action="store_true", help="krótka próba działania")
     args = parser.parse_args()
-    grid = SHORT if args.short else FULL
+    second_round = set(args.stages) <= set(STAGES_V2)
+    if not second_round and set(args.stages) & set(STAGES_V2):
+        parser.error("etapów pierwszej i drugiej rundy nie można łączyć")
+    if args.out is None:
+        name = "tuning_v2" if second_round else "tuning"
+        args.out = ROOT / "data" / "results" / name
+    if second_round:
+        grid = SHORT_V2 if args.short else FULL_V2
+    else:
+        grid = SHORT if args.short else FULL
     args.out.mkdir(parents=True, exist_ok=True)
-    for stage in STAGES:
+    for stage in STAGES_V2 if second_round else STAGES:
         if stage not in args.stages:
             continue
-        if stage == "report":
+        if stage in ("report", "report2"):
             write_report(args.out, grid)
         else:
             run_stage(args.out, grid, stage, args.workers)

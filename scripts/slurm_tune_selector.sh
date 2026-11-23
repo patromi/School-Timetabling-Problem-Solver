@@ -8,6 +8,11 @@
 #   sbatch -A inz_school_tt scripts/slurm_tune_selector.sh
 #   TUNE_STAGES="test300 report" sbatch -A inz_school_tt --export=ALL \
 #       scripts/slurm_tune_selector.sh                     # wybrane etapy
+#   TUNE_V2=1 sbatch -A inz_school_tt --export=ALL \
+#       scripts/slurm_tune_selector.sh                     # druga runda (tuning_v2)
+#   TUNE_V2=1 TUNE_SHORT=1 TUNE_OUT=data/results/tuning_v2_proba \
+#       sbatch -A inz_school_tt --export=ALL -t 00:30:00 \
+#       scripts/slurm_tune_selector.sh                     # próba drugiej rundy
 #   TUNE_OUT=data/results/tuning_proba TUNE_SHORT=1 \
 #       sbatch -A inz_school_tt --export=ALL -t 00:30:00 \
 #       scripts/slurm_tune_selector.sh                     # próba
@@ -23,8 +28,13 @@
 set -euo pipefail
 
 PROJ="${PROJ:-$SLURM_SUBMIT_DIR}"
-STAGES="${TUNE_STAGES:-sa ucb ucb2 test100 test300 report}"
-OUT="${TUNE_OUT:-data/results/tuning}"
+if [[ "${TUNE_V2:-0}" == "1" ]]; then
+    STAGES="${TUNE_STAGES:-sa2 sa2final test2_100 test2_300 report2}"
+    OUT="${TUNE_OUT:-data/results/tuning_v2}"
+else
+    STAGES="${TUNE_STAGES:-sa ucb ucb2 test100 test300 report}"
+    OUT="${TUNE_OUT:-data/results/tuning}"
+fi
 
 # jeden przebieg na wątek; przy dużym przydziale 6 wątków zostaje dla systemu
 THREADS=$(nproc)
