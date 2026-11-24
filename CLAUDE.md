@@ -109,6 +109,13 @@ Pracuj etapami. Przed rozpoczęciem etapu przedstaw krótki plan plików i inter
 > `experiments.py --preset bazowy` (SA 1e-3, start losowy, perturbacje w puli selektora, UCB alpha 0.08,
 > bez `repair_clash`); każdy z tych elementów ma też osobną flagę. Skrót `sa` w kolumnie `acceptance`
 > oznaczał przed 18.10.2026 T0 = 1e-3 — nowe pliki mają jednoznaczną kolumnę `acceptance_detail`.
+>
+> **Konfiguracja ze strojenia (24.11.2026, `scripts/tune_selector.py`, rundy 1–2):** w `experiments.py`
+> domyślnie SA chłodzone przez pozostały budżet (`--reheat remaining`), T0 = 0.01 dla random i
+> epsilon-greedy, 0.02 dla UCB (`TUNED_SA_T0`), **bez perturbacji** (`--perturbations` je włącza),
+> `idle_limit` = 6000 (wyznacza już tylko progi stanów UCB i wyzwalacz LLM). UCB bez zmian: c = 0.02,
+> alpha = 0.02, bonus 0.1, 6 stanów. Poprzednie ustawienia przywraca `--preset przed_strojeniem`.
+> Wnioski: `docs/wnioski_strojenie_2026-11-24.md`.
 
 Obecnie zaimplementowany pipeline to construct + Late Acceptance Hill Climbing (LAHC), czyli **etap
 przejściowy sprzed powyższej specyfikacji** — nie ma jeszcze selektora RL (Etap 6) ani generatora LLM

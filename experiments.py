@@ -48,10 +48,24 @@ DEFAULT_LLM_TRIGGER = 3  # idle_limit multiplier before LLM fires
 HISTORY_LENGTH = 30
 LOG_WINDOW_SIZE = 2000  # iterations per selector_window log record
 # Iterations without a new best before perturbation; thirds of it are the
-# low/medium/high stagnation buckets of the UCB state. Chosen from the gaps
-# between new_best records in random-selector runs (BR-SA-00: p90 ~800,
-# p99 ~7300 iterations).
-STAGNATION_LIMIT = 3000
+# low/medium/high stagnation buckets of the UCB state. Perturbations are off
+# by default (see below), so it now only sets those buckets (and when the LLM
+# generator fires). 6000 won the tuning (scripts/tune_selector.py, rounds 1
+# and 2, docs/wnioski_strojenie_2026-11-24.md); it was 3000 before, chosen
+# from the gaps between new_best records (BR-SA-00: p90 ~800, p99 ~7300).
+STAGNATION_LIMIT = 6000
+STAGNATION_LIMIT_BEFORE_TUNING = 3000
+# SA starting temperature as a fraction of the starting cost, per selector,
+# from the second tuning round (sa2final). Values in 0.01-0.05 ranked almost
+# the same, so the split matters little; selectors not listed use the
+# default 0.01.
+TUNED_SA_T0 = {
+    "random": 0.01,
+    "epsilon-greedy": 0.01,
+    "ucb": 0.02,
+    "ucb-preprocessing": 0.02,
+}
+DEFAULT_SA_T0 = 0.01
 # A new best resets stagnation only if it improves the best cost at the last
 # reset by at least this fraction (0 = every new best resets it). 0.05 was
 # tried (experiment v3b vs v2, LAHC): perturbations then fired on ZA-WD-09,
@@ -92,9 +106,19 @@ class RunResult:
 
 
 def _apply_preset(args: argparse.Namespace) -> None:
-    """--preset bazowy: the configuration before the feasibility work
-    (issue #82), so older results can be reproduced with one flag instead
-    of five."""
+    """Older configurations with one flag instead of several.
+
+    przed_strojeniem: the defaults from issue #82 until the tuning of
+    24.11.2026 (experiment 1163195, data/results/static_v2): SA T0 = 0.01 for
+    every selector, re-heated over the full budget after each perturbation,
+    perturbations after 3000 idle iterations.
+    bazowy: additionally everything from before issue #82."""
+    if args.preset not in ("przed_strojeniem", "bazowy"):
+        return
+    args.untuned_sa = True
+    args.reheat = "full"
+    args.perturbations = True
+    args.idle_limit = STAGNATION_LIMIT_BEFORE_TUNING
     if args.preset != "bazowy":
         return
     args.acceptance = ["sa-t0=1e-3" if a == "sa" else a for a in args.acceptance]
@@ -136,10 +160,20 @@ def _make_selector(selector_name: str) -> "HeuristicSelector":
     return RandomSelector()
 
 
+def _sa_t0(selector_name: str, untuned: bool = False) -> float:
+    """T0 factor of plain "sa": tuned per selector, or 0.01 for all."""
+    if untuned:
+        return DEFAULT_SA_T0
+    return TUNED_SA_T0.get(selector_name, DEFAULT_SA_T0)
+
+
 def _make_acceptance(
     acceptance_name: str,
     time_limit: float,
     iteration_budget: int | None = None,
+    selector_name: str = "",
+    reheat: str = "remaining",
+    untuned_sa: bool = False,
 ) -> "AcceptanceCriterion":
     from src.acceptance import AutoSAAcceptance, LAHCAcceptance
 
@@ -149,17 +183,19 @@ def _make_acceptance(
         return LAHCAcceptance(100)
     if acceptance_name == "lahc-L300":
         return LAHCAcceptance(300)
-    if acceptance_name == "sa":
-        return AutoSAAcceptance(time_budget=time_limit, iteration_budget=iteration_budget)
-    if acceptance_name == "sa-t0005":
-        return AutoSAAcceptance(t0_factor=0.0005, time_budget=time_limit, iteration_budget=iteration_budget)
-    if acceptance_name == "sa-t005":
-        return AutoSAAcceptance(t0_factor=0.005, time_budget=time_limit, iteration_budget=iteration_budget)
-    if acceptance_name.startswith("sa-t0="):
+    t0_factor = {
+        "sa": _sa_t0(selector_name, untuned_sa),
+        "sa-t0005": 0.0005,
+        "sa-t005": 0.005,
+    }.get(acceptance_name)
+    if t0_factor is None and acceptance_name.startswith("sa-t0="):
+        t0_factor = float(acceptance_name.removeprefix("sa-t0="))
+    if t0_factor is not None:
         return AutoSAAcceptance(
-            t0_factor=float(acceptance_name.removeprefix("sa-t0=")),
+            t0_factor=t0_factor,
             time_budget=time_limit,
             iteration_budget=iteration_budget,
+            reheat=reheat,
         )
     return LAHCAcceptance(HISTORY_LENGTH)
 
@@ -175,10 +211,13 @@ def _run_one(
     select_perturbations: bool = False,
     time_aware_reward: bool = False,
     exclude_heuristics: tuple[str, ...] = (),
-    perturbations: bool = True,
+    perturbations: bool = False,
     llm_variant: str = "none",
     llm_trigger: int = DEFAULT_LLM_TRIGGER,
     iteration_budget: int | None = None,
+    idle_limit: int = STAGNATION_LIMIT,
+    reheat: str = "remaining",
+    untuned_sa: bool = False,
 ) -> RunResult:
     """Run one solver configuration. Imports inside so ProcessPoolExecutor
     can spawn cleanly without pickling the module-level state."""
@@ -216,7 +255,9 @@ def _run_one(
     else:
         selector = _make_selector(selector_name)
 
-    acceptance = _make_acceptance(acceptance_name, time_limit, iteration_budget)
+    acceptance = _make_acceptance(
+        acceptance_name, time_limit, iteration_budget, selector_name, reheat, untuned_sa
+    )
 
     llm_enabled = llm_variant != "none"
     llm_stats = GenerationStats() if llm_enabled else None
@@ -247,7 +288,7 @@ def _run_one(
             on_progress=_on_progress,
             progress_every=LOG_WINDOW_SIZE,
             logger=logger,
-            idle_limit=STAGNATION_LIMIT,
+            idle_limit=idle_limit,
             min_relative_improvement=MIN_RELATIVE_IMPROVEMENT,
             select_perturbations=select_perturbations,
             time_aware_reward=time_aware_reward,
@@ -472,9 +513,41 @@ def main() -> None:
         help="Offer small/large_perturbation to the selector (pre-step-6)",
     )
     parser.add_argument(
+        "--perturbations",
+        action="store_true",
+        help=(
+            "Perturb after --idle-limit iterations without a new best "
+            "(off by default since the tuning of 24.11.2026)"
+        ),
+    )
+    parser.add_argument(
         "--no-perturbations",
         action="store_true",
-        help="Never perturb on stagnation (plain SA + selector)",
+        help="Never perturb on stagnation (the default now; kept for old scripts)",
+    )
+    parser.add_argument(
+        "--idle-limit",
+        type=int,
+        default=STAGNATION_LIMIT,
+        help=(
+            "Iterations without a new best before a perturbation; thirds of it "
+            f"are the UCB stagnation states (default {STAGNATION_LIMIT})"
+        ),
+    )
+    parser.add_argument(
+        "--reheat",
+        choices=["remaining", "full"],
+        default="remaining",
+        help=(
+            "SA after a perturbation cools over the rest of the budget "
+            "(remaining, default) or over the full budget again (full, before "
+            "24.11.2026)"
+        ),
+    )
+    parser.add_argument(
+        "--untuned-sa",
+        action="store_true",
+        help=f"SA T0 = {DEFAULT_SA_T0} for every selector instead of TUNED_SA_T0",
     )
     parser.add_argument(
         "--time-aware-reward",
@@ -494,10 +567,12 @@ def main() -> None:
     )
     parser.add_argument(
         "--preset",
-        choices=["domyslny", "bazowy"],
+        choices=["domyslny", "przed_strojeniem", "bazowy"],
         default="domyslny",
         help=(
-            "bazowy: every setting from before issue #82 at once -- SA with "
+            "przed_strojeniem: the defaults before 24.11.2026 (SA T0 0.01 "
+            "for all, reheat full, perturbations after 3000 idle iterations); "
+            "bazowy: that plus every setting from before issue #82 -- SA with "
             "T0 1e-3, naive start, perturbations offered to the selector, "
             "UCB alpha 0.08, no repair_clash"
         ),
@@ -596,10 +671,13 @@ def main() -> None:
                 args.select_perturbations,
                 args.time_aware_reward,
                 tuple(args.exclude_heuristic),
-                not args.no_perturbations,
+                args.perturbations and not args.no_perturbations,
                 llm,
                 args.llm_trigger,
                 args.iterations,
+                args.idle_limit,
+                args.reheat,
+                args.untuned_sa,
             ): (inst, sel, acc, seed, llm)
             for inst, sel, acc, seed, llm in jobs
         }

@@ -87,6 +87,9 @@ Do zarządzania zależnościami i środowiskiem w Pythonie używamy narzędzia `
       --selectors random ucb --time-limit 120 --workers 6 \
       --output data/results/moj_eksperyment.csv --log-dir data/logs/moj_eksperyment
 
+  # domyślnie: konfiguracja ze strojenia 24.11.2026 (docs/wnioski_strojenie_2026-11-24.md)
+  # konfiguracja sprzed strojenia (eksperyment statyczny 1163195), jedną flagą
+  uv run python experiments.py --preset przed_strojeniem ...
   # konfiguracja sprzed optymalizacji wykonalności (issue #82), jedną flagą
   uv run python experiments.py --preset bazowy ...
 
