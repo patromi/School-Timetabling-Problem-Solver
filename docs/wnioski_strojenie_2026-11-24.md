@@ -149,8 +149,15 @@ twarde, co wskazuje na ograniczenie nagrody binarnej.
 
 ## Otwarte kwestie
 
-- Eksperyment z nagrodą, która w stanie niewykonalnym premiuje tylko spadek kosztu twardego
-  (zmiana specyfikacji selektora, wymaga decyzji).
+- Nagroda leksykograficzna (decyzja 24.11.2026: najpierw koszt twardy, potem miękki). Dodana
+  jako opcja `reward_mode="lex"` w `run_lahc` (`src/lahc.py`, `selector_reward`); domyślnie
+  nadal nagroda binarna. W stanie niewykonalnym: 1 za mniej naruszeń twardych, 0,1 za samą
+  poprawę miękką; w wykonalnym bez zmian. Test: trzecia runda `tune_selector.py`
+  (`reward100`, `reward300`, `report3`; random, `ucb`, `ucb-lex` na konfiguracjach z rundy 2,
+  seedy 400–449 i 400–429), uruchamiana przez
+  `TUNE_V3=1 sbatch -A inz_school_tt --export=ALL scripts/slurm_tune_selector.sh`.
+  W `experiments.py` ten wariant to selektor `ucb-lex`. Domyślną zmienimy, jeśli test to
+  potwierdzi.
 - Strojenie SA osobno dla epsilon-greedy albo test epsilon-greedy z perturbacjami.
 - Powtórzenie analizy wyboru heurystyk na logach rundy 2 (`tuning_v2/logs/test2_*`, na klastrze).
 

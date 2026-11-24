@@ -317,6 +317,70 @@ def test_the_selector_reward_is_binary_improvement_plus_a_new_best_bonus():
     assert 0.0 in selector.rewards
 
 
+_W = 1_000_000  # INFEASIBILITY_WEIGHT
+
+
+@pytest.mark.parametrize(
+    ("candidate", "current", "best", "binary", "lex"),
+    [
+        # infeasible, one hard violation fewer: full reward in both modes
+        (2 * _W + 500, 3 * _W + 100, 2 * _W, 1.0, 1.0),
+        # infeasible, same hard, lower soft: lex rewards it far less
+        (3 * _W + 90, 3 * _W + 100, 2 * _W, 1.0, 0.1),
+        # infeasible, no improvement
+        (3 * _W + 100, 3 * _W + 100, 2 * _W, 0.0, 0.0),
+        # feasible: any improvement is worth 1 in both modes
+        (90, 100, 50, 1.0, 1.0),
+        (110, 100, 50, 0.0, 0.0),
+    ],
+)
+def test_lex_reward_puts_hard_reductions_first_only_while_infeasible(
+    candidate: int, current: int, best: int, binary: float, lex: float
+) -> None:
+    from src.lahc import REWARD_BINARY, REWARD_LEX, selector_reward
+
+    assert selector_reward(candidate, current, best, REWARD_BINARY) == binary
+    assert selector_reward(candidate, current, best, REWARD_LEX) == lex
+
+
+def test_both_reward_modes_add_the_new_best_bonus() -> None:
+    from src.lahc import REWARD_BINARY, REWARD_LEX, selector_reward
+
+    # same hard, lower soft, and a new global best
+    for mode, base in ((REWARD_BINARY, 1.0), (REWARD_LEX, 0.1)):
+        reward = selector_reward(3 * _W + 90, 3 * _W + 100, 3 * _W + 95, mode, 0.1)
+        assert reward == pytest.approx(base + 0.1)
+
+
+def test_an_unknown_reward_mode_is_rejected() -> None:
+    instance = parse_archive(_load("ArtificialSudoku4x4.xml"))[0]
+    initial = build_initial(instance, random.Random(0))
+
+    with pytest.raises(ValueError, match="reward_mode"):
+        run_lahc(instance, initial, random.Random(0), reward_mode="relative")
+
+
+def test_the_lex_reward_mode_runs_and_stays_in_its_reward_set() -> None:
+    from src.lahc import _BEST_BONUS, REWARD_LEX
+
+    instance = parse_archive(_load("ArtificialSudoku4x4.xml"))[0]
+    initial = build_initial(instance, random.Random(0))
+    selector = _RecordingSelector()
+
+    best, cost = run_lahc(
+        instance,
+        initial,
+        random.Random(3),
+        max_iterations=300,
+        selector=selector,
+        reward_mode=REWARD_LEX,
+    )
+
+    allowed = {0.0, 0.1, 1.0, _BEST_BONUS, 0.1 + _BEST_BONUS, 1.0 + _BEST_BONUS}
+    assert all(any(abs(r - a) < 1e-9 for a in allowed) for r in selector.rewards)
+    assert total_cost(instance, best) == cost
+
+
 def _perturbation_count(min_relative_improvement: float) -> int:
     import io
     import json

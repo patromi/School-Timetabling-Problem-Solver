@@ -10,6 +10,8 @@
 #       scripts/slurm_tune_selector.sh                     # wybrane etapy
 #   TUNE_V2=1 sbatch -A inz_school_tt --export=ALL \
 #       scripts/slurm_tune_selector.sh                     # druga runda (tuning_v2)
+#   TUNE_V3=1 sbatch -A inz_school_tt --export=ALL \
+#       scripts/slurm_tune_selector.sh                     # trzecia runda: nagroda (tuning_v3)
 #   TUNE_V2=1 TUNE_SHORT=1 TUNE_OUT=data/results/tuning_v2_proba \
 #       sbatch -A inz_school_tt --export=ALL -t 00:30:00 \
 #       scripts/slurm_tune_selector.sh                     # próba drugiej rundy
@@ -28,7 +30,10 @@
 set -euo pipefail
 
 PROJ="${PROJ:-$SLURM_SUBMIT_DIR}"
-if [[ "${TUNE_V2:-0}" == "1" ]]; then
+if [[ "${TUNE_V3:-0}" == "1" ]]; then
+    STAGES="${TUNE_STAGES:-reward100 reward300 report3}"
+    OUT="${TUNE_OUT:-data/results/tuning_v3}"
+elif [[ "${TUNE_V2:-0}" == "1" ]]; then
     STAGES="${TUNE_STAGES:-sa2 sa2final test2_100 test2_300 report2}"
     OUT="${TUNE_OUT:-data/results/tuning_v2}"
 else

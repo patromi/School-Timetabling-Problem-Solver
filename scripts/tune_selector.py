@@ -28,6 +28,17 @@ premii 0,1 i 6 stanach:
   test2_300  4 selektory, 300k iteracji, seedy 300-329      13 inst. x 30 seedów
   report2    werdykt względem random -> <out>/test_report.csv
 
+Trzecia runda (--stages reward100 reward300 report3, domyślnie do
+data/results/tuning_v3) sprawdza nagrodę leksykograficzną selektora
+(src.lahc.selector_reward, REWARD_LEX): w stanie niewykonalnym 1 tylko za
+mniej naruszeń twardych, 0,1 za samą poprawę miękką. Bez strojenia, na
+konfiguracjach wygranych w drugiej rundzie (V2_BEST):
+
+  reward100  random, ucb, ucb-lex, 100k iteracji, seedy 400-449   13 inst.
+  reward300  to samo, 300k iteracji, seedy 400-429                13 inst.
+  report3    ucb i ucb-lex względem random oraz ucb-lex względem ucb
+             -> <out>/test_report.csv
+
 Seedy 200-249 widzieliśmy już w pierwszej rundzie, więc test używa nowych.
 Wariant bez perturbacji zachowuje progi stanów UCB z idle = 6000 (idle wyznacza
 też te progi), żeby różnił się od niego tylko brakiem perturbacji.
@@ -44,6 +55,7 @@ Użycie:
     uv run python scripts/tune_selector.py --stages sa ucb ucb2 test100 test300 report
     uv run python scripts/tune_selector.py --stages sa2 sa2final test2_100 \
         test2_300 report2
+    uv run python scripts/tune_selector.py --stages reward100 reward300 report3
     uv run python scripts/tune_selector.py --short --out <katalog>   # próba
 """
 
@@ -69,6 +81,10 @@ sys.path.insert(0, str(ROOT))
 ARCHIVE = ROOT / "data" / "xhstt2014" / "XHSTT-2014.xml"
 STAGES = ["sa", "ucb", "ucb2", "test100", "test300", "report"]
 STAGES_V2 = ["sa2", "sa2final", "test2_100", "test2_300", "report2"]
+STAGES_V3 = ["reward100", "reward300", "report3"]
+ROUNDS = {1: STAGES, 2: STAGES_V2, 3: STAGES_V3}
+REPORT_STAGES = ("report", "report2", "report3")
+OUT_NAMES = {1: "tuning", 2: "tuning_v2", 3: "tuning_v3"}
 
 TUNE_INSTANCES = ["BR-SA-00", "FI-WP-06", "FI-MP-06", "GR-PA-08", "GR-H1-97", "ZA-LW-09"]
 ALL_INSTANCES = [
@@ -88,6 +104,7 @@ ALL_INSTANCES = [
 ]
 TEST_SELECTORS = ["random", "epsilon-greedy", "ucb", "ucb-preprocessing"]
 CONTENDERS = ["epsilon-greedy", "ucb", "ucb-preprocessing"]
+V3_SELECTORS = ["random", "ucb", "ucb-lex"]
 
 # waga kosztu twardego: większa niż jakikolwiek koszt miękki w tych instancjach
 LEX_WEIGHT = 10**9
@@ -104,6 +121,7 @@ CSV_FIELDS = [
     "bonus",
     "states",
     "perturb",
+    "reward",
     "instance",
     "seed",
     "iterations",
@@ -192,6 +210,27 @@ SHORT_V2 = replace(
     test_budgets={"test2_100": 300, "test2_300": 600},
     seeds_test={"test2_100": (300, 301), "test2_300": (300, 301)},
 )
+FULL_V3 = replace(
+    FULL,
+    test_budgets={"reward100": 100_000, "reward300": 300_000},
+    seeds_test={
+        "reward100": tuple(range(400, 450)),
+        "reward300": tuple(range(400, 430)),
+    },
+)
+SHORT_V3 = replace(
+    SHORT,
+    test_budgets={"reward100": 300, "reward300": 600},
+    seeds_test={"reward100": (400, 401), "reward300": (400, 401)},
+)
+GRIDS = {
+    (1, False): FULL,
+    (1, True): SHORT,
+    (2, False): FULL_V2,
+    (2, True): SHORT_V2,
+    (3, False): FULL_V3,
+    (3, True): SHORT_V3,
+}
 
 
 @dataclass(frozen=True)
@@ -206,10 +245,13 @@ class Config:
     bonus: float = 0.1
     states: int = 6
     perturb: bool = True
+    reward: str = "binary"  # src.lahc.REWARD_BINARY albo REWARD_LEX
 
     @property
     def id(self) -> str:
         suffix = "" if self.perturb else "|bez_perturbacji"
+        if self.reward != "binary":
+            suffix += f"|nagroda={self.reward}"
         return (
             f"{self.selector}|t0={self.t0:g}|idle={self.idle}|c={self.c:g}"
             f"|a={self.alpha:g}|b={self.bonus:g}|s={self.states}{suffix}"
@@ -249,7 +291,7 @@ def _make_selector(cfg: Config, instance: Any, pool: list[Any]) -> tuple[Any, li
         return RandomSelector(), pool
     if cfg.selector == "epsilon-greedy":
         return EpsilonGreedySelector(), pool
-    if cfg.selector == "ucb":
+    if cfg.selector in ("ucb", "ucb-lex"):
         return UCBSelector(**ucb_args), pool
     if cfg.selector == "ucb-preprocessing":
         profile = analyze_instance(instance)
@@ -303,6 +345,7 @@ def run_task(task: Task) -> Row:
             min_relative_improvement=0.0,
             heuristics=pool,
             perturbations=cfg.perturb,
+            reward_mode=cfg.reward,
             seed=seed,
         )
     finally:
@@ -361,6 +404,8 @@ def read_rows(path: Path) -> list[Row]:
         r.update({k: float(r[k]) for k in floats})
         # pliki sprzed drugiej rundy nie mają tej kolumny (zawsze z perturbacjami)
         r["perturb"] = r.get("perturb", "True") == "True"
+        # pliki sprzed trzeciej rundy: zawsze nagroda binarna
+        r["reward"] = r.get("reward") or "binary"
     return rows
 
 
@@ -378,6 +423,7 @@ def config_of(row: Row) -> Config:
         bonus=row["bonus"],
         states=row["states"],
         perturb=row["perturb"],
+        reward=row["reward"],
     )
 
 
@@ -536,12 +582,32 @@ def best_configs_v2(out: Path, grid: Grid) -> dict[str, Config]:
     }
 
 
+# Zwycięzcy drugiej rundy (data/results/tuning_v2/best_config.json); trzecia
+# runda ich nie stroi, tylko zmienia nagrodę UCB.
+V2_BEST = {
+    "random": Config("random", t0=0.01, idle=6000, perturb=False),
+    "ucb": Config("ucb", t0=0.02, idle=6000, perturb=False),
+    "ucb-lex": Config("ucb-lex", t0=0.02, idle=6000, perturb=False, reward="lex"),
+}
+
+
+def round_of(stage: str) -> int:
+    return next(r for r, stages in ROUNDS.items() if stage in stages)
+
+
+def test_selectors(stage: str) -> list[str]:
+    return V3_SELECTORS if stage in STAGES_V3 else TEST_SELECTORS
+
+
 def test_tasks(out: Path, grid: Grid, stage: str) -> list[Task]:
-    configs = (
-        best_configs_v2(out, grid) if stage in STAGES_V2 else best_configs(out, grid)
-    )
+    if stage in STAGES_V3:
+        configs = V2_BEST
+    elif stage in STAGES_V2:
+        configs = best_configs_v2(out, grid)
+    else:
+        configs = best_configs(out, grid)
     tasks = []
-    for sel in TEST_SELECTORS:
+    for sel in test_selectors(stage):
         for instance, seed in itertools.product(
             grid.test_instances, grid.seeds_test[stage]
         ):
@@ -655,56 +721,68 @@ def verdict(better: list[bool], worse: list[bool]) -> str:
     return "lepszy" if any(better) else "brak istotnej różnicy"
 
 
-def report_stage(rows: list[Row], stage: str) -> list[Row]:
-    """Porównania z random na blokach z kompletem czterech selektorów."""
+def report_stage(
+    rows: list[Row],
+    stage: str,
+    selectors: list[str] | None = None,
+    baseline: str = "random",
+) -> list[Row]:
+    """Porównania z `baseline` na blokach z kompletem `selectors` (domyślnie
+    czterech selektorów testu)."""
+    selectors = selectors or TEST_SELECTORS
+    contenders = [s for s in selectors if s != baseline]
     blocks: dict[tuple[str, int], dict[str, Row]] = defaultdict(dict)
     for r in rows:
         blocks[(r["instance"], r["seed"])][r["selector"]] = r
-    full = [b for _, b in sorted(blocks.items()) if len(b) == len(TEST_SELECTORS)]
+    full = [
+        b for _, b in sorted(blocks.items()) if all(s in b for s in selectors)
+    ]
     if not full:
         return []
-    ranks: dict[str, list[float]] = {s: [] for s in TEST_SELECTORS}
+    ranks: dict[str, list[float]] = {s: [] for s in selectors}
     for block in full:
-        values = rankdata([lex(block[s]) for s in TEST_SELECTORS])
-        for s, value in zip(TEST_SELECTORS, values, strict=True):
+        values = rankdata([lex(block[s]) for s in selectors])
+        for s, value in zip(selectors, values, strict=True):
             ranks[s].append(float(value))
 
     raw: list[float] = []
-    for sel in CONTENDERS:
-        diffs = [a - b for a, b in zip(ranks[sel], ranks["random"], strict=True)]
+    for sel in contenders:
+        diffs = [a - b for a, b in zip(ranks[sel], ranks[baseline], strict=True)]
         raw.append(float(wilcoxon(diffs).pvalue) if any(diffs) else 1.0)
-        sel_only = sum(b[sel]["inf"] == 0 and b["random"]["inf"] != 0 for b in full)
-        rnd_only = sum(b["random"]["inf"] == 0 and b[sel]["inf"] != 0 for b in full)
-        raw.append(mcnemar_p(sel_only, rnd_only))
+        sel_only = sum(b[sel]["inf"] == 0 and b[baseline]["inf"] != 0 for b in full)
+        base_only = sum(b[baseline]["inf"] == 0 and b[sel]["inf"] != 0 for b in full)
+        raw.append(mcnemar_p(sel_only, base_only))
     adjusted = holm(raw)
 
-    pct = {s: 100 * sum(b[s]["inf"] == 0 for b in full) / len(full) for s in TEST_SELECTORS}
-    mean = {s: sum(ranks[s]) / len(ranks[s]) for s in TEST_SELECTORS}
+    pct = {s: 100 * sum(b[s]["inf"] == 0 for b in full) / len(full) for s in selectors}
+    mean = {s: sum(ranks[s]) / len(ranks[s]) for s in selectors}
     table = [
         {
             "stage": stage,
-            "selector": "random",
+            "baseline": baseline,
+            "selector": baseline,
             "n_blocks": len(full),
-            "feasible_pct": round(pct["random"], 2),
-            "mean_rank": round(mean["random"], 4),
+            "feasible_pct": round(pct[baseline], 2),
+            "mean_rank": round(mean[baseline], 4),
             "p_cost_holm": "",
             "p_feasible_holm": "",
             "verdict": "punkt odniesienia",
         }
     ]
-    for j, sel in enumerate(CONTENDERS):
+    for j, sel in enumerate(contenders):
         p_cost, p_feas = adjusted[2 * j], adjusted[2 * j + 1]
         better = [
-            p_cost < ALPHA_TEST and mean[sel] < mean["random"],
-            p_feas < ALPHA_TEST and pct[sel] > pct["random"],
+            p_cost < ALPHA_TEST and mean[sel] < mean[baseline],
+            p_feas < ALPHA_TEST and pct[sel] > pct[baseline],
         ]
         worse = [
-            p_cost < ALPHA_TEST and mean[sel] > mean["random"],
-            p_feas < ALPHA_TEST and pct[sel] < pct["random"],
+            p_cost < ALPHA_TEST and mean[sel] > mean[baseline],
+            p_feas < ALPHA_TEST and pct[sel] < pct[baseline],
         ]
         table.append(
             {
                 "stage": stage,
+                "baseline": baseline,
                 "selector": sel,
                 "n_blocks": len(full),
                 "feasible_pct": round(pct[sel], 2),
@@ -725,15 +803,19 @@ def write_report(out: Path, grid: Grid) -> None:
         if not rows:
             print(f"  {stage}: brak wyników, pomijam")
             continue
-        expected = len(TEST_SELECTORS) * len(grid.test_instances) * len(grid.seeds_test[stage])
+        selectors = test_selectors(stage)
+        expected = len(selectors) * len(grid.test_instances) * len(grid.seeds_test[stage])
         if len(rows) < expected:
             print(f"  UWAGA: {stage} niepełny ({len(rows)}/{expected} przebiegów)")
-        table.extend(report_stage(rows, stage))
+        table.extend(report_stage(rows, stage, selectors))
+        if stage in STAGES_V3:
+            # właściwe pytanie trzeciej rundy: czy nowa nagroda poprawia UCB
+            table.extend(report_stage(rows, stage, ["ucb", "ucb-lex"], baseline="ucb"))
         groups: dict[tuple[str, str], list[Row]] = defaultdict(list)
         for r in rows:
             groups[(r["instance"], r["selector"])].append(r)
         for instance in grid.test_instances:
-            for sel in TEST_SELECTORS:
+            for sel in selectors:
                 g = groups.get((instance, sel), [])
                 if g:
                     k = sum(r["inf"] == 0 for r in g)
@@ -750,10 +832,11 @@ def write_report(out: Path, grid: Grid) -> None:
         writer = csv.writer(f)
         writer.writerow(["stage", "instance", "selector", "n_runs", "n_feasible", "feasible_pct"])
         writer.writerows(per_instance)
-    print("\n=== Werdykt względem random (Holm, p < 0,05) ===")
+    print("\n=== Werdykt względem punktu odniesienia (Holm, p < 0,05) ===")
     for t in table:
         print(
-            f"{t['stage']:8} {t['selector']:18} wykonalne {t['feasible_pct']:6.2f}%  "
+            f"{t['stage']:9} vs {t['baseline']:7} {t['selector']:18} "
+            f"wykonalne {t['feasible_pct']:6.2f}%  "
             f"ranga {t['mean_rank']:.3f}  p koszt {t['p_cost_holm']!s:8} "
             f"p wyk. {t['p_feasible_holm']!s:8} {t['verdict']}"
         )
@@ -764,32 +847,29 @@ def main() -> None:
         description="Strojenie SA i UCB oraz test względem random."
     )
     parser.add_argument(
-        "--stages", nargs="+", choices=STAGES + STAGES_V2, default=STAGES
+        "--stages", nargs="+", choices=STAGES + STAGES_V2 + STAGES_V3, default=STAGES
     )
     parser.add_argument(
         "--out",
         type=Path,
         default=None,
-        help="domyślnie data/results/tuning, dla drugiej rundy tuning_v2",
+        help="domyślnie data/results/tuning, tuning_v2 albo tuning_v3 wg rundy",
     )
     parser.add_argument("--workers", type=int, default=os.cpu_count() or 1)
     parser.add_argument("--short", action="store_true", help="krótka próba działania")
     args = parser.parse_args()
-    second_round = set(args.stages) <= set(STAGES_V2)
-    if not second_round and set(args.stages) & set(STAGES_V2):
-        parser.error("etapów pierwszej i drugiej rundy nie można łączyć")
+    rounds = {round_of(stage) for stage in args.stages}
+    if len(rounds) > 1:
+        parser.error("etapów różnych rund nie można łączyć")
+    round_no = rounds.pop()
     if args.out is None:
-        name = "tuning_v2" if second_round else "tuning"
-        args.out = ROOT / "data" / "results" / name
-    if second_round:
-        grid = SHORT_V2 if args.short else FULL_V2
-    else:
-        grid = SHORT if args.short else FULL
+        args.out = ROOT / "data" / "results" / OUT_NAMES[round_no]
+    grid = GRIDS[(round_no, args.short)]
     args.out.mkdir(parents=True, exist_ok=True)
-    for stage in STAGES_V2 if second_round else STAGES:
+    for stage in ROUNDS[round_no]:
         if stage not in args.stages:
             continue
-        if stage in ("report", "report2"):
+        if stage in REPORT_STAGES:
             write_report(args.out, grid)
         else:
             run_stage(args.out, grid, stage, args.workers)

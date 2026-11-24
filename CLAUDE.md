@@ -116,6 +116,12 @@ Pracuj etapami. Przed rozpoczęciem etapu przedstaw krótki plan plików i inter
 > `idle_limit` = 6000 (wyznacza już tylko progi stanów UCB i wyzwalacz LLM). UCB bez zmian: c = 0.02,
 > alpha = 0.02, bonus 0.1, 6 stanów. Poprzednie ustawienia przywraca `--preset przed_strojeniem`.
 > Wnioski: `docs/wnioski_strojenie_2026-11-24.md`.
+>
+> **Nagroda leksykograficzna (24.11.2026, opcja, nie domyślna):** cel to najpierw koszt twardy, potem
+> miękki, a nagroda binarna nie odróżnia poprawy twardej od miękkiej (UCB głodził `repair_clash`).
+> `run_lahc(reward_mode="lex")` / selektor `ucb-lex` w `experiments.py`: w stanie niewykonalnym 1 za
+> mniej naruszeń twardych, 0.1 za samą poprawę miękką, w wykonalnym jak binarna. Test w trzeciej
+> rundzie `tune_selector.py` (`TUNE_V3=1`); domyślną zmieniamy dopiero po wynikach.
 
 Obecnie zaimplementowany pipeline to construct + Late Acceptance Hill Climbing (LAHC), czyli **etap
 przejściowy sprzed powyższej specyfikacji** — nie ma jeszcze selektora RL (Etap 6) ani generatora LLM

@@ -64,6 +64,7 @@ TUNED_SA_T0 = {
     "epsilon-greedy": 0.01,
     "ucb": 0.02,
     "ucb-preprocessing": 0.02,
+    "ucb-lex": 0.02,
 }
 DEFAULT_SA_T0 = 0.01
 # A new best resets stagnation only if it improves the best cost at the last
@@ -136,7 +137,7 @@ def _make_selector(selector_name: str) -> "HeuristicSelector":
         return EpsilonGreedySelector()
     if selector_name == "epsilon-greedy-e02":
         return EpsilonGreedySelector(epsilon=0.2)
-    if selector_name == "ucb":
+    if selector_name in ("ucb", "ucb-lex"):
         return UCBSelector()
     if selector_name == "ucb-2state":
         return UCBSelector(collapse_stagnation=True)
@@ -292,6 +293,8 @@ def _run_one(
             min_relative_improvement=MIN_RELATIVE_IMPROVEMENT,
             select_perturbations=select_perturbations,
             time_aware_reward=time_aware_reward,
+            # ucb-lex: UCB with the lexicographic reward (src.lahc.selector_reward)
+            reward_mode="lex" if selector_name == "ucb-lex" else "binary",
             heuristics=base_pool,
             perturbations=perturbations,
             llm_enabled=llm_enabled,

@@ -30,6 +30,51 @@ VERIFY = "verify"
 
 _BEST_BONUS = 0.1
 
+# Selector reward modes (see selector_reward).
+REWARD_BINARY = "binary"
+REWARD_LEX = "lex"
+REWARD_MODES = (REWARD_BINARY, REWARD_LEX)
+# REWARD_LEX: reward for a soft-only improvement while the plan is infeasible.
+# Small but not zero: hard reductions are rare, so with 0 here every Q would
+# decay to ~0 and UCB would fall back to round-robin.
+_SOFT_ONLY_REWARD = 0.1
+
+
+def selector_reward(
+    candidate_cost: int,
+    current_cost: int,
+    best_cost: int,
+    mode: str = REWARD_BINARY,
+    best_bonus: float = _BEST_BONUS,
+) -> float:
+    """Selector reward for one candidate (regardless of its acceptance).
+
+    REWARD_BINARY: 1 if the candidate improves on the current solution,
+    else 0 -- a hard and a soft improvement count the same. Binary rather
+    than relative to the flattened cost: with INFEASIBILITY_WEIGHT in the
+    denominator a soft improvement was worth ~1e-6 while any hard violation
+    remained, which left every selector Q at ~0 and UCB choosing round-robin.
+
+    REWARD_LEX: the same once the current solution is feasible; while it is
+    infeasible, 1 only for fewer hard violations and _SOFT_ONLY_REWARD for
+    a soft-only improvement, so the selector learns which heuristics reduce
+    the hard cost first (24.11.2026: with REWARD_BINARY UCB starved
+    repair_clash, the heuristic behind most hard reductions).
+
+    Either way `best_bonus` is added when the candidate beats the global
+    best."""
+    if mode not in REWARD_MODES:
+        raise ValueError(f"reward mode must be one of {REWARD_MODES}, got {mode!r}")
+    bonus = best_bonus if candidate_cost < best_cost else 0.0
+    if candidate_cost >= current_cost:
+        return bonus
+    current_inf = current_cost // INFEASIBILITY_WEIGHT
+    if mode == REWARD_BINARY or current_inf == 0:
+        return 1.0 + bonus
+    if candidate_cost // INFEASIBILITY_WEIGHT < current_inf:
+        return 1.0 + bonus
+    return _SOFT_ONLY_REWARD + bonus
+
 # LLM fires after this many idle_limit multiples without a new best.
 _LLM_TRIGGER_MULTIPLIER = 3
 
@@ -225,6 +270,7 @@ def run_lahc(  # noqa: C901 — solver loop; complexity is inherent to the algor
     min_relative_improvement: float = 0.0,
     select_perturbations: bool = False,
     time_aware_reward: bool = False,
+    reward_mode: str = REWARD_BINARY,
     snapshot_every: int = 5000,
     stats: RunStats | None = None,
     perturbations: bool = True,
@@ -286,6 +332,9 @@ def run_lahc(  # noqa: C901 — solver loop; complexity is inherent to the algor
     from its seed -- meant for time-bounded experiments, which already
     depend on machine speed; off by default.
 
+    `reward_mode` picks the selector reward (REWARD_BINARY by default or
+    REWARD_LEX; see selector_reward).
+
     With a `logger`, the run's parameters are logged once at the start
     (run_config) and the selector's learned statistics every
     `snapshot_every` steps, at each perturbation and at the end
@@ -331,6 +380,10 @@ def run_lahc(  # noqa: C901 — solver loop; complexity is inherent to the algor
         else [h for h in pool if h.id not in PERTURBATION_IDS]
     )
 
+    if reward_mode not in REWARD_MODES:
+        raise ValueError(
+            f"reward_mode must be one of {REWARD_MODES}, got {reward_mode!r}"
+        )
     criterion: AcceptanceCriterion = (
         acceptance if acceptance is not None else SimulatedAnnealingAcceptance()
     )
@@ -434,6 +487,7 @@ def run_lahc(  # noqa: C901 — solver loop; complexity is inherent to the algor
             min_relative_improvement=min_relative_improvement,
             best_bonus=_BEST_BONUS,
             time_aware_reward=time_aware_reward,
+            reward_mode=reward_mode,
             evaluation=evaluation,
             max_iterations=max_iterations,
             max_seconds=max_seconds,
@@ -581,15 +635,9 @@ def run_lahc(  # noqa: C901 — solver loop; complexity is inherent to the algor
             accepted = criterion.accepts(current_cost, candidate_cost, rng, step)
             cost_change = candidate_cost - current_cost
 
-            # Reward: 1 if the candidate improves on the current solution
-            # (regardless of acceptance), plus a bonus when it also beats the
-            # global best. Binary rather than relative to the flattened cost:
-            # with INFEASIBILITY_WEIGHT in the denominator a soft improvement
-            # is worth ~1e-6 while any hard violation remains, which left
-            # every selector Q at ~0 and UCB choosing round-robin.
-            improved = 1.0 if candidate_cost < current_cost else 0.0
-            best_bonus = _BEST_BONUS if candidate_cost < best_cost else 0.0
-            reward = improved + best_bonus
+            reward = selector_reward(
+                candidate_cost, current_cost, best_cost, reward_mode, _BEST_BONUS
+            )
             if time_aware_reward:
                 if mean_move_time is not None and move_time > 0:
                     reward *= min(1.0, mean_move_time / move_time)
