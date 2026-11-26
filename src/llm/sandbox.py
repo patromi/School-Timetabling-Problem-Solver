@@ -14,6 +14,7 @@ Both layers communicate results via a simple dict: {"ok": bool, "error": str}.
 """
 
 import ast
+import builtins as _builtins
 import multiprocessing
 import traceback
 from typing import Any
@@ -83,6 +84,25 @@ _FORBIDDEN_IMPORT_ROOTS: frozenset[str] = frozenset(
 )
 
 SUBPROCESS_TIMEOUT_S: float = 10.0
+
+
+def _make_restricted_import() -> Any:
+    """Return an __import__ that only allows whitelisted module roots.
+
+    Used in both the subprocess sandbox and the in-process validator so that
+    LLM-generated code can write normal import statements while remaining
+    confined to the approved set.
+    """
+    _real = _builtins.__import__
+    _allowed = _ALLOWED_IMPORT_ROOTS
+
+    def _restricted(name: str, *args: Any, **kwargs: Any) -> Any:
+        root = name.split(".")[0]
+        if root not in _allowed:
+            raise ImportError(f"import not allowed in generated code: {name!r}")
+        return _real(name, *args, **kwargs)
+
+    return _restricted
 
 
 class _ForbiddenNodeVisitor(ast.NodeVisitor):
@@ -170,6 +190,7 @@ def _subprocess_worker(
 
         safe_globals: dict[str, Any] = {
             "__builtins__": {
+                "__import__": _make_restricted_import(),
                 "len": len,
                 "range": range,
                 "enumerate": enumerate,

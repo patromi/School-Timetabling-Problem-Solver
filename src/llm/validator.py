@@ -23,6 +23,7 @@ from src.cost import evaluate_cost
 from src.evaluator_ref import valid_start_time_ids
 from src.heuristics import Heuristic
 from src.llm import sandbox
+from src.llm.sandbox import _make_restricted_import
 from src.model import Instance, Solution, SolutionEvent, SolutionEventResource
 
 _EFFECTIVENESS_RUNS = 30
@@ -40,6 +41,7 @@ class ValidationResult:
 
 
 _SAFE_BUILTINS: dict[str, object] = {
+    "__import__": _make_restricted_import(),
     "len": len, "range": range, "enumerate": enumerate, "zip": zip,
     "list": list, "tuple": tuple, "dict": dict, "set": set,
     "frozenset": frozenset, "max": max, "min": min, "sum": sum,
