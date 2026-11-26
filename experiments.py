@@ -104,6 +104,8 @@ class RunResult:
     llm_accepted: int = 0
     # wall-clock time in the LLM generator, outside the search time limit
     llm_s: float = 0.0
+    # direct LLM operator variant: none / 1 / 2 / 3 / all
+    llm_op: str = "none"
 
 
 def _apply_preset(args: argparse.Namespace) -> None:
@@ -219,6 +221,7 @@ def _run_one(
     idle_limit: int = STAGNATION_LIMIT,
     reheat: str = "remaining",
     untuned_sa: bool = False,
+    llm_op: str = "none",
 ) -> RunResult:
     """Run one solver configuration. Imports inside so ProcessPoolExecutor
     can spawn cleanly without pickling the module-level state."""
@@ -263,6 +266,12 @@ def _run_one(
     llm_enabled = llm_variant != "none"
     llm_stats = GenerationStats() if llm_enabled else None
 
+    llm_operators = None
+    if llm_op != "none":
+        from src.llm.operator import LLM_OPERATOR_HEURISTICS
+        op_map = {"1": [0], "2": [1], "3": [2], "all": [0, 1, 2]}
+        llm_operators = [LLM_OPERATOR_HEURISTICS[i] for i in op_map[llm_op]]
+
     iters_done = [0]
     run_stats = RunStats()
 
@@ -301,6 +310,7 @@ def _run_one(
             llm_prompt_variant=llm_variant if llm_enabled else "a",
             llm_trigger_multiplier=llm_trigger,
             llm_stats=llm_stats,
+            llm_operators=llm_operators,
             seed=seed,
             stats=run_stats,
         )
@@ -371,6 +381,7 @@ def _run_one(
         llm_candidates=llm_candidates_gen,
         llm_accepted=llm_accepted,
         llm_s=round(run_stats.llm_s, 1),
+        llm_op=llm_op,
     )
 
 
@@ -420,8 +431,8 @@ def _append_csv(result: RunResult, path: Path) -> None:
         writer.writerow(result.__dict__)
 
 
-def _done_runs(path: Path) -> set[tuple[str, str, str, int, str]]:
-    """Keys (instance, selector, acceptance, seed, llm variant) of the runs
+def _done_runs(path: Path) -> set[tuple[str, str, str, int, str, str]]:
+    """Keys (instance, selector, acceptance, seed, llm_variant, llm_op) of the runs
     already in a results CSV, for --resume."""
     if not path.exists():
         return set()
@@ -433,14 +444,15 @@ def _done_runs(path: Path) -> set[tuple[str, str, str, int, str]]:
                 row["acceptance"],
                 int(row["seed"]),
                 row.get("llm_variant") or "none",
+                row.get("llm_op") or "none",
             )
             for row in csv.DictReader(f)
         }
 
 
 def _pending_jobs(
-    jobs: list[tuple[str, str, str, int, str]], output: Path, resume: bool
-) -> list[tuple[str, str, str, int, str]]:
+    jobs: list[tuple[str, str, str, int, str, str]], output: Path, resume: bool
+) -> list[tuple[str, str, str, int, str, str]]:
     """With `resume`, the jobs not yet in `output`; without it all of them,
     and an existing `output` is removed so the new run starts it afresh."""
     if not resume:
@@ -597,6 +609,16 @@ def main() -> None:
         default=DEFAULT_LLM_TRIGGER,
         help=f"idle_limit multiplier before LLM fires (default {DEFAULT_LLM_TRIGGER})",
     )
+    parser.add_argument(
+        "--llm-operator",
+        choices=["none", "1", "2", "3", "all"],
+        default="none",
+        help=(
+            "Direct LLM operator called at stagnation (independent of --llm-variants): "
+            "1=JSON moves, 2=event filter+best-slot, 3=chain-of-thought, "
+            "all=all three in sequence (default: none)"
+        ),
+    )
     args = parser.parse_args()
     _apply_preset(args)
 
@@ -622,7 +644,7 @@ def main() -> None:
         log_dir.mkdir(parents=True, exist_ok=True)
 
     jobs = [
-        (inst, sel, acc, seed, llm)
+        (inst, sel, acc, seed, llm, args.llm_operator)
         for inst in args.instances
         for sel in args.selectors
         for acc in args.acceptance
@@ -681,26 +703,28 @@ def main() -> None:
                 args.idle_limit,
                 args.reheat,
                 args.untuned_sa,
-            ): (inst, sel, acc, seed, llm)
-            for inst, sel, acc, seed, llm in jobs
+                llm_op,
+            ): (inst, sel, acc, seed, llm, llm_op)
+            for inst, sel, acc, seed, llm, llm_op in jobs
         }
         for fut in as_completed(futures):
-            inst, sel, acc, seed, llm = futures[fut]
+            inst, sel, acc, seed, llm, llm_op = futures[fut]
             try:
                 r = fut.result()
                 results.append(r)
                 _append_csv(r, args.output)
                 done += 1
                 llm_info = f"  llm={llm} acc={r.llm_accepted}/{r.llm_candidates}" if llm != "none" else ""
+                op_info = f"  op={llm_op}" if llm_op != "none" else ""
                 print(
                     f"  [{done:>3}/{total}] {inst:12} {sel:15} {acc:4} seed={seed}  "
                     f"inf={r.infeasibility_after:>5}  obj={r.objective_after:>6}  "
-                    f"iter={r.iterations_done:>7}  {r.elapsed_s:.0f}s{llm_info}"
+                    f"iter={r.iterations_done:>7}  {r.elapsed_s:.0f}s{llm_info}{op_info}"
                 )
             except Exception as e:
                 done += 1
                 print(
-                    f"  [{done:>3}/{total}] {inst} {sel} {acc} seed={seed} llm={llm}  BLAD: {e}",
+                    f"  [{done:>3}/{total}] {inst} {sel} {acc} seed={seed} llm={llm} op={llm_op}  BLAD: {e}",
                     file=sys.stderr,
                 )
 
