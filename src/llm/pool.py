@@ -59,6 +59,17 @@ class GenerationStats:
                 for i in range(r.step_failed - 1):
                     self.passed_step[i] += 1
 
+    def failed_at_step(self) -> list[int]:
+        """Number of candidates that failed at each step (1-indexed, length 4)."""
+        n = self.candidates_generated
+        ps = self.passed_step
+        return [
+            n - ps[0],
+            ps[0] - ps[1],
+            ps[1] - ps[2],
+            ps[2] - ps[3],
+        ]
+
     def acceptance_rates(self) -> dict[str, float]:
         n = self.candidates_generated
         if n == 0:
@@ -248,15 +259,25 @@ def maybe_generate(
             )
             continue
 
-        result, heuristic = llm_validator.validate(
-            code=code,
-            h_id=h_id,
-            instance=instance,
-            solution=solution,
-            pool=pool,
-            seed=rng.randint(0, 2**31),
-            source="llm_fresh",
-        )
+        try:
+            result, heuristic = llm_validator.validate(
+                code=code,
+                h_id=h_id,
+                instance=instance,
+                solution=solution,
+                pool=pool,
+                seed=rng.randint(0, 2**31),
+                source="llm_fresh",
+            )
+        except Exception as exc:
+            import traceback
+            result = llm_validator.ValidationResult(
+                passed=False,
+                step_failed=2,
+                error=f"validate() raised: {traceback.format_exc()[:500]}",
+                code=code,
+            )
+            heuristic = None
         results.append(result)
 
         _save_generated(

@@ -11,6 +11,7 @@ A ValidationResult is returned for every candidate so the caller can log the
 acceptance rate at each step, as required by E7-T6.
 """
 
+import collections as _collections
 import dataclasses as _dataclasses
 import itertools
 import math
@@ -69,6 +70,7 @@ def _build_heuristic(code: str, h_id: str, source: str = "llm_fresh") -> Heurist
         "__builtins__": _SAFE_BUILTINS,
         "math": math,
         "dataclasses": _dataclasses,
+        "collections": _collections,
         "itertools": itertools,
         "defaultdict": defaultdict,
         "Counter": Counter,

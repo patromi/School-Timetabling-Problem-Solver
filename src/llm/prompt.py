@@ -37,7 +37,8 @@ A solution is a list of SolutionEvent objects:
 The Instance exposes:
   - instance.times          — list[Time], each with .id and .name
   - instance.events         — list[Event], each with .id, .duration, .resources
-  - instance.constraints    — list[Constraint] with .type, .required, .weight
+  - instance.constraints    — list[Constraint] with .type (str), .required (bool), .weight (int),
+                              .params (dict) for type-specific fields; there is NO .event_refs attribute
 
 ## CONTRACT — you MUST follow this exactly
 ```python
@@ -55,7 +56,9 @@ Rules:
 - You may call dataclasses.replace(obj, field=value) to copy with changes.
 
 ## Output format
-Return ONLY the raw Python function — no markdown, no explanation, no imports.\
+Return ONLY the Python code — no markdown, no explanation.
+Top-level imports from the allowed list (math, random, collections, itertools,
+dataclasses) are fine and will be executed correctly.\
 """
 
 

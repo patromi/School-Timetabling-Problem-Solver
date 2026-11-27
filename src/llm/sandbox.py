@@ -170,6 +170,7 @@ def _subprocess_worker(
 ) -> None:
     """Runs inside the child process.  Communicates via result_queue."""
     try:
+        import collections as _coll
         import dataclasses
         import itertools
         import math
@@ -232,6 +233,7 @@ def _subprocess_worker(
             "math": math,
             "random": random_mod,
             "dataclasses": dataclasses,
+            "collections": _coll,
             "defaultdict": defaultdict,
             "Counter": Counter,
             "itertools": itertools,
@@ -252,7 +254,15 @@ def _subprocess_worker(
             return
 
         rng = random_mod.Random(seed)
-        result = apply_fn(solution, instance, rng)
+        try:
+            result = apply_fn(solution, instance, rng)
+        except ValueError:
+            # Per contract: heuristic may raise ValueError when no move is
+            # applicable.  Treat as a no-op — return original event_refs so
+            # the validator proceeds to step 3 and step 4 handles it properly.
+            event_refs = [e.event_ref for e in solution.events]
+            result_queue.put({"ok": True, "error": "", "event_refs": event_refs})
+            return
 
         if not isinstance(result, Solution):
             got = type(result).__name__

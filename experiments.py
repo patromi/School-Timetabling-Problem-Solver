@@ -326,6 +326,7 @@ def _run_one(
     llm_calls = llm_stats.total_calls if llm_stats else 0
     llm_candidates_gen = llm_stats.candidates_generated if llm_stats else 0
     llm_accepted = llm_stats.accepted if llm_stats else 0
+    llm_failed_at_step = llm_stats.failed_at_step() if llm_stats else [0, 0, 0, 0]
 
     if logger is not None and log_path is not None:
         with _Path(log_path).open("a", encoding="utf-8") as f:
@@ -348,6 +349,10 @@ def _run_one(
                         "llm_calls": llm_calls,
                         "llm_candidates": llm_candidates_gen,
                         "llm_accepted": llm_accepted,
+                        "llm_failed_step1": llm_failed_at_step[0],
+                        "llm_failed_step2": llm_failed_at_step[1],
+                        "llm_failed_step3": llm_failed_at_step[2],
+                        "llm_failed_step4": llm_failed_at_step[3],
                         "infeasibility_before": inf0,
                         "objective_before": obj0,
                         "infeasibility_after": inf1,
