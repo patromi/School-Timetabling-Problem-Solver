@@ -63,7 +63,8 @@ def _has_lfs_pointers() -> bool:
     for pattern in ("generated/replay/*.jsonl", "generated/*.py"):
         for path in _REPO_ROOT.glob(pattern):
             try:
-                header = path.read_bytes(64)
+                with path.open("rb") as _f:
+                    header = _f.read(64)
                 if header.startswith(b"version https://git-lfs.github.com/"):
                     return True
             except OSError:
